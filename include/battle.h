@@ -288,17 +288,10 @@ struct TrainerMonItemCustomMoves
 
 union TrainerMonPtr
 {
-	#ifdef STEVEBELS_TRAINER_TABLE
-	const struct TrainerMonNoItemDefaultMoves *NoItemDefaultMoves;
-    const struct TrainerMonNoItemCustomMoves *NoItemCustomMoves;
-    const struct TrainerMonItemDefaultMoves *ItemDefaultMoves;
-    const struct TrainerMonItemCustomMoves *ItemCustomMoves;
-	#else
     struct TrainerMonNoItemDefaultMoves* NoItemDefaultMoves;
     struct TrainerMonNoItemCustomMoves* NoItemCustomMoves;
     struct TrainerMonItemDefaultMoves* ItemDefaultMoves;
     struct TrainerMonItemCustomMoves* ItemCustomMoves;
-	#endif
 };
 
 struct Trainer
@@ -313,28 +306,18 @@ struct Trainer
     /*0x18*/ bool8 doubleBattle;
     /*0x1C*/ u32 aiFlags;
     /*0x20*/ u8 partySize;
-	#ifdef STEVEBELS_TRAINER_TABLE
-	/*0x24*/ const union TrainerMonPtr party;
-	#else
     /*0x24*/ union TrainerMonPtr party;
-	#endif
 };
 
 #define PARTY_FLAG_CUSTOM_MOVES     0x1
 #define PARTY_FLAG_HAS_ITEM         0x2
 
-#ifdef STEVEBELS_TRAINER_TABLE
-extern const struct Trainer gTrainers[];
-#define TRAINER_ENCOUNTER_MUSIC(trainer)((GET_TRAINER(trainer).encounterMusic_gender & 0x7F))
-#else
 #ifdef EXPAND_TRAINERS
-extern const struct Trainer gTrainers[];
-extern const u8 gTrainerClassNames[][13];
 extern const struct TrainerMoney gTrainerMoneyTable[];
 #endif
 
 #define TRAINER_ENCOUNTER_MUSIC(trainer)((gTrainers[trainer].encounterMusic))
-#endif
+
 struct UnknownFlags
 {
     u32 flags[4];

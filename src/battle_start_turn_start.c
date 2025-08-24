@@ -1935,11 +1935,7 @@ u16 GetMUS_ForBattle(void)
 		}
 		else
 		{
-			#ifdef STEVEBELS_TRAINER_TABLE
-			trainerClass = GetTrainer(gTrainerBattleOpponent_A).trainerClass;
-			#else
 			trainerClass = gTrainers[gTrainerBattleOpponent_A].trainerClass;
-			#endif
 
 			if (trainerClass == CLASS_LEADER)
 				return VarGet(VAR_BATTLE_MUSIC) == 0 ? BGM_BATTLE_GYM_LEADER : MUS_RS_VS_GYM_LEADER;
@@ -1960,11 +1956,8 @@ u16 GetMUS_ForBattle(void)
 
 			if (gBattleTypeFlags & BATTLE_TYPE_TWO_OPPONENTS)
 			{
-				#ifdef STEVEBELS_TRAINER_TABLE
-				trainerClass = GetTrainer(SECOND_OPPONENT).trainerClass;
-				#else
 				trainerClass = gTrainers[SECOND_OPPONENT].trainerClass;
-				#endif
+
 				if (gClassBasedBattleBGM[trainerClass])
 					return gClassBasedBattleBGM[trainerClass];
 			}
@@ -2041,18 +2034,10 @@ u8 GetTrainerBattleTransition(void)
 		return B_TRANSITION_CHAMPION;
 
 	#ifdef FR_PRE_BATTLE_MUGSHOT_STYLE
-	#ifdef STEVEBELS_TRAINER_TABLE
-	if (GetTrainer(gTrainerBattleOpponent_A).trainerClass == CLASS_CHAMPION)
-	#else
 	if (gTrainers[gTrainerBattleOpponent_A].trainerClass == CLASS_CHAMPION)
-	#endif
 		return B_TRANSITION_CHAMPION;
 
-	#ifdef STEVEBELS_TRAINER_TABLE
-	if (GetTrainer(gTrainerBattleOpponent_A).trainerClass == CLASS_ELITE_FOUR)
-	#else
 	if (gTrainers[gTrainerBattleOpponent_A].trainerClass == CLASS_ELITE_FOUR)
-	#endif
 	{
 		VarSet(VAR_PRE_BATTLE_MUGSHOT_STYLE, MUGSHOT_TWO_BARS);
 		VarSet(VAR_PRE_BATTLE_MUGSHOT_SPRITE, MUGSHOT_PLAYER);
@@ -2103,11 +2088,7 @@ u8 GetTrainerBattleTransition(void)
 		return B_TRANSITION_CUSTOM_LOGO;
 	#endif
 
-	#ifdef STEVEBELS_TRAINER_TABLE
-	if ((GetTrainer(gTrainerBattleOpponent_A).doubleBattle == TRUE
-	#else
 	if ((gTrainers[gTrainerBattleOpponent_A].doubleBattle == TRUE
-	#endif
 	#ifdef FLAG_DOUBLE_BATTLE
 	|| FlagGet(FLAG_DOUBLE_BATTLE)
 	#endif

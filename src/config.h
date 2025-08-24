@@ -402,5 +402,4 @@ enum //These vars need to be one after the other (hence the enum)
 #define PALETTE_SWAPPER
 
 /* Trainer Data */
-//#define EXPAND_TRAINERS // Makes trainers editable, well useless if OPEN_WORLD_TRAINERS is being used.
-#define STEVEBELS_TRAINER_TABLE //You can edit any existing trainer just by entering their ID. Do not use if EXPAND_TRAINERS is uncommented.
+#define EXPAND_TRAINERS // Makes trainers editable, well useless if OPEN_WORLD_TRAINERS is being used.

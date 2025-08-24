@@ -116,22 +116,19 @@ extern u8 BattleScript_ButItFailed[];
 #define BattleScript_NotAffected (const u8*) 0x81D7E04
 
 typedef u8 TrainerClassNames_t[13];
-#define gTrainerClassNames ((TrainerClassNames_t*) *((u32*) 0x811B4B4)) //0x823E558
-#ifndef STEVEBELS_TRAINER_TABLE
+
+#ifdef EXPAND_TRAINERS
+extern struct Trainer gTrainers[];
+extern const u8 gTrainerClassNames[][13];
+#else
 #define gTrainers ((struct Trainer*) *((u32*) 0x800FC00)) //0x823EAC8
+#define gTrainerClassNames ((TrainerClassNames_t*) *((u32*) 0x811B4B4)) //0x823E558
+
 #endif
 #define gTrainerFrontPicCoords ((struct TrainerPicCoords*) 0x823932C)
 #define gTrainerFrontPicTable ((struct CompressedSpriteSheet*) 0x823957C)
 #define gTrainerFrontPicPaletteTable ((struct CompressedSpritePalette*) 0x8239A1C)
 extern struct TrainerPicCoords gTrainerBackPicCoords[];
-
-#ifdef STEVEBELS_TRAINER_TABLE
-extern const struct Trainer gTrainersStevebel[];
-#define gOriginalTrainers ((const struct Trainer*) 0x823EAC8)
-#define gTrainers gTrainersStevebel
-extern struct Trainer GetTrainer(u16 trainerId);
-extern const struct Trainer *GetTrainerPtr(u16 trainerId);
-#endif
 
 #define sATypeMove_Table ((u8**) 0x83FEA28) //Table of things like "A Normal Move!"
 #define gBattleStringsTable ((u8**) 0x83FDF3C)

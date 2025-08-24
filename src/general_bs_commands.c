@@ -1666,11 +1666,7 @@ void atk1B_cleareffectsonfaint(void) {
 				#ifdef BGM_BATTLE_GYM_LEADER_LAST_POKEMON
 				if ((gBattleTypeFlags & (BATTLE_TYPE_TRAINER | BATTLE_TYPE_DOUBLE)) == (BATTLE_TYPE_TRAINER | BATTLE_TYPE_DOUBLE) //Double Gym battle
 				&& !(gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_FRONTIER | BATTLE_TYPE_TRAINER_TOWER))
-				#ifdef STEVEBELS_TRAINER_TABLE
-				&& GetTrainer(gTrainerBattleOpponent_A).trainerClass == CLASS_LEADER
-				#else
 				&& gTrainers[gTrainerBattleOpponent_A].trainerClass == CLASS_LEADER
-				#endif
 				&& SIDE(gActiveBattler) == B_SIDE_OPPONENT //Enemy mon fainted
 				&& ViableMonCount(gEnemyParty) == 1) //1 left exactly
 				{

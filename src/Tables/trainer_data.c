@@ -20,7 +20,7 @@
 
 #define NO_ITEMS   ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE
 
-const struct Trainer gTrainers[] = {
+struct Trainer gTrainers[] = {
         [TRAINER_NONE] = {
         .trainerName = { _END },
     },

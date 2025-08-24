@@ -443,13 +443,8 @@ static item_t FindTrainerDynamaxBand(u16 trainerId)
 
 	for (u8 i = 0; i < TRAINER_ITEM_COUNT; ++i)
 	{
-		#ifdef STEVEBELS_TRAINER_TABLE
-		if (IsItemDynamaxBand(GetTrainer(trainerId).items[i]))
-			return GetTrainer(trainerId).items[i];
-		#else
 		if (IsItemDynamaxBand(gTrainers[trainerId].items[i]))
 			return gTrainers[trainerId].items[i];
-		#endif
 	}
 
 	return ITEM_NONE;

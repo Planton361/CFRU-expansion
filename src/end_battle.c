@@ -219,11 +219,7 @@ void HandleEndTurn_BattleWon(void)
 		}
 
 	VICTORY_MUSIC_SELECTION:
-		#ifdef STEVEBELS_TRAINER_TABLE
-		switch (GetTrainer(id).trainerClass) {
-		#else
 		switch (gTrainers[id].trainerClass) {
-		#endif
 		#ifndef UNBOUND //Change this part
 			case CLASS_LEADER:
 			case CLASS_ELITE_FOUR:
