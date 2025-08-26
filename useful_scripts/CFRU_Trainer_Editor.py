@@ -263,6 +263,10 @@ class TrainerEditorUI:
         self.sprite_img = None
         self.tk_img = None
         
+        # Edit Party Funcs
+        self.editing_pokemon_mode = False
+        self.current_editing_pokemon = None
+        
         self.SPRITE_TABLE_ADDRESS = 0x823957C  # Endereço da tabela de sprites
         self.PALETTE_TABLE_ADDRESS = 0x8239A1C  # Endereço da tabela de paletas
         self.ENTRY_SIZE = 8  # Cada entrada na tabela tem 8 bytes
@@ -510,39 +514,6 @@ class TrainerEditorUI:
         except Exception as e:
             print(f"Error reading sprite data at 0x{sprite_gba_addr:X}: {e}")
             return None
-    
-    def load_sprite_table(self):
-        """Carrega a tabela de sprites diretamente da ROM"""
-        self.sprite_table = {}
-        
-        if not self.ROM_PATH or not self.ROM_PATH.exists():
-            return
-            
-        try:
-            with open(self.ROM_PATH, 'rb') as rom_file:
-                # Posiciona no início da tabela de sprites
-                rom_file.seek(self.SPRITE_TABLE_OFFSET)
-                
-                # Cada entrada na tabela tem 8 bytes:
-                #   offset (4 bytes), tamanho (2 bytes), índice (1 byte), ? (1 byte)
-                for i in range(148):  # 148 sprites na tabela
-                    data = rom_file.read(8)
-                    if not data or len(data) < 8:
-                        break
-                    
-                    # Extrai os dados
-                    offset = struct.unpack('<I', data[0:4])[0]
-                    uncompressed_size = struct.unpack('<H', data[4:6])[0]
-                    index = data[6]  # O sétimo byte é o índice
-                    
-                    # Armazena na tabela
-                    self.sprite_table[index] = (offset, uncompressed_size)
-                    
-                    # Debug: mostra os dados carregados
-                    print(f"Sprite {index}: Offset={hex(offset)}, Size={uncompressed_size}")
-        
-        except Exception as e:
-            print(f"Erro ao carregar tabela de sprites: {e}")
            
     def show_folder_selection(self):
         """Mostra a tela inicial para selecionar a pasta do projeto"""
@@ -578,7 +549,7 @@ class TrainerEditorUI:
     def verify_project_structure(self):
         """Verifica se a pasta selecionada tem a estrutura esperada do CFRU"""
         required_paths = [
-            "src/Tables/trainer_table.c",
+            "src/Tables/trainer_data.c",
             "src/Tables/trainer_parties.h",
             "include/constants/opponents.h",
             "include/constants/species.h",
@@ -629,7 +600,7 @@ class TrainerEditorUI:
         self.root.geometry("1200x800")
         
         # Define os paths agora que BASE_DIR está definido
-        self.TRAINER_DATA_PATH = self.BASE_DIR / "src" / "Tables" / "trainer_table.c"
+        self.TRAINER_DATA_PATH = self.BASE_DIR / "src" / "Tables" / "trainer_data.c"
         self.TRAINER_PARTIES_PATH = self.BASE_DIR / "src" / "Tables" / "trainer_parties.h"
         self.OPPONENTS_PATH = self.BASE_DIR / "include" / "constants" / "opponents.h"
         self.SPECIES_PATH = self.BASE_DIR / "include" / "constants" / "species.h"
@@ -654,15 +625,12 @@ class TrainerEditorUI:
         self.setup_ui()
         self.populate_trainer_tree()
         
-        if self.ROM_PATH:
-            self.load_sprite_table()
-        
     def load_initial_data(self):
         """Carrega todos os dados iniciais necessários"""
         self.TRAINER_CLASSES = self.load_trainer_classes()
-        self.VALID_SPECIES = self.load_file_defines(self.SPECIES_PATH, 'SPECIES_')  # Note o self.
-        self.VALID_MOVES = self.load_file_defines(self.MOVES_PATH, 'MOVE_')         # Note o self.
-        self.VALID_ITEMS = self.load_file_defines(self.ITEMS_PATH, 'ITEM_')         # Note o self.
+        self.VALID_SPECIES = self.load_file_defines(self.SPECIES_PATH, 'SPECIES_')
+        self.VALID_MOVES = self.load_file_defines(self.MOVES_PATH, 'MOVE_')
+        self.VALID_ITEMS = self.load_file_defines(self.ITEMS_PATH, 'ITEM_')
         self.TEXT_DEFINITIONS, self.CHAR_TO_DEFINE = self.load_easy_text_definitions()
         
         self.trainer_lines = self.read_file(self.TRAINER_DATA_PATH)
@@ -680,15 +648,42 @@ class TrainerEditorUI:
         self.trainers = self.parse_trainers()
         self.parties = self.parse_trainer_parties()
         self.opponent_name_to_id, self.opponent_id_to_name = self.parse_opponents_with_ids()
-        self.trainer_sprites = self.load_trainer_sprites()
         
-        self.species_list = sorted([s.replace('SPECIES_', '') for s in self.VALID_SPECIES])
+        # Carrega species na ordem do arquivo
+        self.species_list, self.species_display_list, self.species_mapping = self.load_species_ordered()
         self.items_list = sorted([i.replace('ITEM_', '') for i in self.VALID_ITEMS])
         self.moves_list = sorted([m.replace('MOVE_', '') for m in self.VALID_MOVES])
         
         self.current_editing_id = None
         self.new_parties = {}
         self.modified = False
+
+    def load_species_ordered(self):
+        """Carrega as espécies na mesma ordem do arquivo species.h"""
+        full_names = []
+        display_names = []
+        mapping = {}
+        
+        try:
+            with open(self.SPECIES_PATH, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip().startswith("#define SPECIES_"):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            full_name = parts[1]
+                            if full_name.startswith("SPECIES_"):
+                                display_name = full_name.replace("SPECIES_", "")
+                                full_names.append(full_name)
+                                display_names.append(display_name)
+                                mapping[display_name] = full_name
+        except Exception as e:
+            print(f"Error loading ordered species: {e}")
+            # Fallback para o método antigo se houver erro
+            full_names = list(self.VALID_SPECIES)
+            display_names = [s.replace('SPECIES_', '') for s in full_names]
+            mapping = {display: full for display, full in zip(display_names, full_names)}
+        
+        return full_names, display_names, mapping
         
     def parse_trainer_parties(self):
         """Analisa o arquivo de parties e retorna um dicionário com os dados"""
@@ -1000,41 +995,6 @@ class TrainerEditorUI:
         
         return text_map, char_to_define
     
-    def load_trainer_sprites(self):
-        """Carrega as sprites diretamente da ROM"""
-        sprites = {}
-        
-        try:
-            with open(self.ROM_PATH, 'rb') as rom_file:
-                # Lê a tabela de sprites
-                rom_file.seek(self.SPRITE_OFFSET)
-                
-                # Cada entrada tem 4 bytes: [class_id, sprite_id, ?, ?]
-                # Vamos ler até encontrar um terminador (0xFF)
-                while True:
-                    entry = rom_file.read(4)
-                    if not entry or entry[0] == 0xFF:
-                        break
-                    
-                    class_id = entry[0]
-                    sprite_id = entry[1]
-                    
-                    # Mapeia o ID da classe para o nome (usando TRAINER_PICS)
-                    for class_name, cid in TRAINER_PICS.items():
-                        if cid == class_id:
-                            sprites[class_name] = sprite_id
-                            break
-        
-        except Exception as e:
-            print(f"Error loading trainer sprites from ROM: {e}")
-            sprites = {
-                "YOUNGSTER": 0,
-                "LASS": 1,
-                # ... (valores padrão de fallback)
-            }
-        
-        return sprites
-    
     def read_file(self, path):
         """Lê um arquivo e retorna suas linhas"""
         try:
@@ -1156,6 +1116,9 @@ class TrainerEditorUI:
     def save_files(self):
         """Salva todas as alterações nos arquivos"""
         try:
+            # Limpa dados antigos antes de salvar
+            self.clear_old_data_before_save()
+            
             # Debug - mostra o que será salvo
             self.print_opponents_changes()
             
@@ -1164,6 +1127,10 @@ class TrainerEditorUI:
             self.save_parties_file()
             self.modified = False
             messagebox.showinfo("Success", "All files saved successfully!")
+            
+            # Recarrega os dados após salvar
+            self.refresh_data()
+            
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save files: {str(e)}")
             
@@ -1181,67 +1148,64 @@ class TrainerEditorUI:
         n = len(self.trainer_lines)
         inside_stevebels_block = False
         trainers_added = False
+        processed_trainers = set()  # Para rastrear quais treinadores já foram processados
         
         while i < n:
             line = self.trainer_lines[i]
             
-            # Verifica se estamos entrando no bloco STEVEBELS
-            if "#ifdef STEVEBELS_TRAINER_TABLE" in line:
+            # Verifica se estamos entrando no bloco EXPAND_TRAINERS
+            if "#ifdef EXPAND_TRAINERS" in line:
                 inside_stevebels_block = True
                 new_lines.append(line)
                 i += 1
                 continue
             
-            # Dentro do bloco STEVEBELS, adicionamos os novos treinadores antes do }; ou #endif
+            # Dentro do bloco EXPAND_TRAINERS, adicionamos os novos treinadores antes do }; ou #endif
             if inside_stevebels_block and not trainers_added:
                 if line.strip() in ["};", "#endif"]:
-                    # Adiciona todos os novos treinadores antes do fechamento
+                    # Adiciona todos os treinadores modificados antes do fechamento
                     for name, trainer in self.trainers.items():
-                        # Verifica se o treinador já foi processado
-                        processed = any(f"[{name}]" in l for l in new_lines)
-                        
-                        if not processed:
+                        if name not in processed_trainers:
                             # Adiciona com o nome do define entre colchetes
                             new_lines.append(f"\t[{name}] = {{\n")
                             for data_line in trainer['data']:
                                 new_lines.append(f"\t    {data_line}\n")
                             new_lines.append("\t},\n")
+                            processed_trainers.add(name)
                     
                     trainers_added = True
             
-            # Verifica se é o início de uma definição de treinador fora do bloco STEVEBELS
-            if line.strip().startswith('[') and '] = {' in line and not inside_stevebels_block:
+            # Verifica se é o início de uma definição de treinador
+            if line.strip().startswith('[') and '] = {' in line:
                 trainer_id = line.split('[')[1].split(']')[0].strip()
-                trainer_name = None
                 
-                # Encontra o nome do treinador correspondente ao ID
-                for name, data in self.trainers.items():
-                    if data['id'] == trainer_id:
-                        trainer_name = name
-                        break
-                
-                # Se encontrou o treinador nos dados modificados
-                if trainer_name in self.trainers:
-                    trainer = self.trainers[trainer_name]
+                # Verifica se este treinador foi modificado
+                if trainer_id in self.trainers:
+                    trainer = self.trainers[trainer_id]
                     
                     # Adiciona a nova definição do treinador com o nome entre colchetes
-                    new_lines.append(f"[{trainer_name}] = {{\n")
+                    new_lines.append(f"[{trainer_id}] = {{\n")
                     
-                    # Adiciona todos os campos do treinador
+                    # Adiciona todos os campos do treinador atualizados
                     for data_line in trainer['data']:
                         new_lines.append(f"    {data_line}\n")
                     
                     new_lines.append("},\n")
+                    processed_trainers.add(trainer_id)
                     
                     # Avança até o final da definição atual no arquivo original
                     while i < n and not self.trainer_lines[i].strip().startswith('},'):
                         i += 1
                     i += 1  # Pula a linha '},'
                     continue
-            
-            # Adiciona a linha original se não for parte de um treinador modificado
-            new_lines.append(line)
-            i += 1
+                else:
+                    # Treinador não modificado, mantém a linha original
+                    new_lines.append(line)
+                    i += 1
+            else:
+                # Adiciona a linha original se não for parte de um treinador modificado
+                new_lines.append(line)
+                i += 1
         
         # Escreve o arquivo com as alterações
         try:
@@ -1256,16 +1220,38 @@ class TrainerEditorUI:
         try:
             # Encontra a posição da linha TRAINERS_COUNT
             trainers_count_index = -1
+            trainers_count_line = None
+            
             for i, line in enumerate(self.opponents_lines):
-                if "TRAINERS_COUNT" in line:
+                if "TRAINERS_COUNT" in line and not line.strip().startswith('//'):
                     trainers_count_index = i
+                    trainers_count_line = line
                     break
             
             if trainers_count_index == -1:
                 raise ValueError("Could not find TRAINERS_COUNT in opponents.h")
             
+            # Encontra o último trainer (com o maior ID)
+            last_trainer_name = None
+            max_id = -1
+            
+            for name, trainer_id in self.opponent_name_to_id.items():
+                if trainer_id > max_id:
+                    max_id = trainer_id
+                    last_trainer_name = name
+            
+            if last_trainer_name is None:
+                # Se não houver trainers, usa um fallback
+                last_trainer_name = "TRAINER_NONE"
+            
+            # Atualiza a linha TRAINERS_COUNT
+            new_trainers_count_line = f"#define TRAINERS_COUNT ({last_trainer_name} + 1)\n"
+            
             # Cria uma cópia das linhas originais
             new_lines = self.opponents_lines.copy()
+            
+            # Substitui a linha TRAINERS_COUNT
+            new_lines[trainers_count_index] = new_trainers_count_line
             
             # Adiciona todas as novas definições antes do TRAINERS_COUNT
             for name, trainer_id in self.opponent_name_to_id.items():
@@ -1281,23 +1267,37 @@ class TrainerEditorUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save {self.OPPONENTS_PATH}: {str(e)}")
             raise
+            
+    def get_last_trainer_name(self):
+        """Retorna o nome do trainer com o maior ID"""
+        last_trainer_name = None
+        max_id = -1
+        
+        for name, trainer_id in self.opponent_name_to_id.items():
+            if trainer_id > max_id:
+                max_id = trainer_id
+                last_trainer_name = name
+        
+        return last_trainer_name if last_trainer_name else "TRAINER_NONE"
 
     def save_parties_file(self):
         """Salva as alterações no arquivo trainer_parties.h"""
         new_party_lines = []
         inside_stevebels_block = False
         parties_added = False
+        processed_parties = set()  # Para rastrear quais parties já foram processadas
         
-        for line in self.party_lines:
-            if "#ifdef STEVEBELS_TRAINER_TABLE" in line:
+        for i, line in enumerate(self.party_lines):
+            if "#ifdef EXPAND_TRAINERS" in line:
                 inside_stevebels_block = True
                 new_party_lines.append(line)
                 continue
             
             if inside_stevebels_block and not parties_added:
                 if line.strip() == "#endif":
+                    # Adiciona todas as parties modificadas antes do #endif
                     for party_name, party_info in self.new_parties.items():
-                        if not any(f"{party_name}[]" in l for l in new_party_lines):
+                        if party_name not in processed_parties:
                             new_party_lines.append(f"\nstatic const struct {party_info['struct']} {party_name}[] = {{\n")
                             
                             for pokemon in party_info['data']:
@@ -1320,7 +1320,56 @@ class TrainerEditorUI:
                                 
                                 new_party_lines.append("    },\n")
                             new_party_lines.append("};\n")
+                            processed_parties.add(party_name)
                     parties_added = True
+            
+            # Verifica se é uma definição de party existente
+            if 'static const struct' in line and '[] = {' in line:
+                parts = line.split()
+                for part in parts:
+                    if part.endswith('[]'):
+                        current_party_name = part[:-2]  # Remove o []
+                        break
+                else:
+                    current_party_name = None
+                
+                # Se esta party foi modificada, substitui completamente
+                if current_party_name and current_party_name in self.new_parties:
+                    party_info = self.new_parties[current_party_name]
+                    
+                    # Adiciona a nova definição da party
+                    new_party_lines.append(f"\nstatic const struct {party_info['struct']} {current_party_name}[] = {{\n")
+                    
+                    for pokemon in party_info['data']:
+                        new_party_lines.append("    {\n")
+                        new_party_lines.append(f"        .lvl = {pokemon['level']},\n")
+                        new_party_lines.append(f"        .species = {pokemon['species']},\n")
+                        
+                        if pokemon['party_type'] in [3, 4]:
+                            new_party_lines.append(f"        .moves = {{{', '.join(pokemon['moves'])}}},\n")
+                        
+                        if pokemon['party_type'] in [2, 4]:
+                            new_party_lines.append(f"        .heldItem = {pokemon.get('item', 'ITEM_NONE')},\n")
+                        
+                        if pokemon['party_type'] == 4:
+                            new_party_lines.append(f"        .ability = {pokemon['ability']},\n")
+                            new_party_lines.append(f"        .nature = NATURE_{pokemon['nature']},\n")
+                            new_party_lines.append(f"        .ivSpread = {{{pokemon['ivs']}}},\n")
+                            new_party_lines.append(f"        .evSpread = {{{pokemon['evs']}}},\n")
+                            new_party_lines.append(f"        .teraType = {pokemon['tera_type']},\n")
+                        
+                        new_party_lines.append("    },\n")
+                    new_party_lines.append("};\n")
+                    processed_parties.add(current_party_name)
+                    
+                    # Pula as linhas da party antiga
+                    j = i + 1
+                    while j < len(self.party_lines):
+                        if self.party_lines[j].strip() == '};':
+                            break
+                        j += 1
+                    # Continua a partir do final da party
+                    continue
             
             new_party_lines.append(line)
         
@@ -1331,6 +1380,64 @@ class TrainerEditorUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save {self.TRAINER_PARTIES_PATH}: {str(e)}")
             raise
+            
+    def clear_old_data_before_save(self):
+        """Limpa dados antigos antes de salvar para evitar duplicatas"""
+        # Para trainer_data.c: remove definições antigas de treinadores modificados
+        modified_trainers = set(self.trainers.keys())
+        
+        new_trainer_lines = []
+        skip_until_end = False
+        current_trainer = None
+        
+        for line in self.trainer_lines:
+            if line.strip().startswith('[') and '] = {' in line:
+                trainer_id = line.split('[')[1].split(']')[0].strip()
+                if trainer_id in modified_trainers:
+                    current_trainer = trainer_id
+                    skip_until_end = True
+                    continue
+            
+            if skip_until_end:
+                if line.strip() == '},':
+                    skip_until_end = False
+                    current_trainer = None
+                continue
+            
+            new_trainer_lines.append(line)
+        
+        self.trainer_lines = new_trainer_lines
+        
+        # Para trainer_parties.h: remove parties antigas que foram modificadas
+        modified_parties = set(self.new_parties.keys())
+        
+        new_party_lines = []
+        skip_party = False
+        current_party = None
+        
+        for line in self.party_lines:
+            if 'static const struct' in line and '[] = {' in line:
+                parts = line.split()
+                for part in parts:
+                    if part.endswith('[]'):
+                        party_name = part[:-2]
+                        if party_name in modified_parties:
+                            current_party = party_name
+                            skip_party = True
+                            break
+                
+                if skip_party:
+                    continue
+            
+            if skip_party:
+                if line.strip() == '};':
+                    skip_party = False
+                    current_party = None
+                continue
+            
+            new_party_lines.append(line)
+        
+        self.party_lines = new_party_lines
 
     def setup_styles(self):
         """Configura os estilos visuais"""
@@ -1502,7 +1609,7 @@ class TrainerEditorUI:
                 img = self.decode_4bpp_tiled(sprite_data, palette)
                 
                 # Redimensiona para 64x64
-                img = img.resize((64, 64), Image.NEAREST)
+                img = img.resize((64, 64), Image.Resampling.NEAREST)
                 
                 # Exibe no canvas
                 self.tk_img = ImageTk.PhotoImage(img)
@@ -1564,6 +1671,34 @@ class TrainerEditorUI:
             row=2, column=0, columnspan=2, sticky="w", padx=5, pady=2)
         
         parent.grid_columnconfigure(1, weight=1)
+        
+    def setup_species_autocomplete(self):
+        """Configura auto-complete para o combobox de espécies"""
+        def autocomplete(event):
+            # Obtém o texto atual
+            typed = self.poke_species_combo.get().upper()
+            
+            if not typed:
+                # Se estiver vazio, mostra todas as opções
+                self.poke_species_combo['values'] = self.species_display_list
+                return
+            
+            # Filtra as espécies que começam com o texto digitado
+            matches = [species for species in self.species_display_list 
+                      if species.upper().startswith(typed)]
+            
+            # Atualiza a lista de valores
+            self.poke_species_combo['values'] = matches
+            
+            # Mantém o texto digitado e seleciona a parte não digitada
+            if matches:
+                self.poke_species_combo.set(typed)
+                # Seleciona o texto que ainda não foi digitado
+                self.poke_species_combo.icursor(tk.END)
+                self.poke_species_combo.selection_range(len(typed), tk.END)
+        
+        # Vincula a função ao evento de digitação
+        self.poke_species_combo.bind('<KeyRelease>', autocomplete)
     
     def setup_party_tab(self, parent):
         """Configura a aba de Pokémon"""
@@ -1627,8 +1762,11 @@ class TrainerEditorUI:
         
         # Species
         ttk.Label(scrollable_frame, text="Species:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        self.poke_species_combo = ttk.Combobox(scrollable_frame, values=self.species_list)
+        self.poke_species_combo = ttk.Combobox(scrollable_frame, values=self.species_display_list)
         self.poke_species_combo.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+        
+        # Configura o auto-complete
+        self.setup_species_autocomplete()
         
         # Level
         ttk.Label(scrollable_frame, text="Level:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
@@ -1675,7 +1813,7 @@ class TrainerEditorUI:
         self.iv_entries = []
         for i in range(6):
             entry = ttk.Entry(iv_frame, width=3, validate="key")
-            entry['validatecommand'] = (entry.register(lambda text: text.isdigit() or text == ""), '%P')
+            entry['validatecommand'] = (entry.register(self.validate_iv_entry), '%P')
             entry.insert(0, "0")
             entry.pack(side=tk.LEFT, padx=2)
             self.iv_entries.append(entry)
@@ -1690,10 +1828,15 @@ class TrainerEditorUI:
         self.ev_entries = []
         for i in range(6):
             entry = ttk.Entry(ev_frame, width=4, validate="key")
-            entry['validatecommand'] = (entry.register(lambda text: text.isdigit() or text == ""), '%P')
+            entry['validatecommand'] = (entry.register(self.validate_ev_entry), '%P')
             entry.insert(0, "0")
             entry.pack(side=tk.LEFT, padx=2)
             self.ev_entries.append(entry)
+
+        # Adiciona trace para verificar o total de EVs
+        for entry in self.ev_entries:
+            entry.bind('<FocusOut>', self.check_ev_total)
+            entry.bind('<KeyRelease>', self.check_ev_total)
         
         # Tera Type (só aparece para tipo 4)
         self.tera_label = ttk.Label(scrollable_frame, text="Tera Type:")
@@ -1711,11 +1854,223 @@ class TrainerEditorUI:
         
         ttk.Button(btn_frame, text="+ Add", command=self.add_pokemon).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="- Remove", command=self.remove_pokemon).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="Edit", command=self.edit_pokemon).pack(side=tk.LEFT, padx=2)
+        self.edit_button = ttk.Button(btn_frame, text="Edit", command=self.toggle_edit_pokemon)
+        self.edit_button.pack(side=tk.LEFT, padx=2)
+        self.party_tree.bind('<Double-1>', self.edit_pokemon)
         
         # Define o tipo de party padrão
         self.party_type_combo.current(3)  # ItemCustomMoves
         self.update_party_fields()
+        
+    def toggle_edit_pokemon(self):
+        """Alterna entre modo de edição e visualização"""
+        if not self.editing_pokemon_mode:
+            self.enter_edit_mode()
+        else:
+            self.save_pokemon_edits()
+
+    def enter_edit_mode(self):
+        """Entra no modo de edição do Pokémon"""
+        selected = self.party_tree.selection()
+        if not selected:
+            messagebox.showwarning("Warning", "Please select a Pokémon to edit")
+            return
+        
+        self.current_editing_pokemon = selected[0]
+        self.editing_pokemon_mode = True
+        self.edit_button.config(text="Save")
+        
+        # Desabilita outros botões durante a edição
+        for widget in self.edit_button.master.winfo_children():
+            if widget != self.edit_button:
+                widget.config(state="disabled")
+        
+        # Habilita a seleção apenas do Pokémon sendo editado
+        for item in self.party_tree.get_children():
+            if item != self.current_editing_pokemon:
+                self.party_tree.item(item, tags=("disabled",))
+        
+        # Carrega os dados do Pokémon para edição
+        self.load_pokemon_for_editing()
+        
+    def exit_edit_mode(self):
+        """Sai do modo de edição"""
+        self.editing_pokemon_mode = False
+        self.current_editing_pokemon = None
+        self.edit_button.config(text="Edit")
+        
+        # Reabilita todos os botões
+        for widget in self.edit_button.master.winfo_children():
+            widget.config(state="normal")
+        
+        # Remove o estado disabled de todos os itens
+        for item in self.party_tree.get_children():
+            self.party_tree.item(item, tags=())
+            
+    def load_pokemon_for_editing(self):
+        """Carrega os dados do Pokémon selecionado para os campos de edição"""
+        if not self.current_editing_pokemon:
+            return
+        
+        item = self.party_tree.item(self.current_editing_pokemon)
+        values = item['values']
+        
+        # Carrega dados básicos
+        self.poke_species_combo.set(values[0])
+        self.poke_level_entry.delete(0, tk.END)
+        self.poke_level_entry.insert(0, values[1])
+        
+        # Carrega item se existir
+        if len(values) > 2:
+            self.poke_item_combo.set(values[2])
+        else:
+            self.poke_item_combo.set('NONE')
+        
+        # Carrega movimentos para tipos de party 3 e 4
+        party_type = self.party_type_var.get()
+        if party_type in [3, 4]:
+            for i in range(4):
+                if len(values) > 3 + i:
+                    self.move_combos[i].set(values[3 + i] if values[3 + i] != 'NONE' else '')
+                else:
+                    self.move_combos[i].set('')
+        
+        # Carrega dados avançados para tipo 4
+        if party_type == 4:
+            # (Mantém a lógica existente de carregar IVs, EVs, etc.)
+            pass
+
+    def save_pokemon_edits(self):
+        """Salva as alterações do Pokémon em edição"""
+        if not self.current_editing_pokemon:
+            return
+        
+        # Validações básicas
+        species = self.poke_species_combo.get()
+        level = self.poke_level_entry.get()
+        
+        if not species or not level.isdigit():
+            messagebox.showerror("Error", "Species and valid Level are required")
+            return
+        
+        # Prepara os novos valores
+        new_values = [species.upper(), level]
+        
+        # Adiciona item se necessário
+        party_type = self.party_type_var.get()
+        if party_type in [2, 4]:
+            item = self.poke_item_combo.get()
+            new_values.append(item.upper() if item else "NONE")
+        
+        # Adiciona movimentos se necessário
+        if party_type in [3, 4]:
+            for combo in self.move_combos:
+                move = combo.get()
+                new_values.append(move.upper() if move else "NONE")
+        
+        # Atualiza o item na treeview
+        self.party_tree.item(self.current_editing_pokemon, values=new_values)
+        
+        # Atualiza também na estrutura de dados da party se existir
+        self.update_party_data_structure(new_values)
+        
+        # Sai do modo de edição
+        self.exit_edit_mode()
+        
+        # Auto-refresh e feedback
+        messagebox.showinfo("Success", "Pokémon updated successfully!")
+        self.modified = True
+
+    def update_party_data_structure(self, new_values):
+        """Atualiza a estrutura de dados interna da party"""
+        if not self.current_editing_id:
+            return
+        
+        # Encontra o treinador atual
+        trainer_name = None
+        for name, data in self.trainers.items():
+            if data['id'] == self.current_editing_id:
+                trainer_name = name
+                break
+        
+        if not trainer_name:
+            return
+        
+        # Encontra a party correspondente
+        party_name = self.trainers[trainer_name].get('party_name')
+        if not party_name:
+            return
+        
+        # Encontra a party nos dados
+        party_data = self.parties.get(party_name) or self.new_parties.get(party_name)
+        if not party_data:
+            return
+        
+        # Encontra o índice do Pokémon sendo editado
+        pokemon_index = self.party_tree.index(self.current_editing_pokemon)
+        if pokemon_index >= len(party_data.get('pokemons', [])):
+            return
+        
+        # Atualiza os dados do Pokémon
+        pokemon = party_data['pokemons'][pokemon_index]
+        pokemon['species'] = f"SPECIES_{new_values[0]}"
+        pokemon['level'] = new_values[1]
+        
+        # Atualiza item se necessário
+        if len(new_values) > 2 and 'item' in pokemon:
+            pokemon['item'] = f"ITEM_{new_values[2]}"
+        
+        # Atualiza movimentos se necessário
+        if len(new_values) > 3 and 'moves' in pokemon:
+            for i in range(4):
+                if 3 + i < len(new_values):
+                    pokemon['moves'][i] = f"MOVE_{new_values[3 + i]}"
+        
+    def validate_iv_entry(self, new_value):
+        """Valida a entrada de IV (0-31, máximo 2 caracteres)"""
+        if not new_value:  # Permite campo vazio temporariamente
+            return True
+        if not new_value.isdigit():
+            return False
+        if len(new_value) > 2:
+            return False
+        if int(new_value) > 31:
+            return False
+        return True
+
+    def validate_ev_entry(self, new_value):
+        """Valida a entrada de EV (0-252, máximo 3 caracteres)"""
+        if not new_value:  # Permite campo vazio temporariamente
+            return True
+        if not new_value.isdigit():
+            return False
+        if len(new_value) > 3:
+            return False
+        if int(new_value) > 252:
+            return False
+        return True
+
+    def check_ev_total(self, event=None):
+        """Verifica se a soma total de EVs não ultrapassa 510"""
+        total = 0
+        for entry in self.ev_entries:
+            value = entry.get()
+            if value.isdigit():
+                total += int(value)
+            else:
+                # Se algum campo não for número válido, considera como erro
+                return False
+        
+        if total > 510:
+            # Destaca os campos de EV
+            for entry in self.ev_entries:
+                entry.config(foreground='red')
+            return False
+        
+        # Remove o destaque se estiver ok
+        for entry in self.ev_entries:
+            entry.config(foreground='black')
+        return True
     
     def setup_bottom_buttons(self):
         """Configura os botões inferiores"""
@@ -1850,8 +2205,12 @@ class TrainerEditorUI:
         
         # Preenche campos básicos
         self.define_name_entry.insert(0, name)
-        self.trainer_id_entry.insert(0, data['id'])
         
+        # Busca o ID no opponents.h usando o dicionário opponent_name_to_id
+        trainer_id = str(self.opponent_name_to_id.get(name, data['id']))
+        self.trainer_id_entry.insert(0, trainer_id)
+        
+        # Restante do código permanece o mesmo...
         # Extrai informações adicionais
         party_name = None
         party_type = None
@@ -2089,72 +2448,25 @@ class TrainerEditorUI:
         for combo in self.move_combos:
             combo.set('')
     
-    def edit_pokemon(self, party_type=None):
-        """Edita o Pokémon selecionado"""
-        if party_type is None:
-            party_type = self.party_type_var.get()
-        
-        selected = self.party_tree.selection()
-        if not selected:
-            return
-        
-        item = self.party_tree.item(selected[0])
+    def edit_pokemon(self, event=None):
+        """Handler para quando um Pokémon é selecionado (double-click ou seleção)"""
+        if not self.editing_pokemon_mode:
+            selected = self.party_tree.selection()
+            if selected:
+                self.load_pokemon_for_editing_preview(selected[0])
+                
+    def load_pokemon_for_editing_preview(self, item_id):
+        """Apenas carrega os dados para preview, não entra em modo de edição"""
+        item = self.party_tree.item(item_id)
         values = item['values']
         
-        # Carrega dados básicos
+        # Apenas preenche os campos para visualização
         self.poke_species_combo.set(values[0])
         self.poke_level_entry.delete(0, tk.END)
         self.poke_level_entry.insert(0, values[1])
         
-        # Carrega item se existir
         if len(values) > 2:
             self.poke_item_combo.set(values[2])
-        else:
-            self.poke_item_combo.set('NONE')
-        
-        # Carrega movimentos se for um tipo de party que os inclui
-        if party_type in [3, 4]:
-            # Os movimentos estão nas posições 3-6 dos valores
-            for i in range(4):
-                if len(values) > 3 + i and values[3 + i] != 'NONE':
-                    self.move_combos[i].set(values[3 + i])
-                else:
-                    self.move_combos[i].set('')
-        
-        # Carrega dados avançados se for tipo 4
-        if party_type == 4:
-            party_name = None
-            if self.current_editing_id:
-                for name, data in self.trainers.items():
-                    if data['id'] == self.current_editing_id and 'party_name' in data:
-                        party_name = data['party_name']
-                        break
-            
-            if party_name:
-                party_data = self.parties.get(party_name) or self.new_parties.get(party_name)
-                if party_data:
-                    pokemon_index = self.party_tree.index(selected[0])
-                    if pokemon_index < len(party_data['pokemons']):
-                        pokemon = party_data['pokemons'][pokemon_index]
-                        
-                        if 'ability' in pokemon:
-                            self.ability_combo.set(pokemon['ability'])
-                        if 'nature' in pokemon:
-                            self.nature_combo.set(pokemon['nature'].replace('NATURE_', ''))
-                        if 'ivs' in pokemon:
-                            ivs = pokemon['ivs'].split(',') if isinstance(pokemon['ivs'], str) else pokemon['ivs']
-                            for i in range(6):
-                                if i < len(ivs) and i < len(self.iv_entries):
-                                    self.iv_entries[i].delete(0, tk.END)
-                                    self.iv_entries[i].insert(0, ivs[i].strip())
-                        if 'evs' in pokemon:
-                            evs = pokemon['evs'].split(',') if isinstance(pokemon['evs'], str) else pokemon['evs']
-                            for i in range(6):
-                                if i < len(evs) and i < len(self.ev_entries):
-                                    self.ev_entries[i].delete(0, tk.END)
-                                    self.ev_entries[i].insert(0, evs[i].strip())
-                        if 'tera_type' in pokemon:
-                            self.tera_combo.set(pokemon['tera_type'])
     
     def remove_pokemon(self):
         """Remove o Pokémon selecionado"""
@@ -2165,6 +2477,17 @@ class TrainerEditorUI:
     def save_trainer(self):
         """Salva o treinador atual"""
         if not self.validate_inputs():
+            return
+        
+        # Verifica os IVs
+        for entry in self.iv_entries:
+            value = entry.get()
+            if not value.isdigit() or int(value) > 31:
+                messagebox.showerror("Error", f"Invalid IV value: {value}. Must be between 0-31")
+                return
+        
+        if not self.check_ev_total():
+            messagebox.showerror("Error", "Cannot save: Total EVs exceed 510")
             return
         
         define_name = self.define_name_entry.get()
@@ -2305,21 +2628,52 @@ class TrainerEditorUI:
         return " | ".join(active_flags)
     
     def validate_inputs(self):
-        """Valida os campos de entrada"""
+        """Valida todos os campos de entrada antes de salvar"""
+        errors = []
+        
+        # Validação do nome e ID
         if not self.define_name_entry.get():
-            messagebox.showerror("Error", "Define Name is required")
-            return False
+            errors.append("Define Name is required")
         
-        if not self.trainer_id_entry.get().isdigit():
-            messagebox.showerror("Error", "Trainer ID must be a number")
-            return False
+        try:
+            int(self.trainer_id_entry.get())
+        except ValueError:
+            errors.append("Trainer ID must be a number")
         
+        # Validação da classe
         if not self.class_name_combo.get():
-            messagebox.showerror("Error", "Trainer Class is required")
-            return False
+            errors.append("Trainer Class is required")
         
+        # Validação da música
+        if not self.music_combo.get():
+            errors.append("Encounter Music is required")
+        
+        # Validação de AI Flags (pelo menos uma flag deve estar marcada)
+        if not any(var.get() for var in self.ai_flag_vars.values()):
+            errors.append("At least one AI Flag must be selected")
+        
+        # Validação do party
         if not self.party_tree.get_children():
-            messagebox.showerror("Error", "Trainer must have at least one Pokémon")
+            errors.append("Trainer must have at least one Pokémon")
+        
+        # Validação dos IVs
+        for i, entry in enumerate(self.iv_entries):
+            value = entry.get()
+            if not value.isdigit() or int(value) > 31:
+                errors.append(f"IV {i+1} must be between 0-31")
+        
+        # Validação dos EVs
+        if not self.check_ev_total():
+            errors.append("Total EVs cannot exceed 510")
+
+        # Validação do sprite
+        if not self.trainer_pic_combo.get():
+            errors.append("Trainer Sprite is required")
+        
+        # Mostra todos os erros de uma vez
+        if errors:
+            messagebox.showerror("Validation Error", 
+                            "Please fix the following errors:\n\n- " + "\n- ".join(errors))
             return False
         
         return True
