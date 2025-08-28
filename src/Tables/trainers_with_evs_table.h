@@ -1357,7 +1357,7 @@ const struct TrainersWithEvs gTrainersWithEvsSpreads[] =
 		.ball = TRAINER_EV_CLASS_BALL,
 		.ability = Ability_Hidden,
 		.teraType = TERA_TYPE_RANDOM,
-		.shiny = TRUE;
+		.shiny = TRUE,
 	},
 };
 #endif
