@@ -155,7 +155,7 @@ extern bool8 CanMonParticipateInASkyBattle(struct Pokemon* mon);
 //This file's functions:
 static void TryGiveMonOnlyMetronome(struct Pokemon* mon);
 static u8 CreateNPCTrainerParty(struct Pokemon* const party, const u16 trainerNum, const bool8 firstTrainer, const bool8 side);
-static u8 GetTrainerMonGender(struct Trainer* trainer);
+static u8 GetTrainerMonGender(const struct Trainer* trainer);
 static u8 GetTrainerMonMovePPBonus(void);
 static u8 GetTrainerMonMovePP(u16 move, u8 index);
 #if (defined SCALED_TRAINERS && !defined  DEBUG_NO_LEVEL_SCALING)
@@ -770,7 +770,7 @@ static u8 CreateNPCTrainerParty(struct Pokemon* const party, const u16 trainerId
 	unusedArg u8 monsCount, baseIV, setMonGender, trainerNameLengthOddness, minPartyLevel, maxPartyLevel,
 	   modifiedAveragePlayerLevel, highestPlayerLevel, canEvolveMon, canEvolveMonBackup, levelScaling, setCustomMoves;
 
-	struct Trainer* trainer;
+	const struct Trainer* trainer;
 	u32 otid = 0;
 	u8 otIdType = OT_ID_RANDOM_NO_SHINY;
 
@@ -1250,7 +1250,7 @@ static u8 CreateNPCTrainerParty(struct Pokemon* const party, const u16 trainerId
 	return monsCount;
 }
 
-static u8 GetTrainerMonGender(struct Trainer* trainer)
+static u8 GetTrainerMonGender(const struct Trainer* trainer)
 {
 	switch (trainer->trainerClass)
 	{

@@ -20,7 +20,7 @@
 
 #define NO_ITEMS   ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE
 
-struct Trainer gTrainers[] = {
+const struct Trainer gTrainers[] = {
 	[TRAINER_NONE] = {
 	    .trainerName = { _END },
 	},
@@ -297,8 +297,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSPsychicF),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSPsychicF}
+	    .partySize = NELEMS(sParty_TrainerRsPsychicF),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsPsychicF}
 	},
 	[TRAINER_RS_GENTLEMAN] = {
 	    .partyFlags = 0,
@@ -309,8 +309,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSGentleman),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSGentleman}
+	    .partySize = NELEMS(sParty_TrainerRsGentleman),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsGentleman}
 	},
 	[TRAINER_ELITE_FOUR_SIDNEY] = {
 	    .partyFlags = 0,
@@ -465,8 +465,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSYoungster),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSYoungster}
+	    .partySize = NELEMS(sParty_TrainerRsYoungster),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsYoungster}
 	},
 	[TRAINER_RS_CHAMPION] = {
 	    .partyFlags = 0,
@@ -477,8 +477,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_GOOD_MOVE | AI_SCRIPT_SEMI_SMART,
-	    .partySize = NELEMS(sParty_TrainerRSChampion),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSChampion}
+	    .partySize = NELEMS(sParty_TrainerRsChampion),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsChampion}
 	},
 	[TRAINER_RS_FISHERMAN] = {
 	    .partyFlags = 0,
@@ -489,8 +489,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSFisherman),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSFisherman}
+	    .partySize = NELEMS(sParty_TrainerRsFisherman),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsFisherman}
 	},
 	[TRAINER_CYCLING_TRIATHLETE_M] = {
 	    .partyFlags = 0,
@@ -585,8 +585,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSBirdKeeper),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSBirdKeeper}
+	    .partySize = NELEMS(sParty_TrainerRsBirdKeeper),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsBirdKeeper}
 	},
 	[TRAINER_NINJA_BOY] = {
 	    .partyFlags = 0,
@@ -633,8 +633,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSSwimmerF),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSSwimmerF}
+	    .partySize = NELEMS(sParty_TrainerRsSwimmerF),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsSwimmerF}
 	},
 	[TRAINER_RS_PICNICKER] = {
 	    .partyFlags = 0,
@@ -645,8 +645,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSPicnicker),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSPicnicker}
+	    .partySize = NELEMS(sParty_TrainerRsPicnicker),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsPicnicker}
 	},
 	[TRAINER_RS_TWINS] = {
 	    .partyFlags = 0,
@@ -657,8 +657,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = TRUE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSTwins),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSTwins}
+	    .partySize = NELEMS(sParty_TrainerRsTwins),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsTwins}
 	},
 	[TRAINER_RS_SAILOR] = {
 	    .partyFlags = 0,
@@ -669,8 +669,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSSailor),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSSailor}
+	    .partySize = NELEMS(sParty_TrainerRsSailor),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsSailor}
 	},
 	[TRAINER_BOARDER_M] = {
 	    .partyFlags = 0,
@@ -801,8 +801,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSPkmnBreederM),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSPkmnBreederM}
+	    .partySize = NELEMS(sParty_TrainerRsPkmnBreederM),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsPkmnBreederM}
 	},
 	[TRAINER_RS_PKMN_BREEDER_F] = {
 	    .partyFlags = 0,
@@ -813,8 +813,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSPkmnBreederF),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSPkmnBreederF}
+	    .partySize = NELEMS(sParty_TrainerRsPkmnBreederF),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsPkmnBreederF}
 	},
 	[TRAINER_RS_PKMN_RANGER_M] = {
 	    .partyFlags = 0,
@@ -825,8 +825,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_GOOD_MOVE | AI_SCRIPT_SEMI_SMART,
-	    .partySize = NELEMS(sParty_TrainerRSPkmnRangerM),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSPkmnRangerM}
+	    .partySize = NELEMS(sParty_TrainerRsPkmnRangerM),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsPkmnRangerM}
 	},
 	[TRAINER_RS_PKMN_RANGER_F] = {
 	    .partyFlags = 0,
@@ -837,8 +837,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_GOOD_MOVE | AI_SCRIPT_SEMI_SMART,
-	    .partySize = NELEMS(sParty_TrainerRSPkmnRangerF),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSPkmnRangerF}
+	    .partySize = NELEMS(sParty_TrainerRsPkmnRangerF),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsPkmnRangerF}
 	},
 	[TRAINER_MAGMA_LEADER] = {
 	    .partyFlags = 0,
@@ -885,8 +885,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSLass),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSLass}
+	    .partySize = NELEMS(sParty_TrainerRsLass),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsLass}
 	},
 	[TRAINER_RS_BUG_CATCHER] = {
 	    .partyFlags = 0,
@@ -897,8 +897,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSBugCatcher),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSBugCatcher}
+	    .partySize = NELEMS(sParty_TrainerRsBugCatcher),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsBugCatcher}
 	},
 	[TRAINER_RS_HIKER] = {
 	    .partyFlags = 0,
@@ -909,8 +909,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSHiker),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSHiker}
+	    .partySize = NELEMS(sParty_TrainerRsHiker),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsHiker}
 	},
 	[TRAINER_RS_YOUNG_COUPLE] = {
 	    .partyFlags = 0,
@@ -921,8 +921,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = TRUE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSYoungCouple),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSYoungCouple}
+	    .partySize = NELEMS(sParty_TrainerRsYoungCouple),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsYoungCouple}
 	},
 	[TRAINER_OLD_COUPLE] = {
 	    .partyFlags = 0,
@@ -945,8 +945,8 @@ struct Trainer gTrainers[] = {
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = TRUE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
-	    .partySize = NELEMS(sParty_TrainerRSSisAndBro),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerRSSisAndBro}
+	    .partySize = NELEMS(sParty_TrainerRsSisAndBro),
+	    .party = {.NoItemDefaultMoves = sParty_TrainerRsSisAndBro}
 	},
 	[TRAINER_AQUA_ADMIN_MATT] = {
 	    .partyFlags = 0,
@@ -1274,7 +1274,7 @@ struct Trainer gTrainers[] = {
 	},
 	[TRAINER_BUG_CATCHER_COLTON] = {
 	    .partyFlags = 0,
-	    .trainerClass = CLASS_BUCK_CATCHER,
+	    .trainerClass = CLASS_BUG_CATCHER,
 	    .encounterMusic = TRAINER_ENCOUNTER_MUSIC_MALE,
 	    .trainerPic = TRAINER_PIC_BUG_CATCHER,
 	    .trainerName = {_C, _o, _l, _t, _o, _n, _END},
@@ -1334,7 +1334,7 @@ struct Trainer gTrainers[] = {
 	},
 	[TRAINER_BUG_CATCHER_CALE] = {
 	    .partyFlags = 0,
-	    .trainerClass = CLASS_BUCK_CATCHER,
+	    .trainerClass = CLASS_BUG_CATCHER,
 	    .encounterMusic = TRAINER_ENCOUNTER_MUSIC_MALE,
 	    .trainerPic = TRAINER_PIC_BUG_CATCHER,
 	    .trainerName = {_C, _a, _l, _e, _END},
@@ -1396,7 +1396,7 @@ struct Trainer gTrainers[] = {
 	    .partyFlags = 0,
 	    .trainerClass = CLASS_BUG_CATCHER,
 	    .encounterMusic = TRAINER_ENCOUNTER_MUSIC_MALE,
-	    .trainerPic = TRAINER_PIC_BUCK_CATCHER,
+	    .trainerPic = TRAINER_PIC_BUG_CATCHER,
 	    .trainerName = {_C, _o, _n, _n, _e, _r, _END},
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},
 	    .doubleBattle = FALSE,
@@ -2426,7 +2426,7 @@ struct Trainer gTrainers[] = {
 	},
 	[TRAINER_BIKER_HIDEO] = {
 	    .partyFlags = 0,
-	    .trainER_CLASS = CLASS_BIKER,
+	    .trainerClass = CLASS_BIKER,
 	    .encounterMusic = TRAINER_ENCOUNTER_MUSIC_MALE,
 	    .trainerPic = TRAINER_PIC_BIKER,
 	    .trainerName = {_H, _i, _d, _e, _o, _END},
@@ -4837,7 +4837,7 @@ struct Trainer gTrainers[] = {
 	    .party = {.NoItemCustomMoves = sParty_TrainerLeaderMisty}
 	},
 	[TRAINER_LEADER_LT_SURGE] = {
-	    .partyFlags = PARTY_FLAG_CUSTOM_Moves,
+	    .partyFlags = PARTY_FLAG_CUSTOM_MOVES,
 	    .trainerClass = CLASS_LEADER,
 	    .encounterMusic = TRAINER_ENCOUNTER_MUSIC_MALE,
 	    .trainerPic = TRAINER_PIC_LT_SURGE,
@@ -5314,7 +5314,7 @@ struct Trainer gTrainers[] = {
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
 	    .partySize = NELEMS(sParty_TrainerChanneler6),
-	    .Party = {.NoItemDefaultMoves = sParty_TrainerChanneler6}
+	    .party = {.NoItemDefaultMoves = sParty_TrainerChanneler6}
 	},
 	[TRAINER_CHANNELER_7] = {
 	    .partyFlags = 0,
@@ -5410,7 +5410,7 @@ struct Trainer gTrainers[] = {
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
 	    .partySize = NELEMS(sParty_TrainerPicnickerSusie),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerPIcnickerSusie}
+	    .party = {.NoItemDefaultMoves = sParty_TrainerPicnickerSusie}
 	},
 	[TRAINER_PICNICKER_VALERIE] = {
 	    .partyFlags = 0,
@@ -5710,7 +5710,7 @@ struct Trainer gTrainers[] = {
 	    .doubleBattle = FALSE,
 	    .aiFlags = AI_SCRIPT_CHECK_BAD_MOVE,
 	    .partySize = NELEMS(sParty_TrainerBugCatcher3),
-	    .party = {.NoItemDefaultMoves = sParty_TrainerBUgCatcher3}
+	    .party = {.NoItemDefaultMoves = sParty_TrainerBugCatcher3}
 	},
 	[TRAINER_BUG_CATCHER_4] = {
 	    .partyFlags = 0,
@@ -5943,7 +5943,7 @@ struct Trainer gTrainers[] = {
 	[TRAINER_PLAYER_BRENDAN] = {
 	    .partyFlags = 0,
 	    .trainerClass = CLASS_PLAYER,
-	    .ecounterMusic = TRAINER_ENCOUNTER_MUSIC_MALE,
+	    .encounterMusic = TRAINER_ENCOUNTER_MUSIC_MALE,
 	    .trainerPic = TRAINER_PIC_BRENDAN,
 	    .trainerName = {_B, _r, _e, _n, _d, _a, _n, _END},
 	    .items = {ITEM_NONE, ITEM_NONE, ITEM_NONE, ITEM_NONE},

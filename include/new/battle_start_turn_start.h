@@ -1,4 +1,5 @@
 #include "../../src/Tables/trainer_defines.h"
+#include "../constants/opponents.h"
 
 #pragma once
 
@@ -53,4 +54,4 @@ struct TrainerCustomAbility
     u8  ability;
 };
 
-extern const struct TrainerCustomAbility gCustomTrainerAbilityTable[MAX_TRAINER_COUNT][PARTY_SIZE];
+extern const struct TrainerCustomAbility gCustomTrainerAbilityTable[TRAINERS_COUNT][PARTY_SIZE];

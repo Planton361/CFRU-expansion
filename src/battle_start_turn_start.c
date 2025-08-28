@@ -73,7 +73,7 @@ enum BattleBeginStates
 };
 
 #ifdef EXPAND_TRAINERS
-const struct TrainerCustomAbility gCustomTrainerAbilityTable[MAX_TRAINER_COUNT][PARTY_SIZE] = {
+const struct TrainerCustomAbility gCustomTrainerAbilityTable[TRAINERS_COUNT][PARTY_SIZE] = {
 	[TRAINER_RIVAL_ROUTE22_EARLY_SQUIRTLE] = {
 		{SPECIES_GOOMY, ABILITY_MOLDBREAKER},
 		{SPECIES_GROWLITHE, ABILITY_INTREPIDSWORD},

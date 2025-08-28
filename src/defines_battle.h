@@ -118,7 +118,7 @@ extern u8 BattleScript_ButItFailed[];
 typedef u8 TrainerClassNames_t[13];
 
 #ifdef EXPAND_TRAINERS
-extern struct Trainer gTrainers[];
+extern const struct Trainer gTrainers[];
 extern const u8 gTrainerClassNames[][13];
 #else
 #define gTrainers ((struct Trainer*) *((u32*) 0x800FC00)) //0x823EAC8
