@@ -1347,6 +1347,18 @@ const struct TrainersWithEvs gTrainersWithEvsSpreads[] =
 		.ability = Ability_Hidden,
 		.teraType = TERA_TYPE_RANDOM,
 	},
+	[124] =
+	{ //Fast Wall: Sp. Defense Based, Less Attack - Ability_Hidden, Mon is Shiny
+		.nature = NATURE_TIMID,
+		.ivs = 31,
+		.hpEv = 4,
+		.spdEv = 252,
+		.spDefEv = 252,
+		.ball = TRAINER_EV_CLASS_BALL,
+		.ability = Ability_Hidden,
+		.teraType = TERA_TYPE_RANDOM,
+		.shiny = TRUE;
+	},
 };
 #endif
 
