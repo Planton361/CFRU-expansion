@@ -237,6 +237,11 @@ MUSIC_OPTIONS = [
     ("Rich Boy/Gentleman", "TRAINER_ENCOUNTER_MUSIC_RICH")
 ]
 
+POKEMON_SPRITE_TABLE_ADDRESS = 0x08000128
+POKEMON_PALETTE_TABLE_ADDRESS = 0x08000130
+POKEMON_SPRITE_SIZE = (64 * 64) // 2  # 4bpp, 2048 bytes para sprites 64x64
+POKEMON_PALETTE_SIZE = 0x20  # 32 bytes = 16 cores
+
 class TrainerEditorUI:
     def __init__(self, root):
         self.root = root
@@ -262,6 +267,11 @@ class TrainerEditorUI:
         self.PALETTE_ENTRIES = 16  # 16 cores na paleta
         self.sprite_img = None
         self.tk_img = None
+        
+        self.pokemon_sprite_addresses = []
+        self.pokemon_palette_addresses = []
+        self.pokemon_sprite_images = []  # Para armazenar as imagens dos sprites
+        self.pokemon_sprite_labels = []  # Para armazenar os labels dos sprites
         
         # Edit Party Funcs
         self.editing_pokemon_mode = False
@@ -616,16 +626,108 @@ class TrainerEditorUI:
         self.SPRITE_ADDRESSES_GBA = self.read_sprite_table()
         self.PALETTE_ADDRESSES_GBA = self.read_palette_table()
         
+        # Carrega as tabelas de sprites e paletas dos Pokémon
+        self.load_pokemon_sprite_tables()
+        
         # Restante da inicialização
         self.load_initial_data()
         self.setup_styles()
+        
+        # Carrega o mapeamento de espécies
+        self.load_species_mapping()
         
         self.party_type_var = tk.IntVar(value=4)
         self.party_type_var.trace('w', self.update_party_fields)
         
         self.setup_ui()
         self.populate_trainer_tree()
+    
+    def load_pokemon_sprite_tables(self):
+        """Carrega as tabelas de sprites e paletas dos Pokémon da ROM"""
+        try:
+            # Lê o ponteiro para a tabela de sprites
+            sprite_table_ptr = self.read_pointer(POKEMON_SPRITE_TABLE_ADDRESS)
+            print(f"Sprite table pointer: 0x{sprite_table_ptr:X}")
+            
+            # Lê o ponteiro para a tabela de paletas
+            palette_table_ptr = self.read_pointer(POKEMON_PALETTE_TABLE_ADDRESS)
+            print(f"Palette table pointer: 0x{palette_table_ptr:X}")
+            
+            # Lê a tabela de sprites (cada entrada tem 8 bytes: 4 bytes de endereço + 4 bytes de info)
+            self.pokemon_sprite_addresses = self.read_sprite_address_table(sprite_table_ptr)
+            
+            # Lê a tabela de paletas (cada entrada tem 8 bytes: 4 bytes de endereço + 4 bytes de info)
+            self.pokemon_palette_addresses = self.read_sprite_address_table(palette_table_ptr)
+            
+            print(f"Loaded {len(self.pokemon_sprite_addresses)} Pokémon sprite addresses")
+            print(f"Loaded {len(self.pokemon_palette_addresses)} Pokémon palette addresses")
+            
+            # Debug: mostra os primeiros endereços
+            for i in range(min(10, len(self.pokemon_sprite_addresses))):
+                print(f"Sprite {i}: 0x{self.pokemon_sprite_addresses[i]:X}")
+            for i in range(min(10, len(self.pokemon_palette_addresses))):
+                print(f"Palette {i}: 0x{self.pokemon_palette_addresses[i]:X}")
+            
+        except Exception as e:
+            print(f"Error loading Pokémon sprite tables: {e}")
+            # Fallback para evitar quebrar o programa
+            self.pokemon_sprite_addresses = []
+            self.pokemon_palette_addresses = []
+
+    def read_pointer(self, address):
+        """Lê um ponteiro de 4 bytes da ROM e converte para endereço GBA"""
+        try:
+            with open(self.ROM_PATH, 'rb') as rom_file:
+                offset = self.gba_addr_to_file_offset(address)
+                rom_file.seek(offset)
+                pointer_data = rom_file.read(4)
+                if len(pointer_data) == 4:
+                    pointer = struct.unpack('<I', pointer_data)[0]
+                    print(f"Raw pointer at 0x{address:X}: 0x{pointer:X}")
+                    return pointer
+        except Exception as e:
+            print(f"Error reading pointer at 0x{address:X}: {e}")
+        return 0
         
+    def read_sprite_address_table(self, table_address):
+        """Lê uma tabela de endereços de sprites/paletas (8 bytes por entrada)"""
+        addresses = []
+        try:
+            with open(self.ROM_PATH, 'rb') as rom_file:
+                offset = self.gba_addr_to_file_offset(table_address)
+                rom_file.seek(offset)
+                
+                # Lê entradas até encontrar um endereço nulo (0)
+                entry_count = 0
+                while True:
+                    entry_data = rom_file.read(8)
+                    if not entry_data or len(entry_data) < 8:
+                        break
+                    
+                    # Os primeiros 4 bytes são o endereço do sprite/paleta
+                    sprite_addr = struct.unpack('<I', entry_data[:4])[0]
+                    
+                    # Verifica se é um endereço válido (não nulo e dentro dos limites da ROM)
+                    if sprite_addr == 0:
+                        break
+                    
+                    # Verifica se o endereço está dentro dos limites razoáveis da ROM
+                    if sprite_addr < 0x08000000 or sprite_addr > 0x09FFFFFF:
+                        print(f"Invalid sprite address: 0x{sprite_addr:X}")
+                        break
+                    
+                    addresses.append(sprite_addr)
+                    entry_count += 1
+                    
+                    # Limita a um número máximo de entradas para evitar loops infinitos
+                    if entry_count > 1000:  # Número máximo de espécies
+                        break
+                        
+        except Exception as e:
+            print(f"Error reading sprite address table at 0x{table_address:X}: {e}")
+        
+        return addresses
+    
     def load_initial_data(self):
         """Carrega todos os dados iniciais necessários"""
         self.TRAINER_CLASSES = self.load_trainer_classes()
@@ -1510,7 +1612,7 @@ class TrainerEditorUI:
         sprite_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         
         # Canvas para mostrar o sprite
-        self.sprite_canvas = tk.Canvas(sprite_frame, width=64, height=64, bg="gray")
+        self.sprite_canvas = tk.Canvas(sprite_frame, width=64, height=64, bg="#F0F0F0")
         self.sprite_canvas.pack(pady=5)
         
         # Combobox para selecionar sprite
@@ -1708,8 +1810,9 @@ class TrainerEditorUI:
         # Vincula a função ao evento de digitação
         self.poke_species_combo.bind('<KeyRelease>', autocomplete)
     
+        # Modifique o método setup_party_tab para este layout
     def setup_party_tab(self, parent):
-        """Configura a seção de Pokémon"""
+        """Configura a seção de Pokémon com sprites abaixo da treeview"""
         main_frame = ttk.Frame(parent)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
@@ -1731,15 +1834,15 @@ class TrainerEditorUI:
         ttk.Button(party_btn_frame, text="+ Add Pokémon", command=self.add_pokemon).pack(side=tk.LEFT, padx=2)
         ttk.Button(party_btn_frame, text="- Remove Pokémon", command=self.remove_pokemon).pack(side=tk.LEFT, padx=2)
         
-        # Frame principal com Treeview e detalhes
-        center_frame = ttk.Frame(main_frame)
-        center_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Frame principal para lista de Pokémon e sprites (coluna esquerda)
+        left_column_frame = ttk.Frame(main_frame)
+        left_column_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         # Treeview para Pokémon (apenas Species e Level)
-        tree_frame = ttk.Frame(center_frame)
-        tree_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tree_frame = ttk.Frame(left_column_frame)
+        tree_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        self.party_tree = ttk.Treeview(tree_frame, columns=("Species", "Level"), show="headings")
+        self.party_tree = ttk.Treeview(tree_frame, columns=("Species", "Level"), show="headings", height=6)
         self.party_tree.heading("Species", text="Species")
         self.party_tree.heading("Level", text="Level")
         self.party_tree.column("Species", width=150)
@@ -1754,10 +1857,39 @@ class TrainerEditorUI:
         # Bind para atualizar automaticamente quando selecionar um Pokémon
         self.party_tree.bind('<<TreeviewSelect>>', self.on_pokemon_selected)
         
-        # Frame de edição do Pokémon (sem scroll, organizado em grid)
-        edit_frame = ttk.LabelFrame(center_frame, text="Pokémon Details", style="Section.TFrame")
-        edit_frame.pack(side=tk.RIGHT, fill=tk.BOTH, padx=5)
+        # Frame para os sprites dos Pokémon (abaixo da treeview) - SEM BORDA
+        sprite_frame = ttk.Frame(left_column_frame)
+        sprite_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
         
+        # Cria 6 frames para os sprites em uma única linha - SEM BORDA E SEM TEXTO
+        sprite_row_frame = ttk.Frame(sprite_frame)
+        sprite_row_frame.pack(fill=tk.X)
+        
+        self.pokemon_sprite_frames = []
+        self.pokemon_sprite_images = []
+        self.pokemon_sprite_labels = []
+        
+        for i in range(6):
+            # Frame sem borda, sem relief e sem label
+            frame = ttk.Frame(sprite_row_frame, width=64, height=64)
+            frame.pack(side=tk.LEFT, padx=2)
+            frame.pack_propagate(False)
+            
+            # Canvas para o sprite - fundo branco sem borda
+            canvas = tk.Canvas(frame, width=64, height=64, bg="#F0F0F0", highlightthickness=0)
+            canvas.pack(fill=tk.BOTH, expand=True)
+            
+            # Canvas inicialmente vazio (sem texto "No Pokémon" e sem label)
+            
+            self.pokemon_sprite_images.append(None)
+            self.pokemon_sprite_labels.append((canvas, None))  # Sem label
+            self.pokemon_sprite_frames.append(frame)
+        
+        # Frame de edição do Pokémon (direita - mantendo o layout original)
+        edit_frame = ttk.LabelFrame(main_frame, text="Pokémon Details", style="Section.TFrame")
+        edit_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # ... (o resto do código de edição permanece EXATAMENTE igual)
         # Configura grid com 4 colunas para organizar os campos em pares
         for i in range(4):
             edit_frame.grid_columnconfigure(i, weight=1)
@@ -1882,6 +2014,118 @@ class TrainerEditorUI:
         
         # Variável para controlar o Pokémon atual sendo editado
         self.current_pokemon_item = None
+    
+    def update_pokemon_sprites(self):
+        """Atualiza a exibição dos sprites dos Pokémon baseado na party atual"""
+        # Limpa todos os sprites atuais (apenas deixa o canvas vazio)
+        for canvas, label in self.pokemon_sprite_labels:
+            canvas.delete("all")
+        
+        # Atualiza os sprites para cada slot da party
+        children = self.party_tree.get_children()
+        for i, child in enumerate(children):
+            if i >= 6:  # Máximo de 6 Pokémon
+                break
+                
+            values = self.party_tree.item(child)['values']
+            species_display_name = values[0].upper() if values else ""
+            
+            # Encontra o índice da espécie usando o mapeamento
+            species_index = -1
+            species_clean_name = species_display_name
+            
+            # Primeiro tenta encontrar pelo nome limpo (ex: POLIWAG)
+            if species_clean_name in self.species_name_to_index:
+                species_index = self.species_name_to_index[species_clean_name]
+            else:
+                # Se não encontrou, procura no mapeamento reverso
+                for name, idx in self.species_name_to_index.items():
+                    if name.upper() == species_clean_name:
+                        species_index = idx
+                        break
+            
+            if species_index > 0 and species_index < len(self.pokemon_sprite_addresses):
+                self.load_pokemon_sprite(i, species_index)
+
+    def load_pokemon_sprite(self, slot_index, species_index):
+        """Carrega e exibe o sprite de um Pokémon específico usando o índice de species.h"""
+        print(f"Loading sprite for species index: {species_index}")
+        
+        if (species_index >= len(self.pokemon_sprite_addresses) or 
+            species_index >= len(self.pokemon_palette_addresses)):
+            print(f"Species index {species_index} out of range (sprites: {len(self.pokemon_sprite_addresses)}, palettes: {len(self.pokemon_palette_addresses)})")
+            return
+        
+        try:
+            sprite_addr = self.pokemon_sprite_addresses[species_index]
+            palette_addr = self.pokemon_palette_addresses[species_index]
+            
+            print(f"Loading species {species_index}: sprite=0x{sprite_addr:X}, palette=0x{palette_addr:X}")
+            
+            # Lê os dados do sprite
+            sprite_data = self.read_sprite_data(sprite_addr)
+            if not sprite_data:
+                print(f"Failed to read sprite data at 0x{sprite_addr:X}")
+                return
+            
+            # Lê a paleta
+            palette = self.read_palette(palette_addr)
+            if not palette:
+                print(f"Failed to read palette at 0x{palette_addr:X}")
+                palette = [(0, 0, 0, 0)] * 16
+            
+            # Converte para imagem
+            img = self.decode_4bpp_tiled(sprite_data, palette)
+            img = img.resize((64, 64), Image.Resampling.NEAREST)
+            
+            # Converte para PhotoImage e armazena
+            tk_img = ImageTk.PhotoImage(img)
+            self.pokemon_sprite_images[slot_index] = tk_img  # Mantém referência
+            
+            # Atualiza o canvas
+            canvas, label = self.pokemon_sprite_labels[slot_index]
+            canvas.delete("all")
+            canvas.create_image(0, 0, anchor=tk.NW, image=tk_img)
+            
+        except Exception as e:
+            print(f"Error loading Pokémon sprite for species {species_index}: {e}")
+            canvas, label = self.pokemon_sprite_labels[slot_index]
+            canvas.delete("all")
+            
+    def load_species_mapping(self):
+        """Carrega o mapeamento de nomes de espécies para seus valores numéricos"""
+        self.species_name_to_index = {}
+        self.species_index_to_name = {}
+        
+        try:
+            with open(self.SPECIES_PATH, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('#define SPECIES_'):
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            species_name = parts[1]  # Ex: SPECIES_POLIWAG
+                            value_str = parts[2]
+                            
+                            # Remove prefixo SPECIES_
+                            clean_name = species_name.replace('SPECIES_', '')
+                            
+                            # Converte o valor (pode ser hex 0x3C ou decimal 60)
+                            if value_str.startswith('0x'):
+                                species_index = int(value_str[2:], 16)
+                            else:
+                                species_index = int(value_str)
+                            
+                            self.species_name_to_index[clean_name] = species_index
+                            self.species_index_to_name[species_index] = clean_name
+                            
+            print(f"Loaded {len(self.species_name_to_index)} species mappings")
+            
+        except Exception as e:
+            print(f"Error loading species mapping: {e}")
+            # Fallback básico
+            self.species_name_to_index = {'BULBASAUR': 1, 'CHARMANDER': 4, 'SQUIRTLE': 7}
+            self.species_index_to_name = {1: 'BULBASAUR', 4: 'CHARMANDER', 7: 'SQUIRTLE'}    
         
     def on_pokemon_selected(self, event=None):
         """Quando um Pokémon é selecionado na lista"""
@@ -1889,6 +2133,7 @@ class TrainerEditorUI:
         if selected:
             self.current_pokemon_item = selected[0]
             self.load_pokemon_for_editing_preview(selected[0])
+            self.update_pokemon_sprites()  # Atualiza o destaque dos sprites
 
     def on_pokemon_field_changed(self, event=None):
         """Quando um campo do Pokémon é modificado, atualiza automaticamente"""
@@ -2393,6 +2638,9 @@ class TrainerEditorUI:
         # Atualiza os campos visíveis
         self.update_party_fields()
         
+        # Atualiza os sprites após carregar a party
+        self.update_pokemon_sprites()
+        
         # Se houver Pokémon selecionado, carrega seus detalhes
         if self.party_tree.get_children():
             self.party_tree.selection_set(self.party_tree.get_children()[0])
@@ -2516,6 +2764,9 @@ class TrainerEditorUI:
         self.party_tree.selection_set(item_id)
         self.current_pokemon_item = item_id
         
+        # Atualiza os sprites
+        self.update_pokemon_sprites()
+        
         # Limpa os campos após adicionar
         self.poke_species_combo.set('')
         self.poke_level_entry.delete(0, tk.END)
@@ -2618,6 +2869,7 @@ class TrainerEditorUI:
         selected = self.party_tree.selection()
         if selected:
             self.party_tree.delete(selected[0])
+            self.update_pokemon_sprites()  # Atualiza os sprites
     
     def save_trainer(self):
         """Salva o treinador atual"""
