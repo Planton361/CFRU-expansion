@@ -707,9 +707,12 @@ class TrainerEditorUI:
                     # Os primeiros 4 bytes são o endereço do sprite/paleta
                     sprite_addr = struct.unpack('<I', entry_data[:4])[0]
                     
-                    # Verifica se é um endereço válido (não nulo e dentro dos limites da ROM)
+                    # Verifica se é um endereço válido (não nulo)
                     if sprite_addr == 0:
-                        break
+                        # Pula esta entrada mas continua lendo as próximas
+                        addresses.append(0)  # Adiciona zero para manter o índice
+                        entry_count += 1
+                        continue
                     
                     # Verifica se o endereço está dentro dos limites razoáveis da ROM
                     if sprite_addr < 0x08000000 or sprite_addr > 0x09FFFFFF:
@@ -720,7 +723,7 @@ class TrainerEditorUI:
                     entry_count += 1
                     
                     # Limita a um número máximo de entradas para evitar loops infinitos
-                    if entry_count > 1000:  # Número máximo de espécies
+                    if entry_count > 1500:  # Número máximo de espécies
                         break
                         
         except Exception as e:
@@ -2044,22 +2047,41 @@ class TrainerEditorUI:
                         species_index = idx
                         break
             
-            if species_index > 0 and species_index < len(self.pokemon_sprite_addresses):
-                self.load_pokemon_sprite(i, species_index)
+            if species_index > 0:
+                # Verifica se o índice está dentro dos limites válidos das tabelas
+                if (species_index < len(self.pokemon_sprite_addresses) and
+                    species_index < len(self.pokemon_palette_addresses)):
+                    
+                    # Verifica se os endereços são válidos (não zero)
+                    sprite_addr = self.pokemon_sprite_addresses[species_index]
+                    palette_addr = self.pokemon_palette_addresses[species_index]
+                    
+                    if sprite_addr != 0 and palette_addr != 0:
+                        self.load_pokemon_sprite(i, species_index)
+                    else:
+                        print(f"Skipping species {species_index} - addresses are zero")
+                        # Não carrega nada (mantém o canvas vazio)
+                else:
+                    print(f"Species index {species_index} out of range")
 
     def load_pokemon_sprite(self, slot_index, species_index):
         """Carrega e exibe o sprite de um Pokémon específico usando o índice de species.h"""
-        print(f"Loading sprite for species index: {species_index}")
-        
-        if (species_index >= len(self.pokemon_sprite_addresses) or 
+        # Verificação adicional de segurança
+        if (species_index <= 0 or 
+            species_index >= len(self.pokemon_sprite_addresses) or 
             species_index >= len(self.pokemon_palette_addresses)):
-            print(f"Species index {species_index} out of range (sprites: {len(self.pokemon_sprite_addresses)}, palettes: {len(self.pokemon_palette_addresses)})")
+            print(f"Species index {species_index} out of range")
+            return
+        
+        sprite_addr = self.pokemon_sprite_addresses[species_index]
+        palette_addr = self.pokemon_palette_addresses[species_index]
+        
+        # Verifica se os endereços são válidos (não zero)
+        if sprite_addr == 0 or palette_addr == 0:
+            print(f"Skipping species {species_index} - addresses are zero")
             return
         
         try:
-            sprite_addr = self.pokemon_sprite_addresses[species_index]
-            palette_addr = self.pokemon_palette_addresses[species_index]
-            
             print(f"Loading species {species_index}: sprite=0x{sprite_addr:X}, palette=0x{palette_addr:X}")
             
             # Lê os dados do sprite
