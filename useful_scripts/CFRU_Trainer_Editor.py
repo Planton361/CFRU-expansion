@@ -559,7 +559,7 @@ class TrainerEditorUI:
     def verify_project_structure(self):
         """Verifica se a pasta selecionada tem a estrutura esperada do CFRU"""
         required_paths = [
-            "src/Tables/trainer_tables.c",
+            "src/Tables/trainer_data.c",
             "src/Tables/trainer_parties.h",
             "include/constants/opponents.h",
             "include/constants/species.h",
@@ -611,7 +611,7 @@ class TrainerEditorUI:
         self.root.state('zoomed')
         
         # Define os paths agora que BASE_DIR está definido
-        self.TRAINER_DATA_PATH = self.BASE_DIR / "src" / "Tables" / "trainer_tables.c"
+        self.TRAINER_DATA_PATH = self.BASE_DIR / "src" / "Tables" / "trainer_data.c"
         self.TRAINER_PARTIES_PATH = self.BASE_DIR / "src" / "Tables" / "trainer_parties.h"
         self.OPPONENTS_PATH = self.BASE_DIR / "include" / "constants" / "opponents.h"
         self.SPECIES_PATH = self.BASE_DIR / "include" / "constants" / "species.h"
@@ -1204,7 +1204,7 @@ class TrainerEditorUI:
         print(f"Max ID: {max(self.opponent_name_to_id.values()) if self.opponent_name_to_id else 0}")
 
     def save_trainer_data_file(self):
-        """Salva as alterações no arquivo trainer_tables.c com o nome do treinador nos colchetes"""
+        """Salva as alterações no arquivo trainer_data.c com o nome do treinador nos colchetes"""
         new_lines = []
         i = 0
         n = len(self.trainer_lines)
@@ -1445,7 +1445,7 @@ class TrainerEditorUI:
             
     def clear_old_data_before_save(self):
         """Limpa dados antigos antes de salvar para evitar duplicatas"""
-        # Para trainer_tables.c: remove definições antigas de treinadores modificados
+        # Para trainer_data.c: remove definições antigas de treinadores modificados
         modified_trainers = set(self.trainers.keys())
         
         new_trainer_lines = []
