@@ -559,7 +559,7 @@ class TrainerEditorUI:
     def verify_project_structure(self):
         """Verifica se a pasta selecionada tem a estrutura esperada do CFRU"""
         required_paths = [
-            "src/Tables/trainer_data.c",
+            "src/Tables/trainer_tables.c",
             "src/Tables/trainer_parties.h",
             "include/constants/opponents.h",
             "include/constants/species.h",
@@ -611,7 +611,7 @@ class TrainerEditorUI:
         self.root.state('zoomed')
         
         # Define os paths agora que BASE_DIR está definido
-        self.TRAINER_DATA_PATH = self.BASE_DIR / "src" / "Tables" / "trainer_data.c"
+        self.TRAINER_DATA_PATH = self.BASE_DIR / "src" / "Tables" / "trainer_tables.c"
         self.TRAINER_PARTIES_PATH = self.BASE_DIR / "src" / "Tables" / "trainer_parties.h"
         self.OPPONENTS_PATH = self.BASE_DIR / "include" / "constants" / "opponents.h"
         self.SPECIES_PATH = self.BASE_DIR / "include" / "constants" / "species.h"
@@ -1445,7 +1445,7 @@ class TrainerEditorUI:
             
     def clear_old_data_before_save(self):
         """Limpa dados antigos antes de salvar para evitar duplicatas"""
-        # Para trainer_data.c: remove definições antigas de treinadores modificados
+        # Para trainer_tables.c: remove definições antigas de treinadores modificados
         modified_trainers = set(self.trainers.keys())
         
         new_trainer_lines = []
@@ -1813,7 +1813,6 @@ class TrainerEditorUI:
         # Vincula a função ao evento de digitação
         self.poke_species_combo.bind('<KeyRelease>', autocomplete)
     
-        # Modifique o método setup_party_tab para este layout
     def setup_party_tab(self, parent):
         """Configura a seção de Pokémon com sprites abaixo da treeview"""
         main_frame = ttk.Frame(parent)
@@ -1892,7 +1891,6 @@ class TrainerEditorUI:
         edit_frame = ttk.LabelFrame(main_frame, text="Pokémon Details", style="Section.TFrame")
         edit_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # ... (o resto do código de edição permanece EXATAMENTE igual)
         # Configura grid com 4 colunas para organizar os campos em pares
         for i in range(4):
             edit_frame.grid_columnconfigure(i, weight=1)
@@ -1901,12 +1899,10 @@ class TrainerEditorUI:
         ttk.Label(edit_frame, text="Species:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
         self.poke_species_combo = ttk.Combobox(edit_frame, values=self.species_display_list, width=12)
         self.poke_species_combo.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
-        self.poke_species_combo.bind("<<ComboboxSelected>>", self.on_pokemon_field_changed)
         
         ttk.Label(edit_frame, text="Level:").grid(row=0, column=2, sticky="w", padx=5, pady=2)
         self.poke_level_entry = ttk.Entry(edit_frame, width=3)
         self.poke_level_entry.grid(row=0, column=3, sticky="w", padx=5, pady=2)
-        self.poke_level_entry.bind("<KeyRelease>", self.on_pokemon_field_changed)
         
         # Configura o auto-complete
         self.setup_species_autocomplete()
@@ -1915,40 +1911,38 @@ class TrainerEditorUI:
         ttk.Label(edit_frame, text="Held Item:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
         self.poke_item_combo = ttk.Combobox(edit_frame, values=self.items_list, width=12)
         self.poke_item_combo.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
-        self.poke_item_combo.bind("<<ComboboxSelected>>", self.on_pokemon_field_changed)
         
         self.ability_label = ttk.Label(edit_frame, text="Ability:")
         self.ability_label.grid(row=1, column=2, sticky="w", padx=5, pady=2)
         self.ability_combo = ttk.Combobox(edit_frame, values=ABILITY_OPTIONS, width=16)
         self.ability_combo.grid(row=1, column=3, sticky="ew", padx=5, pady=2)
         self.ability_combo.set("Ability_1")
-        self.ability_combo.bind("<<ComboboxSelected>>", self.on_pokemon_field_changed)
         
         # Linha 2: Move 1 - Move 2
-        ttk.Label(edit_frame, text="Move 1:").grid(row=2, column=0, sticky="w", padx=5, pady=2)
+        self.move_label1 = ttk.Label(edit_frame, text="Move 1:")
+        self.move_label1.grid(row=2, column=0, sticky="w", padx=5, pady=2)
         self.move_combo1 = ttk.Combobox(edit_frame, values=self.moves_list, width=12)
         self.move_combo1.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
-        self.move_combo1.bind("<<ComboboxSelected>>", self.on_pokemon_field_changed)
         
-        ttk.Label(edit_frame, text="Move 2:").grid(row=2, column=2, sticky="w", padx=5, pady=2)
+        self.move_label2 = ttk.Label(edit_frame, text="Move 2:")
+        self.move_label2.grid(row=2, column=2, sticky="w", padx=5, pady=2)
         self.move_combo2 = ttk.Combobox(edit_frame, values=self.moves_list, width=12)
         self.move_combo2.grid(row=2, column=3, sticky="ew", padx=5, pady=2)
-        self.move_combo2.bind("<<ComboboxSelected>>", self.on_pokemon_field_changed)
         
         # Linha 3: Move 3 - Move 4
-        ttk.Label(edit_frame, text="Move 3:").grid(row=3, column=0, sticky="w", padx=5, pady=2)
+        self.move_label3 = ttk.Label(edit_frame, text="Move 3:")
+        self.move_label3.grid(row=3, column=0, sticky="w", padx=5, pady=2)
         self.move_combo3 = ttk.Combobox(edit_frame, values=self.moves_list, width=12)
         self.move_combo3.grid(row=3, column=1, sticky="ew", padx=5, pady=2)
-        self.move_combo3.bind("<<ComboboxSelected>>", self.on_pokemon_field_changed)
         
-        ttk.Label(edit_frame, text="Move 4:").grid(row=3, column=2, sticky="w", padx=5, pady=2)
+        self.move_label4 = ttk.Label(edit_frame, text="Move 4:")
+        self.move_label4.grid(row=3, column=2, sticky="w", padx=5, pady=2)
         self.move_combo4 = ttk.Combobox(edit_frame, values=self.moves_list, width=12)
         self.move_combo4.grid(row=3, column=3, sticky="ew", padx=5, pady=2)
-        self.move_combo4.bind("<<ComboboxSelected>>", self.on_pokemon_field_changed)
         
         # Atualiza as listas de move_combos
         self.move_combos = [self.move_combo1, self.move_combo2, self.move_combo3, self.move_combo4]
-        self.move_labels = []
+        self.move_labels = [self.move_label1, self.move_label2, self.move_label3, self.move_label4]
         
         # Linha 4: Nature - Tera Type
         self.nature_label = ttk.Label(edit_frame, text="Nature:")
@@ -1956,14 +1950,12 @@ class TrainerEditorUI:
         self.nature_combo = ttk.Combobox(edit_frame, values=NATURES)
         self.nature_combo.grid(row=4, column=1, sticky="ew", padx=5, pady=2)
         self.nature_combo.set("HARDY")
-        self.nature_combo.bind("<<ComboboxSelected>>", self.on_pokemon_field_changed)
         
         self.tera_label = ttk.Label(edit_frame, text="Tera Type:")
         self.tera_label.grid(row=4, column=2, sticky="w", padx=5, pady=2)
         self.tera_combo = ttk.Combobox(edit_frame, values=TERA_TYPES, width=12)
         self.tera_combo.grid(row=4, column=3, sticky="ew", padx=5, pady=2)
         self.tera_combo.set("TYPE_NORMAL")
-        self.tera_combo.bind("<<ComboboxSelected>>", self.on_pokemon_field_changed)
         
         # Linha 5: IVs (ocupando toda a linha)
         self.iv_label = ttk.Label(edit_frame, text="IVs (0-31):")
@@ -1978,7 +1970,6 @@ class TrainerEditorUI:
             entry['validatecommand'] = (entry.register(self.validate_iv_entry), '%P')
             entry.insert(0, "0")
             entry.pack(side=tk.LEFT, padx=2)
-            entry.bind("<KeyRelease>", self.on_pokemon_field_changed)
             self.iv_entries.append(entry)
         
         # Linha 7: EVs (ocupando toda a linha)
@@ -1994,7 +1985,6 @@ class TrainerEditorUI:
             entry['validatecommand'] = (entry.register(self.validate_ev_entry), '%P')
             entry.insert(0, "0")
             entry.pack(side=tk.LEFT, padx=2)
-            entry.bind("<KeyRelease>", self.on_pokemon_field_changed)
             self.ev_entries.append(entry)
 
         # Adiciona trace para verificar o total de EVs
@@ -2006,17 +1996,25 @@ class TrainerEditorUI:
         edit_btn_frame = ttk.Frame(edit_frame)
         edit_btn_frame.grid(row=9, column=0, columnspan=4, pady=10)
         
-        self.edit_button = ttk.Button(edit_btn_frame, text="Apply Changes", command=self.apply_pokemon_changes)
+        self.edit_button = ttk.Button(edit_btn_frame, text="Edit", command=self.toggle_edit_mode)
         self.edit_button.pack(side=tk.LEFT, padx=5)
         
         self.party_tree.bind('<Double-1>', self.on_pokemon_selected)
         
         # Define o tipo de party padrão
-        self.party_type_combo.current(3)  # ItemCustomMoves
+        self.party_type_combo.current(0)
         self.update_party_fields()
         
         # Variável para controlar o Pokémon atual sendo editado
         self.current_pokemon_item = None
+        self.editing_mode = False
+        
+    def toggle_edit_mode(self):
+        """Alterna entre modo de edição e visualização"""
+        if not self.editing_mode:
+            self.enter_edit_mode()
+        else:
+            self.apply_pokemon_changes()
     
     def update_pokemon_sprites(self):
         """Atualiza a exibição dos sprites dos Pokémon baseado na party atual"""
@@ -2154,37 +2152,59 @@ class TrainerEditorUI:
         selected = self.party_tree.selection()
         if selected:
             self.current_pokemon_item = selected[0]
-            self.load_pokemon_for_editing_preview(selected[0])
-            self.update_pokemon_sprites()  # Atualiza o destaque dos sprites
-
-    def on_pokemon_field_changed(self, event=None):
-        """Quando um campo do Pokémon é modificado, atualiza automaticamente"""
-        if self.current_pokemon_item and not self.editing_pokemon_mode:
-            self.apply_pokemon_changes()
+            self.load_pokemon_for_editing(selected[0])
+            self.exit_edit_mode()  # Garante que está em modo visualização
+            self.update_pokemon_sprites()
 
     def apply_pokemon_changes(self):
-        """Aplica as mudanças do Pokémon atual"""
-        if not self.current_pokemon_item:
-            return
-        
-        # Coleta os valores atuais dos campos
+        """Aplica as mudanças do Pokémon atual (edição ou adição)"""
+        # Validação básica
         species = self.poke_species_combo.get()
         level = self.poke_level_entry.get()
         
         if not species or not level.isdigit():
+            messagebox.showerror("Error", "Species and valid Level are required")
             return
         
-        # Prepara os novos valores para a treeview (apenas Species e Level)
-        new_values = [species.upper(), level]
+        # Coleta os dados do formulário
+        party_type = self.party_type_var.get()
+        moves = [combo.get() for combo in self.move_combos] if party_type in [3, 4] else []
         
-        # Atualiza o item na treeview
-        self.party_tree.item(self.current_pokemon_item, values=new_values)
+        # Prepara os valores para a treeview
+        values = [species.upper(), level]
         
-        # Atualiza também na estrutura de dados da party
+        # Adiciona item se aplicável
+        if party_type in [2, 4]:
+            values.append(self.poke_item_combo.get().upper() if self.poke_item_combo.get() else 'NONE')
+        
+        # Adiciona movimentos se aplicável
+        if party_type in [3, 4]:
+            for move in moves:
+                values.append(move.upper() if move else 'NONE')
+        
+        # Atualiza ou adiciona o Pokémon
+        if self.current_pokemon_item:  # Modo edição
+            self.party_tree.item(self.current_pokemon_item, values=values)
+        else:  # Modo adição
+            self.current_pokemon_item = self.party_tree.insert('', tk.END, values=values)
+        
+        # Atualiza a estrutura de dados da party
         self.update_party_data_structure()
+        
+        # Sai do modo de edição
+        self.exit_edit_mode()
+        
+        # Atualiza os sprites
+        self.update_pokemon_sprites()
         
         # Marca como modificado
         self.modified = True
+        
+        # Feedback
+        if self.current_pokemon_item:
+            messagebox.showinfo("Success", "Pokémon updated successfully!")
+        else:
+            messagebox.showinfo("Success", "Pokémon added successfully!")
 
     def update_party_data_structure(self):
         """Atualiza a estrutura de dados interna da party com os valores atuais"""
@@ -2270,49 +2290,40 @@ class TrainerEditorUI:
             self.save_pokemon_edits()
 
     def enter_edit_mode(self):
-        """Entra no modo de edição do Pokémon"""
-        selected = self.party_tree.selection()
-        if not selected:
+        """Entra no modo de edição"""
+        if not self.party_tree.selection():
             messagebox.showwarning("Warning", "Please select a Pokémon to edit")
             return
-        
-        self.current_editing_pokemon = selected[0]
-        self.editing_pokemon_mode = True
-        self.edit_button.config(text="Save")
-        
-        # Desabilita outros botões durante a edição
-        for widget in self.edit_button.master.winfo_children():
-            if widget != self.edit_button:
-                widget.config(state="disabled")
-        
-        # Habilita a seleção apenas do Pokémon sendo editado
-        for item in self.party_tree.get_children():
-            if item != self.current_editing_pokemon:
-                self.party_tree.item(item, tags=("disabled",))
-        
-        # Carrega os dados do Pokémon para edição
-        self.load_pokemon_for_editing()
+            
+        self.editing_mode = True
+        self.edit_button.config(text="Apply Changes")
+        self.enable_pokemon_fields(True)
         
     def exit_edit_mode(self):
         """Sai do modo de edição"""
-        self.editing_pokemon_mode = False
-        self.current_editing_pokemon = None
+        self.editing_mode = False
         self.edit_button.config(text="Edit")
+        self.enable_pokemon_fields(False)
         
-        # Reabilita todos os botões
-        for widget in self.edit_button.master.winfo_children():
-            widget.config(state="normal")
-        
-        # Remove o estado disabled de todos os itens
-        for item in self.party_tree.get_children():
-            self.party_tree.item(item, tags=())
+    def enable_pokemon_fields(self, enable):
+        """Habilita ou desabilita os campos de edição de Pokémon"""
+        state = "normal" if enable else "disabled"
+        self.poke_species_combo.config(state=state)
+        self.poke_level_entry.config(state=state)
+        self.poke_item_combo.config(state=state)
+        for combo in self.move_combos:
+            combo.config(state=state)
+        for entry in self.iv_entries:
+            entry.config(state=state)
+        for entry in self.ev_entries:
+            entry.config(state=state)
+        self.nature_combo.config(state=state)
+        self.ability_combo.config(state=state)
+        self.tera_combo.config(state=state)
             
-    def load_pokemon_for_editing(self):
+    def load_pokemon_for_editing(self, item_id):
         """Carrega os dados do Pokémon selecionado para os campos de edição"""
-        if not self.current_editing_pokemon:
-            return
-        
-        item = self.party_tree.item(self.current_editing_pokemon)
+        item = self.party_tree.item(item_id)
         values = item['values']
         
         # Carrega dados básicos
@@ -2321,24 +2332,18 @@ class TrainerEditorUI:
         self.poke_level_entry.insert(0, values[1])
         
         # Carrega item se existir
-        if len(values) > 2:
-            self.poke_item_combo.set(values[2])
-        else:
-            self.poke_item_combo.set('NONE')
-        
-        # Carrega movimentos para tipos de party 3 e 4
         party_type = self.party_type_var.get()
+        if party_type in [2, 4] and len(values) > 2:
+            self.poke_item_combo.set(values[2])
+        
+        # Carrega movimentos se existirem
         if party_type in [3, 4]:
+            move_start_idx = 3 if party_type in [2, 4] else 2
             for i in range(4):
-                if len(values) > 3 + i:
-                    self.move_combos[i].set(values[3 + i] if values[3 + i] != 'NONE' else '')
+                if len(values) > move_start_idx + i:
+                    self.move_combos[i].set(values[move_start_idx + i])
                 else:
                     self.move_combos[i].set('')
-        
-        # Carrega dados avançados para tipo 4
-        if party_type == 4:
-            # (Mantém a lógica existente de carregar IVs, EVs, etc.)
-            pass
 
     def save_pokemon_edits(self):
         """Salva as alterações do Pokémon em edição"""
@@ -2443,12 +2448,16 @@ class TrainerEditorUI:
         show_advanced = party_type == 4
         
         # Atualiza os campos de movimento
-        for label, combo in zip(self.move_labels, self.move_combos):
+        for label in self.move_labels:
             if show_moves:
                 label.grid()
-                combo.grid()
             else:
                 label.grid_remove()
+                
+        for combo in self.move_combos:
+            if show_moves:
+                combo.grid()
+            else:
                 combo.grid_remove()
         
         # Atualiza o campo de item
@@ -2456,6 +2465,7 @@ class TrainerEditorUI:
             self.poke_item_combo.grid()
         else:
             self.poke_item_combo.grid_remove()
+            self.poke_item_combo.set('NONE')
         
         # Atualiza os campos avançados
         if show_advanced:
@@ -2769,36 +2779,41 @@ class TrainerEditorUI:
     
     def add_pokemon(self):
         """Adiciona um novo Pokémon ao time"""
-        species = self.poke_species_combo.get()
-        level = self.poke_level_entry.get()
+        # Limpa os campos de edição
+        self.clear_pokemon_fields()
         
-        if not species or not level.isdigit():
-            messagebox.showerror("Error", "Species and Level are required")
-            return
+        # Habilita a edição
+        self.enable_pokemon_fields(True)
         
-        # Adiciona ao treeview (apenas Species e Level)
-        item_id = self.party_tree.insert('', tk.END, values=(
-            species.upper(),
-            level
-        ))
+        # Configura para modo de adição
+        self.editing_mode = True
+        self.edit_button.config(text="Add Pokémon")
+        self.current_pokemon_item = None
         
-        # Seleciona o novo Pokémon
-        self.party_tree.selection_set(item_id)
-        self.current_pokemon_item = item_id
+        # Foca no campo de espécie
+        self.poke_species_combo.focus()
         
-        # Atualiza os sprites
-        self.update_pokemon_sprites()
-        
-        # Limpa os campos após adicionar
+    def clear_pokemon_fields(self):
+        """Limpa todos os campos de edição de Pokémon"""
         self.poke_species_combo.set('')
         self.poke_level_entry.delete(0, tk.END)
+        self.poke_level_entry.insert(0, '')  # Level padrão
         self.poke_item_combo.set('')
         
         for combo in self.move_combos:
             combo.set('')
-        
-        # Marca como modificado
-        self.modified = True
+            
+        for entry in self.iv_entries:
+            entry.delete(0, tk.END)
+            entry.insert(0, '0')
+            
+        for entry in self.ev_entries:
+            entry.delete(0, tk.END)
+            entry.insert(0, '0')
+            
+        self.nature_combo.set('')
+        self.ability_combo.set('')
+        self.tera_combo.set('')
     
     def edit_pokemon(self, event=None):
         """Handler para quando um Pokémon é selecionado (double-click ou seleção)"""
@@ -2891,7 +2906,8 @@ class TrainerEditorUI:
         selected = self.party_tree.selection()
         if selected:
             self.party_tree.delete(selected[0])
-            self.update_pokemon_sprites()  # Atualiza os sprites
+            self.update_pokemon_sprites()
+            self.modified = True
     
     def save_trainer(self):
         """Salva o treinador atual"""
