@@ -3020,14 +3020,24 @@ extern void CB2_ShowEvIv(void);
      SetVBlankCallback(NULL);
      SetMainCallback2(CB2_ShowEvIv);
      ScriptContext2_Enable();
-     SetUpItemUseOnFieldCallback(taskId);
+     SetUpItemUseCallback(taskId);
  }
  
- void FieldUseFunc_EVIV(u8 taskId)
- {
-     sItemUseOnFieldCB = Item_EVIV;
-     SetUpItemUseOnFieldCallback(taskId);
- }
+void FieldUseFunc_EVIV(u8 taskId)
+{
+
+    if (gTasks[taskId].data[3] == 0) // From Bag
+    {
+        Item_EVIV(taskId);
+    }
+    else // From Overworld (Select)
+    {
+        FadeScreen(FADE_TO_BLACK, 0);
+        // jump directly to EV/IV screen
+        SetMainCallback2(CB2_ShowEvIv);
+    }
+}
+
 
 void FieldUseFunc_NatureMint(u8 taskId)
 {
