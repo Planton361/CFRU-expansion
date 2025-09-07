@@ -735,10 +735,15 @@ class TrainerEditorUI:
         """Carrega todos os dados iniciais necessários"""
         self.TRAINER_CLASSES = self.load_trainer_classes()
         self.VALID_SPECIES = self.load_file_defines(self.SPECIES_PATH, 'SPECIES_')
-        self.VALID_MOVES = self.load_file_defines(self.MOVES_PATH, 'MOVE_')
         self.VALID_ITEMS = self.load_file_defines(self.ITEMS_PATH, 'ITEM_')
+        
+        # Carrega moves ordenados
+        self.moves_list, self.moves_display_list, self.moves_mapping = self.load_ordered_moves()
+        self.VALID_MOVES = set(self.moves_list)  # Mantém compatibilidade
+        
         self.TEXT_DEFINITIONS, self.CHAR_TO_DEFINE = self.load_easy_text_definitions()
         
+        # Resto do código permanece igual...
         self.trainer_lines = self.read_file(self.TRAINER_DATA_PATH)
         self.party_lines = self.read_file(self.TRAINER_PARTIES_PATH)
         self.opponents_lines = self.read_file(self.OPPONENTS_PATH)
@@ -757,12 +762,118 @@ class TrainerEditorUI:
         
         # Carrega species na ordem do arquivo
         self.species_list, self.species_display_list, self.species_mapping = self.load_species_ordered()
-        self.items_list = sorted([i.replace('ITEM_', '') for i in self.VALID_ITEMS])
-        self.moves_list = sorted([m.replace('MOVE_', '') for m in self.VALID_MOVES])
+        self.items_full_list, self.items_list, self.items_mapping = self.load_items_ordered()
+        
+        # Usa a lista de moves ordenada (sem o prefixo MOVE_)
+        self.moves_list = self.moves_display_list
         
         self.current_editing_id = None
         self.new_parties = {}
         self.modified = False
+        
+    def setup_autocomplete(self, combo, options):
+        """Configura autocomplete para qualquer combobox com correspondência parcial"""
+        # Variável para armazenar o ID do timer
+        combo.after_id = None
+        
+        def cancel_previous_timer():
+            if combo.after_id:
+                combo.after_cancel(combo.after_id)
+                combo.after_id = None
+        
+        def autocomplete(event):
+            # Ignora teclas de navegação
+            if event.keysym in ('Up', 'Down', 'Left', 'Right', 'Return', 'Escape', 'Tab'):
+                return
+
+            cancel_previous_timer()
+            combo.after_id = combo.after(300, update_suggestions)
+        
+        def update_suggestions():
+            typed = combo.get().upper()
+            
+            if not typed:
+                combo['values'] = options
+                return
+            
+            # Filtra opções que contêm o texto digitado
+            matches = [opt for opt in options if typed in opt.upper()]
+            combo['values'] = matches
+            
+            # Mantém o texto atual e a posição do cursor
+            current_text = combo.get()
+            cursor_pos = len(current_text)
+            combo.set(current_text)
+            combo.icursor(cursor_pos)  # Reposiciona o cursor
+            
+            # Abre o dropdown apenas se houver correspondências
+            if matches:
+                # Verifica se o Combobox tem foco
+                if combo == combo.winfo_containing(combo.winfo_pointerx(), combo.winfo_pointery()):
+                    try:
+                        combo.event_generate('<Down>')  # Abre o dropdown diretamente
+                    except:
+                        pass
+        
+        combo.bind('<KeyRelease>', autocomplete)
+        
+        def on_focus(event):
+            cancel_previous_timer()
+            combo.after_id = combo.after(100, update_suggestions)
+        
+        combo.bind('<FocusIn>', on_focus)
+        
+        def on_focus_out(event):
+            try:
+                combo.selection_clear()
+            except:
+                pass
+        
+        combo.bind('<FocusOut>', on_focus_out)
+
+    def setup_all_autocomplete(self):
+        """Configura autocomplete para todos os comboboxes relevantes"""
+        # Species
+        self.setup_autocomplete(self.poke_species_combo, self.species_display_list)
+        
+        # Items
+        self.setup_autocomplete(self.poke_item_combo, self.items_list)
+        
+        # Moves
+        for move_combo in self.move_combos:
+            self.setup_autocomplete(move_combo, self.moves_list)
+        
+        # Trainer Classes
+        self.setup_autocomplete(self.class_name_combo, self.TRAINER_CLASSES)
+        
+        # Trainer Pic
+        trainer_pics = list(TRAINER_PICS.keys())
+        self.setup_autocomplete(self.trainer_pic_combo, trainer_pics)
+        
+        # Music
+        music_options = [opt[1] for opt in MUSIC_OPTIONS]
+        self.setup_autocomplete(self.music_combo, music_options)
+        
+        # Nature
+        self.setup_autocomplete(self.nature_combo, NATURES)
+        
+        # Ability
+        self.setup_autocomplete(self.ability_combo, ABILITY_OPTIONS)
+        
+        # Tera Type
+        self.setup_autocomplete(self.tera_combo, TERA_TYPES)
+        
+        # Define Name - usa as chaves do dicionário de trainers
+        trainer_names = list(self.trainers.keys())
+        self.setup_autocomplete(self.define_name_entry, trainer_names)
+        
+        # Forçar maiúsculas no campo Define Name
+        def to_uppercase(event):
+            current_text = self.define_name_entry.get()
+            self.define_name_entry.delete(0, tk.END)
+            self.define_name_entry.insert(0, current_text.upper())
+        
+        self.define_name_entry.bind('<KeyRelease>', to_uppercase)
 
     def load_species_ordered(self):
         """Carrega as espécies na mesma ordem do arquivo species.h"""
@@ -1020,17 +1131,75 @@ class TrainerEditorUI:
         return sorted(list(set(classes)))
     
     def load_file_defines(self, path, prefix):
-        """Carrega defines de um arquivo com um prefixo específico"""
-        defines = set()
+        """Carrega defines de um arquivo com um prefixo específico, preservando a ordem"""
+        defines = []
         try:
-            with open(path, 'r', encoding='utf-8') as f:  # path já vem com self.
+            with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
-                    if f'#define {prefix}' in line:
-                        defines.add(line.split()[1])
+                    if f'#define {prefix}' in line and not line.strip().startswith('//'):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            define_name = parts[1]
+                            if define_name.startswith(prefix):
+                                defines.append(define_name)
         except Exception as e:
             print(f"Error loading {path}: {e}")
-            defines = {f'{prefix}EXAMPLE1', f'{prefix}EXAMPLE2'}  # Fallback
+            defines = [f'{prefix}EXAMPLE1', f'{prefix}EXAMPLE2']  # Fallback
         return defines
+        
+    def load_ordered_moves(self):
+        """Carrega os moves na mesma ordem do arquivo moves.h"""
+        moves = []
+        display_moves = []
+        mapping = {}
+        
+        try:
+            with open(self.MOVES_PATH, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip().startswith("#define MOVE_"):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            full_name = parts[1]
+                            if full_name.startswith("MOVE_"):
+                                display_name = full_name.replace("MOVE_", "")
+                                moves.append(full_name)
+                                display_moves.append(display_name)
+                                mapping[display_name] = full_name
+        except Exception as e:
+            print(f"Error loading ordered moves: {e}")
+            # Fallback
+            moves = list(self.VALID_MOVES)
+            display_moves = [m.replace('MOVE_', '') for m in moves]
+            mapping = {display: full for display, full in zip(display_moves, moves)}
+        
+        return moves, display_moves, mapping
+        
+    def load_items_ordered(self):
+        """Carrega os itens na mesma ordem do arquivo items.h"""
+        items = []
+        display_items = []
+        mapping = {}
+        
+        try:
+            with open(self.ITEMS_PATH, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip().startswith("#define ITEM_"):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            full_name = parts[1]
+                            if full_name.startswith("ITEM_"):
+                                display_name = full_name.replace("ITEM_", "")
+                                items.append(full_name)
+                                display_items.append(display_name)
+                                mapping[display_name] = full_name
+        except Exception as e:
+            print(f"Error loading ordered items: {e}")
+            # Fallback para o método antigo se houver erro
+            items = list(self.VALID_ITEMS)
+            display_items = [s.replace('ITEM_', '') for s in items]
+            mapping = {display: full for display, full in zip(display_items, items)}
+        
+        return items, display_items, mapping
     
     def load_easy_text_definitions(self):
         """Carrega definições de texto do arquivo easy_text.h, incluindo maiúsculas e minúsculas"""
@@ -1573,6 +1742,8 @@ class TrainerEditorUI:
         top_right_frame.columnconfigure(1, weight=1)
         party_frame.columnconfigure(0, weight=1)
         party_frame.rowconfigure(0, weight=1)
+        
+        self.setup_all_autocomplete()
 
     def setup_trainer_list(self, parent):
         """Configura o painel esquerdo com a lista de treinadores"""
@@ -1784,34 +1955,6 @@ class TrainerEditorUI:
             row=2, column=0, columnspan=2, sticky="w", padx=5, pady=2)
         
         parent.grid_columnconfigure(1, weight=1)
-        
-    def setup_species_autocomplete(self):
-        """Configura auto-complete para o combobox de espécies"""
-        def autocomplete(event):
-            # Obtém o texto atual
-            typed = self.poke_species_combo.get().upper()
-            
-            if not typed:
-                # Se estiver vazio, mostra todas as opções
-                self.poke_species_combo['values'] = self.species_display_list
-                return
-            
-            # Filtra as espécies que começam com o texto digitado
-            matches = [species for species in self.species_display_list 
-                      if species.upper().startswith(typed)]
-            
-            # Atualiza a lista de valores
-            self.poke_species_combo['values'] = matches
-            
-            # Mantém o texto digitado e seleciona a parte não digitada
-            if matches:
-                self.poke_species_combo.set(typed)
-                # Seleciona o texto que ainda não foi digitado
-                self.poke_species_combo.icursor(tk.END)
-                self.poke_species_combo.selection_range(len(typed), tk.END)
-        
-        # Vincula a função ao evento de digitação
-        self.poke_species_combo.bind('<KeyRelease>', autocomplete)
     
     def setup_party_tab(self, parent):
         """Configura a seção de Pokémon com sprites abaixo da treeview"""
@@ -1903,9 +2046,6 @@ class TrainerEditorUI:
         ttk.Label(edit_frame, text="Level:").grid(row=0, column=2, sticky="w", padx=5, pady=2)
         self.poke_level_entry = ttk.Entry(edit_frame, width=3)
         self.poke_level_entry.grid(row=0, column=3, sticky="w", padx=5, pady=2)
-        
-        # Configura o auto-complete
-        self.setup_species_autocomplete()
         
         # Linha 1: Held Item - Ability
         ttk.Label(edit_frame, text="Held Item:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
@@ -2752,8 +2892,16 @@ class TrainerEditorUI:
         self.current_editing_id = None
         self.clear_editor_fields()
         
+        # Coleta todos os IDs válidos (apenas numéricos)
+        valid_ids = []
+        for data in self.trainers.values():
+            try:
+                valid_ids.append(int(data['id']))
+            except ValueError:
+                continue  # Ignora IDs não numéricos como 'TRAINER_NONE'
+        
         # Define um ID padrão baseado no maior ID existente + 1
-        max_id = max([int(data['id']) for data in self.trainers.values()] + [0])
+        max_id = max(valid_ids) if valid_ids else 0
         self.trainer_id_entry.delete(0, tk.END)
         self.trainer_id_entry.insert(0, str(max_id + 1))
     
