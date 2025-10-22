@@ -1410,6 +1410,12 @@ void AbilityChangeBSFunc(void)
 
 	gNewBS->backupAbility = *defAbilityLoc;
 
+	if (IsMyceliumMightOnField())
+    {
+        *defAbilityLoc = ABILITY_NONE;
+        defAbility = ABILITY_NONE;
+    }
+
 	switch (gCurrentMove) {
 		case MOVE_WORRYSEED:
 			if (gSpecialAbilityFlags[defAbility].gWorrySeedBannedAbilities)

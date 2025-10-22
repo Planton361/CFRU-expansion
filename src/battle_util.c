@@ -2720,3 +2720,16 @@ u16 TryFixDynamaxTransformSpecies(u8 bank, u16 species)
 bool8 IsSunWeatherActive(u8 bank) {
     return gBattleWeather & WEATHER_SUN_ANY && WEATHER_HAS_EFFECT && AffectedBySun(bank);
 }
+
+bool32 IsMyceliumMightOnField(void)
+{
+    u32 i;
+
+    for (i = 0; i < gBattlersCount; i++)
+    {
+        if (IsBattlerAlive(i) && SpeciesHasMyceliumMight(gBattleMons[i].species) && SPLIT(gCurrentMove) == SPLIT_STATUS)
+            return TRUE;
+    }
+
+    return FALSE;
+}

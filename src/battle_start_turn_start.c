@@ -2368,13 +2368,13 @@ s32 BracketCalc(u8 bank, u8 action, u16 move)
 			}
 		}
 
-		if (ability == ABILITY_STALL && !(SpeciesHasBeadsofRuin(SPECIES(bank))
-										|| SpeciesHasSwordofRuin(SPECIES(bank))
-										|| SpeciesHasTabletsofRuin(SPECIES(bank))
-										|| SpeciesHasVesselofRuin(SPECIES(bank))))
+		if (ability == ABILITY_STALL && !(SpeciesHasBeadsofRuin(LEECH_SPECIES(bank))
+										|| SpeciesHasSwordofRuin(LEECH_SPECIES(bank))
+										|| SpeciesHasTabletsofRuin(LEECH_SPECIES(bank))
+										|| SpeciesHasVesselofRuin(LEECH_SPECIES(bank))))
 			return -1;
-		
-		if (SPLIT(gCurrentMove) == SPLIT_STATUS && ability == ABILITY_MOLDBREAKER && SpeciesHasMyceliumMight(SPECIES(bank)))
+
+		if (SPLIT(gCurrentMove) == SPLIT_STATUS && SpeciesHasMyceliumMight(LEECH_SPECIES(bank)))
 			return -2;
 	}
 

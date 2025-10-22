@@ -71,8 +71,7 @@ void atk00_attackcanceler(void)
 			for (i = 0; i < gBattlersCount; ++i)
 			{
 				if (i != gBankAttacker
-				&& ((gSpecialAbilityFlags[ABILITY(i)].gMoldBreakerIgnoredAbilities && !SpeciesHasMyceliumMight(SPECIES(gBankAttacker)))
-				|| (gSpecialAbilityFlags[ABILITY(i)].gMyceliumMighIgnoredAbilities && SpeciesHasMyceliumMight(SPECIES(gBankAttacker)) && SPLIT(gCurrentMove) == SPLIT_STATUS)))
+				&& (gSpecialAbilityFlags[ABILITY(i)].gMoldBreakerIgnoredAbilities))
 				{
 					gNewBS->DisabledMoldBreakerAbilities[i] = gBattleMons[i].ability; //Temporarily disable all relevant abilities on the field
 					gBattleMons[i].ability = ABILITY_NONE;

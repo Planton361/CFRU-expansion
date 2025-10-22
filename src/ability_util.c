@@ -206,8 +206,6 @@ const u8* GetAbilityNameOverride(const u8 ability, const u16 species) //Bypasses
 				return gText_AbilityName_Turboblaze;
 			else if (SpeciesHasTeravolt(species))
 				return gText_AbilityName_Teravolt;
-			else if(SpeciesHasMyceliumMight(species))
-				return gText_AbilityName_MyceliumMight;
 			break;
 		case ABILITY_STORMDRAIN:
 			if (SpeciesHasEvaporate(species))
@@ -543,6 +541,9 @@ const u8* GetAbilityNameOverride(const u8 ability, const u16 species) //Bypasses
 			if (SpeciesHasZerotoHero(species))
 				return gText_AbilityName_ZerotoHero;
 			break;
+		case ABILITY_MINUS:
+			if(SpeciesHasMyceliumMight(species))
+				return gText_AbilityName_MyceliumMight;
 	}
 
 	return NULL;
@@ -627,10 +628,6 @@ const u8* GetAbilityDescriptionOverride(const u8 ability, const u16 species) //B
 			if(SpeciesHasMindsEye(species))
 				return gText_AbilityDescription_MindsEye;
 			break;
-		case ABILITY_MOLDBREAKER:
-			if(SpeciesHasMyceliumMight(species))
-				return gText_AbilityDescription_MyceliumMight;
-			break;
 		case ABILITY_DANCER:
 			if(SpeciesHasOportunist(species))
 				return gText_AbilityDescription_Opportunist;
@@ -704,6 +701,10 @@ const u8* GetAbilityDescriptionOverride(const u8 ability, const u16 species) //B
 		case ABILITY_TORRENT:
 			if (SpeciesHasZerotoHero(species))
 				return gText_AbilityDescription_ZerotoHero;
+			break;
+		case ABILITY_MINUS:
+			if(SpeciesHasMyceliumMight(species))
+				return gText_AbilityDescription_MyceliumMight;
 			break;
 	}
 
@@ -916,7 +917,7 @@ bool8 IsElectricAbsorptionAblity(u8 ability)
 
 bool8 IsPlusMinusAbility(u8 ability)
 {
-	if (SpeciesHasPoisonPuppeteer(SPECIES(gActiveBattler)))
+	if (SpeciesHasPoisonPuppeteer(LEECH_SPECIES(gActiveBattler)) || SpeciesHasMyceliumMight(LEECH_SPECIES(gActiveBattler)))
 		return FALSE;
 
 	switch (ability)
