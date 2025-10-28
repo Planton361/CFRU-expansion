@@ -51,9 +51,9 @@ else:  # Linux, OSX, etc.
         MID2AGB = 'deps/mid2agb.exe'
         GR = "deps/grit.exe"
     else:
-        WAV2AGB = 'deps/wav2agb.exe'
-        MID2AGB = 'deps/mid2agb.exe'
-        GR = "deps/grit.exe"
+        WAV2AGB = 'wav2agb'
+        MID2AGB = 'mid2agb'
+        GR = "grit"
 
     OBJCOPY = PREFIX + 'objcopy'
 

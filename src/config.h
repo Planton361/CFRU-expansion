@@ -403,6 +403,3 @@ enum //These vars need to be one after the other (hence the enum)
 
 /* Trainer Data */
 #define EXPAND_TRAINERS // Makes trainers editable, well useless if OPEN_WORLD_TRAINERS is being used.
-
-/* Sabotage Battles */
-#define FLAG_SABOTAGE_BATTLE 0xA0E // If set, the next trainer battle will be a sabotage battle. See src/battle_script_commands.c for more information.

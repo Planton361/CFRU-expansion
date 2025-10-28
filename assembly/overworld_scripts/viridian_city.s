@@ -13,7 +13,7 @@ EventScript_ViridianCity_YoungMan:
     lock
     faceplayer
 
-    setflag 0xA0E
+@    setflag 0xA08
     trainerbattle0 0 329 0 gText_ViridianCity_BattleStart gText_ViridianCity_BattleEnd
     msgbox gText_ViridianCity_BattleOver MSG_NORMAL
 

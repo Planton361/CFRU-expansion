@@ -1,7 +1,6 @@
 {
     "files.associations": {
         "defines.h": "c",
-        "global.h": "c",
-        "switching.h": "c"
+        "global.h": "c"
     }
 }

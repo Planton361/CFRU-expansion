@@ -29,7 +29,9 @@
     if (SIDE(battlerId) != B_SIDE_PLAYER)                     					\
     {                                                                   		\
         if (useTheOpposing)                     								\
-            toCpy = TheOpposingString;									        \
+            toCpy = TheOpposingString;                                			\
+		else if (gBattleTypeFlags & BATTLE_TYPE_SHADOW_WARRIOR)					\
+			toCpy = TheShadowString;  											\
         else                                                            		\
             toCpy = gText_TheWild;                               				\
 																				\
