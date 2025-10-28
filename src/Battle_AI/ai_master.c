@@ -182,7 +182,7 @@ u32 GetAIFlags(void)
 		flags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_GOOD_MOVE;
 	else if (IsRaidBattle())
 		flags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_GOOD_MOVE; //Make partner smart
-	else if (gBattleTypeFlags & BATTLE_TYPE_SHADOW_WARRIOR)
+	else if (gBattleTypeFlags & BATTLE_TYPE_SABOTAGE)
 		flags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_SEMI_SMART; //Shadow Warrior is pretty smart
 	else if (gBattleTypeFlags & BATTLE_TYPE_SCRIPTED_WILD_2) //No idea how these two work
 		flags = AI_SCRIPT_CHECK_BAD_MOVE | WildMonIsSmart(gActiveBattler);

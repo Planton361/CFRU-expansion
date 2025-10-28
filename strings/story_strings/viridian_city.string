@@ -1,0 +1,83 @@
+#org @gText_ViridianCity_Youngster
+Town Map option enabled!
+
+#org @gText_ViridianCity_YoungMan
+Town Map option disabled!
+
+#org @gText_ViridianCity_YoungLadyName
+Young Lady
+
+#org @gText_ViridianCity_YoungLadyAsk
+Ah, hi there[.]\pI can change your Pok\emon's\nTera Type!\pWould you like me to change it?
+
+#org @gText_ViridianCity_YoungLadyNo
+Oh, I see[.]\pPlease do visit again\nnext time!
+
+#org @gText_ViridianCity_YoungLadyOpenMenu
+Which Pok\emon's Tera Type\nwould you like me to change[.]?
+
+#org @gText_ViridianCity_YoungLadySelected
+Ah, so you've selected\n[BUFFER1][.]\pWhich type would you like\nme to change it to[.]?
+
+#org @gText_ViridianCity_YoungLadyFetchTeraNormal
+The Tera Type of [BUFFER1]\nis now Normal!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraFighting
+The Tera Type of [BUFFER1]\nis now Fighting!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraFlying
+The Tera Type of [BUFFER1]\nis now Flying!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraPoison
+The Tera Type of [BUFFER1]\nis now Poison!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraGround
+The Tera Type of [BUFFER1]\nis now Ground!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraRock
+The Tera Type of [BUFFER1]\nis now Rock!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraBug
+The Tera Type of [BUFFER1]\nis now Bug!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraGhost
+The Tera Type of [BUFFER1]\nis now Ghost!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraSteel
+The Tera Type of [BUFFER1]\nis now Steel!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraFire
+The Tera Type of [BUFFER1]\nis now Fire!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraWater
+The Tera Type of [BUFFER1]\nis now Water!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraGrass
+The Tera Type of [BUFFER1]\nis now Grass!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraElectric
+The Tera Type of [BUFFER1]\nis now Electric!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraPsychic
+The Tera Type of [BUFFER1]\nis now Psychic!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraIce
+The Tera Type of [BUFFER1]\nis now Ice!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraDragon
+The Tera Type of [BUFFER1]\nis now Dragon!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraDark
+The Tera Type of [BUFFER1]\nis now Dark!
+
+#org @gText_ViridianCity_YoungLadyFetchTeraFairy
+The Tera Type of [BUFFER1]\nis now Fairy!
+
+#org @gText_ViridianCity_BattleStart
+Let's battle!
+
+#org @gText_ViridianCity_BattleEnd
+Aw, shucks!
+
+#org @gText_ViridianCity_BattleOver
+You beat me!

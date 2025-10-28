@@ -137,7 +137,7 @@ void BufferStringBattle(u16 stringID)
 		else //Wild Battle
 		{
 			#ifdef UNBOUND
-			if (gBattleTypeFlags & BATTLE_TYPE_SHADOW_WARRIOR)
+			if (gBattleTypeFlags & BATTLE_TYPE_SABOTAGE)
 			{
 				if (IS_DOUBLE_BATTLE)
 					stringPtr = BattleText_ShadowWarriorsAttacked;

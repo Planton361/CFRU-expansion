@@ -29,6 +29,7 @@
 #include "../include/new/switching.h"
 #include "../include/new/trainer_sliding.h"
 #include "../include/new/z_move_battle_scripts.h"
+#include "../include/new/sabotage_util.h"
 #include "../include/new/terastallization.h"
 /*
 switching.c
@@ -1375,7 +1376,8 @@ void PartyMenuSwitchingUpdate(void)
 		goto SKIP_SWITCH_BLOCKING_CHECK;
 	else if ((gBattleMons[gActiveBattler].status2 & (STATUS2_WRAPPED | STATUS2_ESCAPE_PREVENTION))
 	|| (gStatuses3[gActiveBattler] & STATUS3_ROOTED)
-	|| IsFairyLockActive())
+	|| IsFairyLockActive()
+	|| (IsSabotageBattle() && (GetCurrentTrap(FALSE) == TRAP_TRAPPERS_TERRITORY)))
 	{
 		TRAPPED:
 		EmitChoosePokemon(0, PARTY_CANT_SWITCH, PARTY_SIZE, ABILITY_NONE, gBattleStruct->battlerPartyOrders[gActiveBattler]);

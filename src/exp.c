@@ -329,11 +329,6 @@ void atk23_getexp(void)
 			{
 				BattleStopLowHpSound();
 
-				#ifdef UNBOUND
-				if (gBattleTypeFlags & BATTLE_TYPE_SHADOW_WARRIOR)
-					PlayBGM(BGM_VICTORY_PLASMA);
-				else
-				#endif
 				if (!IsRaidBattle()) //Music would be played if the player caught the raid boss
 					PlayBGM(BGM_VICTORY_WILD_POKE); //Wild PKMN Victory
 

@@ -45,7 +45,6 @@ void OpponentHandleChooseMove(void)
 	#ifdef VAR_GAME_DIFFICULTY //Wild Pokemon are smart in expert mode
 	||  difficulty == OPTIONS_EXPERT_DIFFICULTY
 	#endif
-	|| (gBattleTypeFlags & BATTLE_TYPE_SHADOW_WARRIOR)
 	|| (!(gBattleTypeFlags & BATTLE_TYPE_TRAINER) && WildMonIsSmart(gActiveBattler))
 	|| (IsRaidBattle() && gRaidBattleStars >= 6))
 	{

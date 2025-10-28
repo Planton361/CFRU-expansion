@@ -1121,6 +1121,11 @@ void BattleSetup_StartTrainerBattle(void)
 		gBattleTypeFlags |= BATTLE_TYPE_DYNAMAX;
 	#endif
 
+	#ifdef FLAG_SABOTAGE_BATTLE
+	if (FlagGet(FLAG_SABOTAGE_BATTLE))
+		gBattleTypeFlags |= BATTLE_TYPE_SABOTAGE;
+	#endif
+
 	gMain.savedCallback = CB2_EndTrainerBattle;
 	StartTheBattle();
 	ScriptContext1_Stop();

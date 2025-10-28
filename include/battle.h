@@ -1042,6 +1042,18 @@ struct NewBattleStruct
 		bool8 viewing : 1;                    										// For Pokemon Summary Screen menu
 	} teraData;
 
+	// For Sabotage Battles
+	struct SabotageData
+	{   
+		// Counters
+		u8 passiveTrapCounter;
+		u8 activeTrapCounter;
+
+		// Trap IDs
+		u8 passiveTrapId;
+		u8 activeTrapId;
+	} sabotage;
+
 	struct 
 	{
 		u16 zMoveHelper; //~0x2017B74

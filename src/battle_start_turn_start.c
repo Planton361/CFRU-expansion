@@ -36,6 +36,8 @@
 #include "../include/new/util.h"
 #include "../include/metatile_behavior.h"
 #include "../include/fieldmap.h"
+
+#include "../include/new/sabotage_util.h"
 #include "../include/new/terastallization.h"
 
 /*
@@ -69,6 +71,7 @@ enum BattleBeginStates
 	BTSTART_SWITCH_IN_ITEMS,
 	BTSTART_AIR_BALLOON,
 	BTSTART_TOTEM_POKEMON,
+	BTSTART_SABOTAGE,
 	BTSTART_END,
 };
 
@@ -677,6 +680,22 @@ void BattleBeginFirstTurn(void)
 				}
 
 				*bank = 0; //Reset Bank for next loop
+				++*state;
+				break;
+
+			case BTSTART_SABOTAGE:
+				if (IsSabotageBattle())
+				{
+					// Generate traps for first turn and set counters
+					ResetSabotageCounters();
+					u8 activeTrapId = GetRandomTrap(TRUE);
+					u8 passiveTrapId = GetRandomTrap(FALSE);
+
+					gNewBS->sabotage.activeTrapId = activeTrapId;
+					gNewBS->sabotage.passiveTrapId = passiveTrapId;
+					
+					SabotageBattleEffects(passiveTrapId);
+				}
 				++*state;
 				break;
 
