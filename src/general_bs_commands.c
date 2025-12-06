@@ -4117,6 +4117,7 @@ void atkB0_trysetspikes(void)
 	u8 stringcase = 0xFF;
 
 	switch (gCurrentMove) {
+		case MOVE_STONEAXE:
 		case MOVE_STEALTHROCK:
 		case MOVE_G_MAX_STONESURGE_P:
 		case MOVE_G_MAX_STONESURGE_S:

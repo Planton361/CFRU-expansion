@@ -3347,8 +3347,38 @@ BS_149_Gust:
 
 .global BS_150_Splinters @;Was Stomp
 BS_150_Splinters:
+	jumpifmove MOVE_STONEAXE StoneAxe_BS
+	jumpifmove MOVE_CEASELESSEDGE Ceaceless_BS
 	setmoveeffect MOVE_EFFECT_SPLINTERS
 	goto BS_STANDARD_HIT
+
+StoneAxe_BS:
+	attackcanceler
+	call STANDARD_DAMAGE
+	playanimation BANK_TARGET ANIM_STEALTHROCK2 0x0
+	waitanimation
+	setspikes StoneAxeFailed
+	printstring 0x184
+	waitmessage DELAY_1SECOND
+	prefaintmoveendeffects 0x0
+	faintpokemonaftermove
+	goto BS_MOVE_END
+
+StoneAxeFailed:
+	setword BATTLE_STRING_LOADER ButFailedString
+	printstring 0x184
+	waitmessage DELAY_1SECOND
+	goto BS_MOVE_FAINT
+
+Ceaceless_BS:
+	attackcanceler
+	call STANDARD_DAMAGE
+	playanimation BANK_TARGET ANIM_SPIKES2 0x0
+	waitanimation
+	setspikes StoneAxeFailed
+	printstring 0x184
+	waitmessage DELAY_1SECOND
+	goto BS_MOVE_FAINT
 
 @;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
