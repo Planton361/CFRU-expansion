@@ -102,6 +102,8 @@ gBattleAnims_General:
 .word ANIM_CHARGE2
 .word ANIM_TOXICSPIKES2
 .word ANIM_TERASTAL
+.word ANIM_STEALTHROCK2
+.word ANIM_SPIKES2
 
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 .pool
@@ -1263,6 +1265,29 @@ ANIM_TERASTAL:
 TERASYMBOL: objtemplate ANIM_TAG_TERA_SYMBOL ANIM_TAG_TERA_SYMBOL OAM_DOUBLE_BLEND_32x32 gDummySpriteAnimTable 0x0 gSpriteAffineAnimTable_PrimalSymbol SpriteCB_AnimSpriteOnSelectedMonPos
 TERA_CRYSTAL: objtemplate ANIM_TAG_TERA_CRYSTAL ANIM_TAG_TERA_CRYSTAL OAM_DOUBLE_64x64 gDummySpriteAnimTable 0x0 0x83E7144 0x8075D9D
 
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+.pool
+ANIM_STEALTHROCK2:
+	loadparticle ANIM_TAG_STEALTH_ROCK
+	playsound2 0x7C SOUND_PAN_TARGET
+	launchtemplate STEALTH_ROCKS2 TEMPLATE_TARGET | 2, 0x6 0xf 0x0 0x0 0x18 0x23 0xffe0
+	pause 0x8
+	launchtemplate STEALTH_ROCKS2 TEMPLATE_TARGET | 2, 0x6 0xf 0x0 0xfff0 0x18 0x23 0xffd8
+	pause 0x8
+	launchtemplate STEALTH_ROCKS2 TEMPLATE_TARGET | 2, 0x6 0xf 0x0 0x10 0x18 0x23 0xffdb
+	pause 0xc
+	soundcomplex 0xa0 SOUND_PAN_TARGET 0xa 0x8
+	waitanimation
+	endanimation
+
+.align 2
+STEALTH_ROCKS2: objtemplate ANIM_TAG_STEALTH_ROCK ANIM_TAG_STEALTH_ROCK OAM_OFF_16x16 0x83E2B2C 0x0 gDummySpriteAffineAnimTable 0x80A26F1
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+.pool
+	ANIM_SPIKES2:
+		goto 0x81cf503
+		
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 .pool
 .align 2
