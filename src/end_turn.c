@@ -781,7 +781,6 @@ u8 TurnBasedEffects(u16 move, u8 bank, struct Pokemon* monAtk)
 					gBattleMons[gActiveBattler].status2 &= ~(STATUS2_WRAPPED);
 					gNewBS->brokeFreeMessage &= ~(gBitTable[gActiveBattler]);
 					gNewBS->sandblastCentiferno[gActiveBattler] = 0;
-					gNewBS->SaltcureTimers[gActiveBattler] = 0;
 
 					gBattleTextBuff1[0] = B_BUFF_PLACEHOLDER_BEGIN;
 					gBattleTextBuff1[1] = B_TXT_COPY_VAR_1;
@@ -1756,6 +1755,19 @@ u8 TurnBasedEffects(u16 move, u8 bank, struct Pokemon* monAtk)
 				#endif
 				break;
 
+			case ET_Saltcure:
+				if (gStatuses4[gActiveBattler] & STATUS4_SALTCURE
+				&&  BATTLER_ALIVE(gActiveBattler)
+				&&  ABILITY(gActiveBattler) != ABILITY_MAGICGUARD)
+				{
+					gBattleMoveDamage = GetSaltCureDamage(gActiveBattler);
+					PREPARE_MOVE_BUFFER(gBattleTextBuff1, MOVE_SALTCURE);
+					BattleScriptExecute(BattleScript_SaltCureExtraDamage);
+					effect++;
+				}
+				gNewBS->turnDamageTaken[gActiveBattler] = gBattleMoveDamage; //For Emergency Exit
+				break;
+
 			case ET_End:
 			END_TURN_SKIP:
 				gBattleStruct->turnEffectsBank = gBattlersCount;
@@ -1939,9 +1951,7 @@ u32 GetTrapDamage(u8 bank)
 	&& !(gNewBS->brokeFreeMessage & gBitTable[bank]) //Trapping isn't about to end
 	&& ABILITY(bank) != ABILITY_MAGICGUARD)
 	{
-		if (gNewBS->SaltcureTimers[gActiveBattler] && (IsOfType(bank, TYPE_WATER) || IsOfType(bank, TYPE_STEEL)))
-			damage = MathMax(1, GetBaseMaxHP(bank) / 4);
-		else if ((gNewBS->sandblastCentiferno[gActiveBattler] & 2) //Trapped by this move and user held Binding Band
+		if ((gNewBS->sandblastCentiferno[gActiveBattler] & 2) //Trapped by this move and user held Binding Band
 		|| ITEM_EFFECT(gBattleStruct->wrappedBy[bank]) == ITEM_EFFECT_BINDING_BAND)
 			damage = MathMax(1, GetBaseMaxHP(bank) / 6);
 		else
@@ -2095,12 +2105,10 @@ u32 GetSaltCureDamage(u8 bank)
 {
 	u32 damage = 0;
 
-	if (gBattleMons[bank].status2 & STATUS2_WRAPPED
-	&& !(gNewBS->brokeFreeMessage & gBitTable[bank]) //Trapping isn't about to end
+	if (gStatuses4[bank] & STATUS4_SALTCURE
 	&& ABILITY(bank) != ABILITY_MAGICGUARD)
 	{
-		if (IsOfType(bank, TYPE_WATER)
-		||  IsOfType(bank, TYPE_STEEL))
+		if (IsOfType(bank, TYPE_WATER) || IsOfType(bank, TYPE_STEEL))
 			damage = MathMax(1, GetBaseMaxHP(bank) / 4);
 		else
 			damage = MathMax(1, GetBaseMaxHP(bank) / 8);

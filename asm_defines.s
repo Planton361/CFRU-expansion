@@ -385,6 +385,7 @@
 .equ ANIM_TERASTAL, 0x54
 .equ ANIM_STEALTHROCK2, 0x55
 .equ ANIM_SPIKES2, 0x56
+.equ B_ANIM_SALT_CURE_DAMAGE, 0x57
 
 .equ ANIM_TRANSFORM_ATTACK, 0xFF
 
@@ -4470,3 +4471,5 @@
 @ givepokemon constants
 .equ NOT_SHINY, 0
 .equ IS_SHINY, 1
+
+.equ NULL, 0x00000000

@@ -887,7 +887,6 @@ void DoBattleFieldEffect(void)
 			SwapSideTimers(gNewBS->maxWildfireTimers);
 			SwapSideTimers(gNewBS->maxCannonadeTimers);
 			SwapSideTimers(gNewBS->maxVolcalithTimers);
-			SwapSideTimers(gNewBS->SaltcureTimers);
 			SwapVanillaSideTimers();
 			gBattleStringLoader = gText_CourtChange;
 			break;

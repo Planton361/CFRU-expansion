@@ -1068,8 +1068,37 @@ BS_041_DragonRage:
 
 .global BS_042_TrapAndDamage
 BS_042_TrapAndDamage:
+	jumpifmove MOVE_SALTCURE SaltCureBS
 	setmoveeffect MOVE_EFFECT_WRAP
 	goto BS_STANDARD_HIT
+
+SaltCureBS:
+    call STANDARD_DAMAGE
+	faintpokemon BANK_TARGET FALSE NULL
+	jumpiffaintedmon BANK_TARGET, TRUE, BS_EffectSaltCure_End
+	applysaltcure BANK_TARGET
+	setword BATTLE_STRING_LOADER sText_TargetIsBeingSaltCured
+	printstring 0x184
+	waitmessage DELAY_1SECOND
+BS_EffectSaltCure_End:
+	goto BS_MOVE_END
+
+.global BattleScript_SaltCureExtraDamage
+BattleScript_SaltCureExtraDamage:
+	playanimation BANK_TARGET, B_ANIM_SALT_CURE_DAMAGE, NULL
+	waitanimation
+	call BattleScript_HurtTarget_NoString
+	setword BATTLE_STRING_LOADER sText_TargetIsHurtBySaltCure
+	printstring 0x184
+	waitmessage DELAY_1SECOND
+	end2
+
+BattleScript_HurtTarget_NoString:
+	orword gHitMarker, HITMARKER_IGNORE_SUBSTITUTE | HITMARKER_NON_ATTACK_DMG
+	healthbarupdate BANK_TARGET
+	datahpupdate BANK_TARGET
+	faintpokemon BANK_TARGET FALSE NULL
+	return
 	
 @;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 

@@ -813,7 +813,6 @@ struct NewBattleStruct
 	u16 tookAbilityFrom[MAX_BATTLERS_COUNT]; //Helps display the correct Ability when one has been passed around
 	u8 GlaiveRushTimers[MAX_BATTLERS_COUNT];
 	u8 rageFistCounter[MAX_BATTLERS_COUNT];
-	u8 SaltcureTimers[MAX_BATTLERS_COUNT];
 	u8 CudChewCounter[MAX_BATTLERS_COUNT];
 	u8 ElectroCounter[MAX_BATTLERS_COUNT];
 	u8 quarkDriveActivated[MAX_BATTLERS_COUNT];
@@ -1602,6 +1601,7 @@ extern u8 gUnusedFirstBattleVar2;
 extern u16 gSideStatuses[2];
 extern struct SideTimer gSideTimers[2];
 extern u32 gStatuses3[MAX_BATTLERS_COUNT];
+extern u32 gStatuses4[MAX_BATTLERS_COUNT];
 extern struct DisableStruct gDisableStructs[MAX_BATTLERS_COUNT];
 extern u16 gPauseCounterBattle;
 extern u16 gPaydayMoney;

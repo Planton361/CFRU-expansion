@@ -2480,3 +2480,5 @@ gHeap = 0x2000000;
 CB2_InitMainMenu = 0x800c300 | 1;
 Task_TitleScreenMain = 0x8078c24 | 1;
 MonSpritesGfxManager_GetSpritePtr = 0x8044e00 | 1;
+GetBattlerForBattleScript = 0x8016e24 | 1;
+gStatuses4 = 0x2022b54;

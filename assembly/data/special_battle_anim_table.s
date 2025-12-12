@@ -104,6 +104,7 @@ gBattleAnims_General:
 .word ANIM_TERASTAL
 .word ANIM_STEALTHROCK2
 .word ANIM_SPIKES2
+.word ANIM_FROSTBITE
 
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 .pool

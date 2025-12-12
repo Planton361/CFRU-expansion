@@ -531,3 +531,9 @@ Being hit by [CURRENT_MOVE]\ncharged [SCRIPTING_BANK] with power.
 
 #org @gText_ToxicDebrisFailed
 [SCRIPTING_BANK] tried to set\nToxic Spikes, but failed.
+
+#org @sText_TargetIsBeingSaltCured
+[TARGET] is being\nsalt cured!
+
+#org @sText_TargetIsHurtBySaltCure
+[TARGET] is hurt by\n[FD][00]!
