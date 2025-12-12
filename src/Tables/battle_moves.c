@@ -15595,7 +15595,7 @@ const struct BattleMove gBattleMoves[] =
 
 	[MOVE_SALTCURE] =
     {	
-		.effect = EFFECT_SALTCURE,
+		.effect = EFFECT_TRAP,
 		.power = 40,
 		.type = TYPE_ROCK,
 		.accuracy = 100,

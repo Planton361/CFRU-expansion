@@ -101,6 +101,7 @@ enum EndTurnEffects
 	ET_Reactivate_Overworld_Weather,
 	ET_Reactivate_Overworld_Terrain,
 	ET_SOS,
+	ET_Saltcure,
 	ET_End
 };
 
