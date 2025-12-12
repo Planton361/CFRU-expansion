@@ -1404,7 +1404,7 @@ bool8 SpeciesHasSeedSower(unusedArg u16 species)
 bool8 SpeciesHasSharpness(unusedArg u16 species)
 {
 	#if (defined SPECIES_GALLADE && SPECIES_SAMUROTT_H && SPECIES_KLEAVOR && SPECIES_VELUZA)
-	return species == SPECIES_ARBOLIVA || species == SPECIES_SAMUROTT_H || species == SPECIES_KLEAVOR || species == SPECIES_VELUZA;
+	return species == SPECIES_GALLADE || species == SPECIES_SAMUROTT_H || species == SPECIES_KLEAVOR || species == SPECIES_VELUZA;
 	#else
 	return FALSE;
 	#endif
