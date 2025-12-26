@@ -813,4 +813,11 @@ u16 TryGetFemaleGenderedSpecies(u16 species, u32 personality)
 	
 	return species;
 }
+#else
+void CopyPlayerPartyMonToBattleData(unusedArg u8 battlerId, unusedArg u8 partyIndex, unusedArg bool8 resetStats)
+{}
+
+void Cb2_InitBattleTurn_False(void)
+{}
+
 #endif
