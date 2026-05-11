@@ -75,12 +75,19 @@
      *(b->pbuffer) = 0;
      return b->pbuffer - p0;
  }
- static s32 mini_strlen(const char *s)
+ static __attribute__((noinline)) s32 mini_strlen(const char *s)
  {
      s32 len = 0;
-     while (s[len] != '\0') len++;
-     return len;
- }
+     const volatile char *p = (const volatile char *)s;
+
+     while (*p != '\0')
+{
+len++;
+p++;
+}
+
+return len;
+}
  static s32 mini_itoa(u32 value, u32 radix, s32 uppercase, bool32 unsig, char *buffer)
  {
      char *pbuffer = buffer;
