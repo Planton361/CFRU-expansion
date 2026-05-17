@@ -155,6 +155,16 @@ def Repoint(rom: _io.BufferedReader, space: int, repointAt: int, slideFactor=0):
     rom.write(bytes(data))
 
 
+def RecordGeneratedRepoint(generatedRepoints: set, symbol: str, offset: int):
+    key = (symbol, offset)
+    if key in generatedRepoints:
+        return
+
+    with open(GENERATED_REPOINTS, 'a') as repointList:
+        repointList.write(symbol + ' ' + str(offset) + '\n')
+    generatedRepoints.add(key)
+
+
 # These offsets contain the word 0x8900000 - the attack data from
 # Mr. DS's rombase. In order to maintain as much compatibility as
 # possible, the data at these offsets is never modified.
@@ -308,6 +318,7 @@ def main():
 
         # Deal with en masse repoints
         symbolsRepointed = set()
+        generatedRepoints = set()
         if os.path.isfile(GENERATED_REPOINTS):
             with open(GENERATED_REPOINTS, 'r') as repointList:
                 for line in repointList:
@@ -316,6 +327,7 @@ def main():
 
                     symbol, address = line.split()
                     offset = int(address)
+                    generatedRepoints.add((symbol, offset))
                     try:
                         code = table[symbol]
                     except KeyError:
@@ -362,6 +374,7 @@ def main():
                         output = open(GENERATED_REPOINTS, 'a')
                         for tup in offsets:
                             output.write(tup[1] + ' ' + str(tup[0]) + '\n')
+                            generatedRepoints.add((tup[1], tup[0]))
                         output.close()
 
         # Do Special Inserts - Before bytereplacement!
@@ -512,6 +525,7 @@ def main():
                             continue
 
                         Repoint(rom, code, offset)
+                        RecordGeneratedRepoint(generatedRepoints, symbol, offset)
 
                     if len(line.split()) == 3:
                         symbol, address, slide = line.split()
@@ -523,6 +537,7 @@ def main():
                             continue
 
                         Repoint(rom, code, offset, int(slide))
+                        RecordGeneratedRepoint(generatedRepoints, symbol, offset)
 
         # Read routine repoints from a file
         if os.path.isfile(ROUTINE_POINTERS):
