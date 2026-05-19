@@ -2596,7 +2596,15 @@ static u8 GetAbilityCapsuleNewAbility(struct Pokemon* mon)
 
         if (abilityType != 0) //Hidden Ability Capsule
         {
-                if (ability != hiddenAbility
+                if (mon->hiddenAbility && hiddenAbility != ABILITY_NONE)
+                {
+                        if ((GetMonData(mon, MON_DATA_PERSONALITY, NULL) & 1) == 0
+                        || ability2 == ABILITY_NONE)
+                                changeTo = ability1;
+                        else
+                                changeTo = ability2;
+                }
+                else if (ability != hiddenAbility
                 && hiddenAbility != ABILITY_NONE
                 #ifdef UNBOUND
                 && (FlagGet(FLAG_ABILITY_RANDOMIZER)
@@ -2660,7 +2668,7 @@ static void Task_ChangeAbility(u8 taskId)
 
         if (abilityType != 0) //Hidden Ability capsule
         {
-                mon->hiddenAbility = TRUE;
+                mon->hiddenAbility = !mon->hiddenAbility;
         }
         else //Regular Ability capsule
         {
