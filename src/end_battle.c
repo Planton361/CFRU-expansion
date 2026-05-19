@@ -702,20 +702,25 @@ static void RestoreNonConsumableItems(void)
 	#else
 	bool8 keepConsumables = FALSE;
 	#endif
+	bool8 trainerOrRaidBattle = (gBattleTypeFlags & BATTLE_TYPE_TRAINER) || IsRaidBattle();
 
-	if (gBattleTypeFlags & BATTLE_TYPE_TRAINER || IsRaidBattle())
+	if (trainerOrRaidBattle || keepConsumables)
 	{
 		for (int i = 0; i < PARTY_SIZE; ++i)
 		{
-			if (gBattleTypeFlags & BATTLE_TYPE_FRONTIER
-			||  keepConsumables
-			||  items[i] == ITEM_NONE
-			||  !IsConsumable(items[i]))
+			bool8 backedUpItemIsConsumable = IsConsumable(items[i]);
+
+			if ((trainerOrRaidBattle
+			&&  (gBattleTypeFlags & BATTLE_TYPE_FRONTIER
+			||   items[i] == ITEM_NONE
+			||   !backedUpItemIsConsumable))
+			||  (keepConsumables && backedUpItemIsConsumable))
 			{
 				SetMonData(&gPlayerParty[i], MON_DATA_HELD_ITEM, &items[i]);
 			}
-			else if (gPlayerParty[i].item != items[i] //The player consumed their item, and then picked up another one
-			&& IsConsumable(items[i]))
+			else if (trainerOrRaidBattle
+			&& gPlayerParty[i].item != items[i] //The player consumed their item, and then picked up another one
+			&& backedUpItemIsConsumable)
 			{
 				SetMonData(&gPlayerParty[i], MON_DATA_HELD_ITEM, &none);
 			}
