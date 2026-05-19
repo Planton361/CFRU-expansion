@@ -3,6 +3,7 @@
 
 #include "../../include/battle.h"
 #include "../../include/global.h"
+#include "../../include/trainer_front_sprites.h"
 
 #include "../../include/constants/battle_ai.h"
 #include "../../include/constants/species.h"
