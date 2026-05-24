@@ -10,6 +10,7 @@
 EventScript_Pallet_FatGuy:
     faceplayer
     lock
+    setflag 0xA0E @ FLAG_SMART_TRAINER_AI local smoke activation.
     setflag 0x926
     setflag 0x828
     setflag 0x4BD
