@@ -223,6 +223,11 @@ u32 GetAIFlags(void)
 		}
 		#endif
 
+		#ifdef FLAG_SMART_TRAINER_AI
+		if (gBattleTypeFlags & BATTLE_TYPE_TRAINER && FlagGet(FLAG_SMART_TRAINER_AI))
+			flags |= AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_SEMI_SMART | AI_SCRIPT_CHECK_GOOD_MOVE;
+		#endif
+
 		if (!(gBattleTypeFlags & BATTLE_TYPE_TRAINER)) //Generic wild battle
 			flags |= WildMonIsSmart(gActiveBattler);
 	}
