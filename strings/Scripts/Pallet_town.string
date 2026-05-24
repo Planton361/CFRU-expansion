@@ -1,6 +1,9 @@
 #org @gText_TestScript
 Creating following mon.
 
+#org @gText_SmartTrainerAISmokeEnabled
+Smart Trainer AI enabled.
+
 #org @gText_PalletGirl_Text1
 Show or hide follower mon?\nSelect Yes to show or No to hide.
 
