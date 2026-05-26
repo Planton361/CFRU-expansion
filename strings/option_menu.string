@@ -49,6 +49,12 @@ By Amount
 #org @gText_GameDifficulty
 Game Difficulty
 
+#org @gText_LevelScaling
+Level Scaling
+
+#org @gText_AutoOption
+Auto
+
 #org @gText_Normal
 Normal
 
