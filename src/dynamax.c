@@ -1661,7 +1661,7 @@ bool8 ShouldStartWithRaidShieldsUp(void)
 		return FALSE; //Only for wild battles
 
 	#if (defined FLAG_RAID_BATTLE_NO_FORCE_END && defined VAR_GAME_DIFFICULTY)
-	if (FlagGet(FLAG_RAID_BATTLE_NO_FORCE_END) && VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY)
+	if (FlagGet(FLAG_RAID_BATTLE_NO_FORCE_END) && GetGameDifficultyMode() >= DIFFICULTY_MODE_EXPERT)
 		return TRUE;
 	#endif
 

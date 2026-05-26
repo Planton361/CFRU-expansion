@@ -11,6 +11,7 @@
 #include "../include/global.h"
 
 #include "../include/new/mega.h"
+#include "../include/new/util.h"
 
 //Hall of Fame Fix for Expanded Pokemon
 //Based on https://github.com/Sagiri/fame-hall
@@ -473,17 +474,17 @@ void HallOfFame_PrintWelcomeText(unusedArg u8 not, unusedArg u8 used)
 
 	#ifdef VAR_GAME_DIFFICULTY
 		const u8* difficultyText = NULL;
-		switch (VarGet(VAR_GAME_DIFFICULTY)) {
-			case OPTIONS_EASY_DIFFICULTY:
+		switch (GetGameDifficultyMode()) {
+			case DIFFICULTY_MODE_EASY:
 				difficultyText = gText_Easy;
 				break;
-			case OPTIONS_NORMAL_DIFFICULTY:
+			case DIFFICULTY_MODE_NORMAL:
 				difficultyText = gText_Normal;
 				break;
-			case OPTIONS_HARD_DIFFICULTY:
+			case DIFFICULTY_MODE_HARD:
 				difficultyText = gText_Hard;
 				break;
-			case OPTIONS_EXPERT_DIFFICULTY:
+			case DIFFICULTY_MODE_EXPERT:
 			default:
 				difficultyText = gText_Expert;
 				break;

@@ -1411,7 +1411,7 @@ static u8 DexNavGenerateHiddenAbility(u16 species, u8 searchLevel)
 	#ifdef UNBOUND
 	if (genAbility
 	&& !FlagGet(FLAG_SYS_GAME_CLEAR)
-	&& VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY
+	&& GetGameDifficultyMode() >= DIFFICULTY_MODE_EXPERT
 	&& gBaseStats[species].hiddenAbility == ABILITY_IMPOSTER)
 		genAbility = FALSE; //Don't allow Imposter until the post-game
 	#endif

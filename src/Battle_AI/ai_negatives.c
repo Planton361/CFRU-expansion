@@ -166,7 +166,7 @@ u8 AIScript_Negatives(const u8 bankAtk, const u8 bankDef, const u16 originalMove
 		#ifdef VAR_GAME_DIFFICULTY
 		if ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
 			? GetTrainerAIProfile() == TRAINER_AI_PROFILE_EASY
-			: VarGet(VAR_GAME_DIFFICULTY) == OPTIONS_EASY_DIFFICULTY)
+			: GetGameDifficultyMode() == DIFFICULTY_MODE_EASY)
 			killRate = AI_TRY_TO_KILL_RATE / 5;
 		#endif
 		

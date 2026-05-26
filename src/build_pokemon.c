@@ -791,8 +791,8 @@ static u8 CreateNPCTrainerParty(struct Pokemon* const party, const u16 trainerId
 
 		//Choose Trainer IVs
 		#ifdef VAR_GAME_DIFFICULTY
-		u8 gameDifficulty = VarGet(VAR_GAME_DIFFICULTY);
-		if (gameDifficulty >= OPTIONS_EXPERT_DIFFICULTY && side != B_SIDE_PLAYER) //Not partner
+		enum DifficultyMode gameDifficulty = GetGameDifficultyMode();
+		if (gameDifficulty >= DIFFICULTY_MODE_EXPERT && side != B_SIDE_PLAYER) //Not partner
 			baseIV = 31;
 		else
 		#endif
@@ -1075,7 +1075,7 @@ static u8 CreateNPCTrainerParty(struct Pokemon* const party, const u16 trainerId
 
 			//Try Evolve Randomized Mon
 			#if (defined FLAG_POKEMON_RANDOMIZER && defined FLAG_TEMP_DISABLE_RANDOMIZER && defined VAR_GAME_DIFFICULTY)
-			if (FlagGet(FLAG_POKEMON_RANDOMIZER) && !FlagGet(FLAG_TEMP_DISABLE_RANDOMIZER) && gameDifficulty != OPTIONS_EASY_DIFFICULTY) //Allow Trainers to grow naturally
+			if (FlagGet(FLAG_POKEMON_RANDOMIZER) && !FlagGet(FLAG_TEMP_DISABLE_RANDOMIZER) && gameDifficulty != DIFFICULTY_MODE_EASY) //Allow Trainers to grow naturally
 			{
 				if (EvolveSpeciesByLevel(&mon->species, mon->level))
 				{
@@ -1092,8 +1092,8 @@ static u8 CreateNPCTrainerParty(struct Pokemon* const party, const u16 trainerId
 			u8 spreadNum = (gTrainers[trainerId].partyFlags & PARTY_FLAG_CUSTOM_MOVES) ? trainer->party.NoItemCustomMoves[i].iv : trainer->party.NoItemDefaultMoves[i].iv;
 
 			#ifdef UNBOUND
-			if ((gTrainers[trainerId].trainerClass == CLASS_RIVAL && gameDifficulty >= OPTIONS_HARD_DIFFICULTY)
-			 || (gTrainers[trainerId].trainerClass == CLASS_RIVAL_2 && gameDifficulty == OPTIONS_HARD_DIFFICULTY)) //Not for Insane
+			if ((gTrainers[trainerId].trainerClass == CLASS_RIVAL && gameDifficulty >= DIFFICULTY_MODE_HARD)
+			 || (gTrainers[trainerId].trainerClass == CLASS_RIVAL_2 && gameDifficulty == DIFFICULTY_MODE_HARD)) //Not for Insane
 				spreadNum = GetEVSpreadNumForUnboundRivalChallenge(mon, trainer->aiFlags, gTrainers[trainerId].trainerClass);
 			#endif
 
@@ -1108,7 +1108,7 @@ static u8 CreateNPCTrainerParty(struct Pokemon* const party, const u16 trainerId
 				const struct TrainersWithEvs* spread = &gTrainersWithEvsSpreads[spreadNum];
 
 				#ifdef VAR_GAME_DIFFICULTY
-				if (gameDifficulty != OPTIONS_EASY_DIFFICULTY)
+				if (gameDifficulty != DIFFICULTY_MODE_EASY)
 				#endif
 				{
 					SET_EVS(spread);
@@ -1276,10 +1276,10 @@ static u8 GetTrainerMonGender(const struct Trainer* trainer)
 bool8 ShouldGiveTrainerMonBestStatsMaxEVs(u8 trainerClass)
 {
 #ifdef VAR_GAME_DIFFICULTY
-    u8 difficulty = VarGet(VAR_GAME_DIFFICULTY);
+    enum DifficultyMode difficulty = GetGameDifficultyMode();
 
     // Only apply on Hard and above
-    if (difficulty < OPTIONS_HARD_DIFFICULTY)
+    if (difficulty < DIFFICULTY_MODE_HARD)
         return FALSE;
 
     switch (trainerClass)
@@ -1308,10 +1308,10 @@ bool8 ShouldGiveTrainerMonBestStatsMaxEVs(u8 trainerClass)
 bool8 ShouldGiveTrainerMonMaxFriendship(u8 trainerClass)
 {
 #ifdef VAR_GAME_DIFFICULTY
-    u8 difficulty = VarGet(VAR_GAME_DIFFICULTY);
+    enum DifficultyMode difficulty = GetGameDifficultyMode();
 
     // Only apply on Hard and above
-    if (difficulty < OPTIONS_HARD_DIFFICULTY)
+    if (difficulty < DIFFICULTY_MODE_HARD)
         return FALSE;
 
     switch (trainerClass)
@@ -1334,7 +1334,7 @@ bool8 ShouldGiveTrainerMonMaxFriendship(u8 trainerClass)
 static u8 GetTrainerMonMovePPBonus(void)
 {
 	#ifdef VAR_GAME_DIFFICULTY
-	if (VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY)
+	if (GetGameDifficultyMode() >= DIFFICULTY_MODE_EXPERT)
 		return 0xFF; //Max PP
 	#endif
 
@@ -1566,7 +1566,7 @@ u8 GetScaledWildBossLevel(u8 level)
 	u8 newLevel;
 
 	#ifdef VAR_GAME_DIFFICULTY
-	if (VarGet(VAR_GAME_DIFFICULTY) == OPTIONS_EASY_DIFFICULTY)
+	if (GetGameDifficultyMode() == DIFFICULTY_MODE_EASY)
 	{
 		newLevel = GetPlayerBiasedAverageLevel(GetHighestMonLevel(gPlayerParty));
 		if (newLevel >= 3)
