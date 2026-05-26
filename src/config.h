@@ -376,6 +376,8 @@ enum //These vars need to be one after the other (hence the enum)
 #define FLAG_SPAWN_INVISIBLE 0xA0A //This feature allows us to spawn the player object as invisible after a warp, which can be useful for cutscenes, etc. Note that the camera will still be centered on the player.
 #define FLAG_PORTABLE_PC 0xA0B //Flag to Enable/Disable Pocket PC.
 #define VAR_GAME_DIFFICULTY 0x5157 //Var to store the game difficulty level. If 0 difficulty is normal(vanilla), if 1 its easy, if 2 its Hard, if 3 its Expert. ShouldGiveTrainerMonMaxFriendship and ShouldGiveTrainerMonMaxEVs need to be set at your choice in build_pokemon.c
+#define VAR_TRAINER_LEVEL_SCALING_MODE 0x515A //0 is legacy/unset. Explicit values are stored as enum TrainerLevelScalingMode + 1.
+#define VAR_TRAINER_AI_PROFILE 0x515B //0 is legacy/unset. Explicit values are stored as enum TrainerAIProfile + 1.
 #define CRY_SPECIES SPECIES_CHARIZARD //The species that will be used for the cry in the titlescreen. Currently its 0x6 (Charizard).
 #define OAK_INTRO_SPECIES SPECIES_NIDORAN_F //The species that appears in Oak's intro(New Game).
 //#define OPEN_WORLD_TRAINERS // Custom Trainers and teams based on party levels (Not area based, making game open world). CAUTION: NOT TO USE WQITH EXPAND_TRAINERS
