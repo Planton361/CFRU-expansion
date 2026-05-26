@@ -190,43 +190,44 @@ u32 GetAIFlags(void)
 		flags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_SEMI_SMART;
 	else
 	{
+		bool8 isTrainerBattle = gBattleTypeFlags & BATTLE_TYPE_TRAINER;
 		if (gBattleTypeFlags & BATTLE_TYPE_TWO_OPPONENTS)
 			flags = gTrainers[gTrainerBattleOpponent_A].aiFlags | gTrainers[VarGet(VAR_SECOND_OPPONENT)].aiFlags;
 		else
 			flags = gTrainers[gTrainerBattleOpponent_A].aiFlags;
 
-		#ifdef VAR_GAME_DIFFICULTY
-		if (difficulty == OPTIONS_EASY_DIFFICULTY && gBattleTypeFlags & BATTLE_TYPE_TRAINER)
+		if (isTrainerBattle)
 		{
-			if (flags & AI_SCRIPT_CHECK_GOOD_MOVE) //Trainers who are supposed to be better than the average Trainer
+			enum TrainerAIProfile trainerAIProfile = GetTrainerAIProfile();
+
+			if (trainerAIProfile == TRAINER_AI_PROFILE_EASY)
 			{
-				flags &= ~AI_SCRIPT_CHECK_GOOD_MOVE;
-				flags |= AI_SCRIPT_SEMI_SMART; //Make normally smart Trainers semi smart
+				if (flags & AI_SCRIPT_CHECK_GOOD_MOVE) //Trainers who are supposed to be better than the average Trainer
+				{
+					flags &= ~AI_SCRIPT_CHECK_GOOD_MOVE;
+					flags |= AI_SCRIPT_SEMI_SMART; //Make normally smart Trainers semi smart
+				}
+				else
+					flags = AI_SCRIPT_CHECK_BAD_MOVE; //Trainers are always barely smart in easy AI profile
 			}
-			else
-				flags = AI_SCRIPT_CHECK_BAD_MOVE; //Trainers are always barely smart in easy mode
-		}
-		else if (difficulty == OPTIONS_HARD_DIFFICULTY && gBattleTypeFlags & BATTLE_TYPE_TRAINER)
-		{
-			if (!(flags & AI_SCRIPT_CHECK_GOOD_MOVE)) //Not Trainers who are already smart
-				flags |= AI_SCRIPT_SEMI_SMART; //Regular Trainers are always semi smart in hard mode
-		}
-		else if (difficulty == OPTIONS_EXPERT_DIFFICULTY)
-		{
-			if (gBattleTypeFlags & BATTLE_TYPE_TRAINER)
+			else if (trainerAIProfile == TRAINER_AI_PROFILE_HARD)
 			{
 				if (!(flags & AI_SCRIPT_CHECK_GOOD_MOVE)) //Not Trainers who are already smart
-					flags |= AI_SCRIPT_SEMI_SMART; //Regular Trainers are always semi smart in expert mode
+					flags |= AI_SCRIPT_SEMI_SMART; //Regular Trainers are always semi smart in hard AI profile
 			}
-			else
-				flags = AI_SCRIPT_CHECK_BAD_MOVE | WildMonIsSmart(gActiveBattler); //Even Wild Pokemon are moderately smart in expert mode
+			else if (trainerAIProfile == TRAINER_AI_PROFILE_EXPERT)
+			{
+				if (!(flags & AI_SCRIPT_CHECK_GOOD_MOVE)) //Not Trainers who are already smart
+					flags |= AI_SCRIPT_SEMI_SMART; //Regular Trainers are always semi smart in expert AI profile
+			}
 		}
+		#ifdef VAR_GAME_DIFFICULTY
+		else if (difficulty == OPTIONS_EXPERT_DIFFICULTY)
+			flags = AI_SCRIPT_CHECK_BAD_MOVE | WildMonIsSmart(gActiveBattler); //Even Wild Pokemon are moderately smart in expert mode
 		#endif
 
-		#ifdef FLAG_SMART_TRAINER_AI
-		if (gBattleTypeFlags & BATTLE_TYPE_TRAINER && FlagGet(FLAG_SMART_TRAINER_AI))
+		if (isTrainerBattle && IsSmartTrainerAIEnabled())
 			flags |= AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_SEMI_SMART;
-		#endif
 
 		if (!(gBattleTypeFlags & BATTLE_TYPE_TRAINER)) //Generic wild battle
 			flags |= WildMonIsSmart(gActiveBattler);
@@ -1623,8 +1624,10 @@ extern u8 GetChanceOfPredictingPlayerNormalSwitch(void);
 static bool8 ShouldPredictRandomPlayerSwitch(u8 playerBank)
 {
 	return gChosenActionByBank[playerBank] == ACTION_SWITCH //Player decided to switch
-		&& (gBattleTypeFlags & BATTLE_TYPE_FRONTIER //In Frontier battles
-		 || VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_HARD_DIFFICULTY) //Or only on harder game modes
+	&& (gBattleTypeFlags & BATTLE_TYPE_FRONTIER //In Frontier battles
+	 || ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
+		? GetTrainerAIProfile() >= TRAINER_AI_PROFILE_HARD
+		: VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_HARD_DIFFICULTY)) //Or only on harder AI profiles/game modes
 		#ifdef UNBOUND
 		&& AI_THINKING_STRUCT->aiFlags & AI_SCRIPT_CHECK_GOOD_MOVE
 		&& AIRandom() % 100 < GetChanceOfPredictingPlayerNormalSwitch()
@@ -1638,7 +1641,9 @@ static u8 IsPlayerTryingToCheeseAI(unusedArg u8 playerBank, unusedArg u8 aiBank)
 	&& IsPlayerInControl(playerBank)) //AI isn't in charge of player mon
 	{
 		if (!(gBattleTypeFlags & BATTLE_TYPE_FRONTIER) //Not fair in Frontier where player doesn't know opponent's lead
-		&& VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY //Only on hardest game mode
+		&& ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
+			? GetTrainerAIProfile() >= TRAINER_AI_PROFILE_EXPERT
+			: VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY) //Only on hardest AI profile/game mode
 		&& (IsPlayerTryingToCheeseWithRepeatedSwitches(playerBank)
 		|| IsPlayerTryingToCheeseChoiceLockFirstTurn(aiBank)))
 			return CHEESING;
@@ -1731,7 +1736,9 @@ void TryChangeMoveTargetToCounterPlayerProtectCheese(void)
 
 	if (IS_DOUBLE_BATTLE
 	&& !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER) //Unfair in Frontier battles
-	&& VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY //On hardest game modes
+	&& ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
+		? GetTrainerAIProfile() >= TRAINER_AI_PROFILE_EXPERT
+		: VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY) //On hardest AI profile/game mode
 	&& AI_THINKING_STRUCT->aiFlags & AI_SCRIPT_CHECK_GOOD_MOVE //Only very smart Trainers
 	&& SIDE(gBankAttacker) == B_SIDE_OPPONENT //Fake Out user is AI
 	&& IsPlayerInControl(playerBank) //Protect user is player
