@@ -58,6 +58,7 @@ u8 OptionMenu_ProcessInput(void);
 void BufferOptionMenuString(u8 selection);
 void OptionMenu_PickSwitchCancel(void);
 static u16 TrainerLevelScalingRawToMenuSelection(u16 raw);
+static u16 TrainerAIProfileRawToMenuSelection(u16 raw);
 static void MarkSecondPageOptionDirty(u16 selection);
 
 // Menu items
@@ -81,6 +82,7 @@ enum
     MENUITEM_AUTOSORTBAG,
 	MENUITEM_GAME_DIFFICULTY,
     MENUITEM_TRAINER_LEVEL_SCALING,
+    MENUITEM_TRAINER_AI_PROFILE,
     MENUITEM_CANCEL_PAGE_2,
     MENUITEM_PAGE2_COUNT,
 };
@@ -102,7 +104,9 @@ struct OptionMenu
     /*0x??*/ u8 page;
     /*0x??*/ u16 option_secondPage[MENUITEM_PAGE2_COUNT];
     /*0x??*/ u16 trainerLevelScalingModeOriginalRaw;
+    /*0x??*/ u16 trainerAIProfileOriginalRaw;
     /*0x??*/ bool8 trainerLevelScalingModeDirty;
+    /*0x??*/ bool8 trainerAIProfileDirty;
 };
 
 extern struct OptionMenu *sOptionMenuPtr;
@@ -119,6 +123,7 @@ extern const u8 gText_WildLevelScaling[];
 extern const u8 gText_AutoSortBag[];
 extern const u8 gText_GameDifficulty[];
 extern const u8 gText_LevelScaling[];
+extern const u8 gText_TrainerAI[];
 
 static const u8 *const sOptionMenuItemsNames[MENUITEM_COUNT] =
 {
@@ -130,7 +135,7 @@ static const u8 *const sOptionMenuItemsNames[MENUITEM_COUNT] =
     [MENUITEM_FRAMETYPE]   = gText_Frame,
     [MENUITEM_CANCEL]      = gText_OptionMenuCancel,
 };
-static const u8 *const sOptionMenuItemsNames_SecondPage[MENUITEM_COUNT] =
+static const u8 *const sOptionMenuItemsNames_SecondPage[MENUITEM_PAGE2_COUNT] =
 {
     [MENUITEM_RBUTTONMODE] = gText_RButtonMode,
     [MENUITEM_BATTLEMUSIC] = gText_BattleMusic,
@@ -138,6 +143,7 @@ static const u8 *const sOptionMenuItemsNames_SecondPage[MENUITEM_COUNT] =
     [MENUITEM_AUTOSORTBAG] = gText_AutoSortBag,
 	[MENUITEM_GAME_DIFFICULTY] = gText_GameDifficulty,
     [MENUITEM_TRAINER_LEVEL_SCALING] = gText_LevelScaling,
+    [MENUITEM_TRAINER_AI_PROFILE] = gText_TrainerAI,
     [MENUITEM_CANCEL_PAGE_2] = gText_OptionMenuCancel,
 };
 
@@ -170,6 +176,8 @@ extern const u8 gText_Easy[];
 extern const u8 gText_Hard[];
 extern const u8 gText_Expert[];
 extern const u8 gText_AutoOption[];
+extern const u8 gText_VanillaOption[];
+extern const u8 gText_SmartOption[];
 
 static const u8 *const sTextSpeedOptions[] =
 {
@@ -240,9 +248,19 @@ static const u8 *const sTrainerLevelScalingOptions[] =
     gText_Hard,
     gText_Expert,
 };
+static const u8 *const sTrainerAIProfileOptions[] =
+{
+    gText_AutoOption,
+    gText_VanillaOption,
+    gText_Easy,
+    gText_Normal,
+    gText_Hard,
+    gText_Expert,
+    gText_SmartOption,
+};
 
 static const u16 sOptionMenuItemCounts[MENUITEM_COUNT] = {3, 2, 2, 2, 3, 10, 0};
-static const u16 sOptionMenuItemCounts_SecondPage[MENUITEM_PAGE2_COUNT] = {3, 2, 2, 4, 4, 6, 0};
+static const u16 sOptionMenuItemCounts_SecondPage[MENUITEM_PAGE2_COUNT] = {3, 2, 2, 4, 4, 6, 7, 0};
 
 static u16 TrainerLevelScalingRawToMenuSelection(u16 raw)
 {
@@ -252,10 +270,20 @@ static u16 TrainerLevelScalingRawToMenuSelection(u16 raw)
     return 0;
 }
 
+static u16 TrainerAIProfileRawToMenuSelection(u16 raw)
+{
+    if (raw <= TRAINER_AI_PROFILE_SMART_AI + 1)
+        return raw;
+
+    return 0;
+}
+
 static void MarkSecondPageOptionDirty(u16 selection)
 {
     if (selection == MENUITEM_TRAINER_LEVEL_SCALING)
         sOptionMenuPtr->trainerLevelScalingModeDirty = TRUE;
+    else if (selection == MENUITEM_TRAINER_AI_PROFILE)
+        sOptionMenuPtr->trainerAIProfileDirty = TRUE;
 }
 
 void CB2_OptionsMenuFromStartMenu(void)
@@ -283,6 +311,9 @@ void CB2_OptionsMenuFromStartMenu(void)
     sOptionMenuPtr->trainerLevelScalingModeOriginalRaw = VarGet(VAR_TRAINER_LEVEL_SCALING_MODE);
     sOptionMenuPtr->option_secondPage[MENUITEM_TRAINER_LEVEL_SCALING] =
         TrainerLevelScalingRawToMenuSelection(sOptionMenuPtr->trainerLevelScalingModeOriginalRaw);
+    sOptionMenuPtr->trainerAIProfileOriginalRaw = VarGet(VAR_TRAINER_AI_PROFILE);
+    sOptionMenuPtr->option_secondPage[MENUITEM_TRAINER_AI_PROFILE] =
+        TrainerAIProfileRawToMenuSelection(sOptionMenuPtr->trainerAIProfileOriginalRaw);
 
     
     for (i = 0; i < MENUITEM_COUNT - 1; i++)
@@ -383,6 +414,10 @@ void CloseAndSaveOptionMenu(u8 taskId)
         VarSet(VAR_TRAINER_LEVEL_SCALING_MODE, sOptionMenuPtr->option_secondPage[MENUITEM_TRAINER_LEVEL_SCALING]);
     else
         VarSet(VAR_TRAINER_LEVEL_SCALING_MODE, sOptionMenuPtr->trainerLevelScalingModeOriginalRaw);
+    if (sOptionMenuPtr->trainerAIProfileDirty)
+        VarSet(VAR_TRAINER_AI_PROFILE, sOptionMenuPtr->option_secondPage[MENUITEM_TRAINER_AI_PROFILE]);
+    else
+        VarSet(VAR_TRAINER_AI_PROFILE, sOptionMenuPtr->trainerAIProfileOriginalRaw);
     SetPokemonCryStereo(gSaveBlock2->optionsSound);
     FREE_AND_SET_NULL(sOptionMenuPtr);
     DestroyTask(taskId);
@@ -498,6 +533,9 @@ void BufferOptionMenuString(u8 selection)
                 break;
             case MENUITEM_TRAINER_LEVEL_SCALING:
                 AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sTrainerLevelScalingOptions[sOptionMenuPtr->option_secondPage[selection]]);
+                break;
+            case MENUITEM_TRAINER_AI_PROFILE:
+                AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sTrainerAIProfileOptions[sOptionMenuPtr->option_secondPage[selection]]);
                 break;
             default:
                 break;
