@@ -13,6 +13,10 @@
 u32 MathMax(u32 num1, u32 num2);
 u32 MathMin(u32 num1, u32 num2);
 u16 RandRange(u16 min, u16 max);
+enum DifficultyMode GetGameDifficultyMode(void);
+enum TrainerLevelScalingMode GetTrainerLevelScalingMode(void);
+enum TrainerAIProfile GetTrainerAIProfile(void);
+bool8 IsSmartTrainerAIEnabled(void);
 bool8 CheckTableForMove(move_t move, const u16 table[]);
 bool8 CheckTableForMovesEffect(move_t move, const u8 table[]);
 bool8 CheckTableForAbility(u8 ability, const u8 table[]);

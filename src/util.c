@@ -41,6 +41,128 @@ u16 RandRange(u16 min, u16 max)
 	return (Random() % (max - min)) + min;
 }
 
+enum DifficultyMode GetGameDifficultyMode(void)
+{
+	#ifdef VAR_GAME_DIFFICULTY
+	switch (VarGet(VAR_GAME_DIFFICULTY)) {
+		case OPTIONS_EASY_DIFFICULTY:
+			return DIFFICULTY_MODE_EASY;
+		case OPTIONS_HARD_DIFFICULTY:
+			return DIFFICULTY_MODE_HARD;
+		case OPTIONS_EXPERT_DIFFICULTY:
+			return DIFFICULTY_MODE_EXPERT;
+		case OPTIONS_NORMAL_DIFFICULTY:
+		default:
+			return DIFFICULTY_MODE_NORMAL;
+	}
+	#else
+	return DIFFICULTY_MODE_NORMAL;
+	#endif
+}
+
+static enum TrainerLevelScalingMode GetLegacyTrainerLevelScalingMode(void)
+{
+	switch (GetGameDifficultyMode()) {
+		case DIFFICULTY_MODE_EASY:
+			return TRAINER_LEVEL_SCALING_EASY;
+		case DIFFICULTY_MODE_HARD:
+			return TRAINER_LEVEL_SCALING_HARD;
+		case DIFFICULTY_MODE_EXPERT:
+			return TRAINER_LEVEL_SCALING_EXPERT;
+		case DIFFICULTY_MODE_NORMAL:
+		default:
+			return TRAINER_LEVEL_SCALING_NORMAL;
+	}
+}
+
+enum TrainerLevelScalingMode GetTrainerLevelScalingMode(void)
+{
+	#ifdef VAR_TRAINER_LEVEL_SCALING_MODE
+	switch (VarGet(VAR_TRAINER_LEVEL_SCALING_MODE)) {
+		case TRAINER_LEVEL_SCALING_OFF + 1:
+			return TRAINER_LEVEL_SCALING_OFF;
+		case TRAINER_LEVEL_SCALING_EASY + 1:
+			return TRAINER_LEVEL_SCALING_EASY;
+		case TRAINER_LEVEL_SCALING_NORMAL + 1:
+			return TRAINER_LEVEL_SCALING_NORMAL;
+		case TRAINER_LEVEL_SCALING_HARD + 1:
+			return TRAINER_LEVEL_SCALING_HARD;
+		case TRAINER_LEVEL_SCALING_EXPERT + 1:
+			return TRAINER_LEVEL_SCALING_EXPERT;
+		case 0:
+		default:
+			return GetLegacyTrainerLevelScalingMode();
+	}
+	#else
+	return GetLegacyTrainerLevelScalingMode();
+	#endif
+}
+
+static enum TrainerAIProfile GetLegacyTrainerAIProfile(void)
+{
+	switch (GetGameDifficultyMode()) {
+		case DIFFICULTY_MODE_EASY:
+			return TRAINER_AI_PROFILE_EASY;
+		case DIFFICULTY_MODE_HARD:
+			return TRAINER_AI_PROFILE_HARD;
+		case DIFFICULTY_MODE_EXPERT:
+			return TRAINER_AI_PROFILE_EXPERT;
+		case DIFFICULTY_MODE_NORMAL:
+		default:
+			return TRAINER_AI_PROFILE_NORMAL;
+	}
+}
+
+enum TrainerAIProfile GetTrainerAIProfile(void)
+{
+	#ifdef VAR_TRAINER_AI_PROFILE
+	switch (VarGet(VAR_TRAINER_AI_PROFILE)) {
+		case TRAINER_AI_PROFILE_VANILLA + 1:
+			return TRAINER_AI_PROFILE_VANILLA;
+		case TRAINER_AI_PROFILE_EASY + 1:
+			return TRAINER_AI_PROFILE_EASY;
+		case TRAINER_AI_PROFILE_NORMAL + 1:
+			return TRAINER_AI_PROFILE_NORMAL;
+		case TRAINER_AI_PROFILE_HARD + 1:
+			return TRAINER_AI_PROFILE_HARD;
+		case TRAINER_AI_PROFILE_EXPERT + 1:
+			return TRAINER_AI_PROFILE_EXPERT;
+		case TRAINER_AI_PROFILE_SMART_AI + 1:
+			return TRAINER_AI_PROFILE_SMART_AI;
+		case 0:
+		default:
+			return GetLegacyTrainerAIProfile();
+	}
+	#else
+	return GetLegacyTrainerAIProfile();
+	#endif
+}
+
+bool8 IsSmartTrainerAIEnabled(void)
+{
+	#ifdef VAR_TRAINER_AI_PROFILE
+	switch (VarGet(VAR_TRAINER_AI_PROFILE)) {
+		case TRAINER_AI_PROFILE_SMART_AI + 1:
+			return TRUE;
+		case TRAINER_AI_PROFILE_VANILLA + 1:
+		case TRAINER_AI_PROFILE_EASY + 1:
+		case TRAINER_AI_PROFILE_NORMAL + 1:
+		case TRAINER_AI_PROFILE_HARD + 1:
+		case TRAINER_AI_PROFILE_EXPERT + 1:
+			return FALSE;
+		case 0:
+		default:
+			break;
+	}
+	#endif
+
+	#ifdef FLAG_SMART_TRAINER_AI
+	return FlagGet(FLAG_SMART_TRAINER_AI);
+	#else
+	return FALSE;
+	#endif
+}
+
 bool8 CheckTableForMove(u16 move, const u16 table[])
 {
 	for (u32 i = 0; table[i] != MOVE_TABLES_TERMIN; ++i)
