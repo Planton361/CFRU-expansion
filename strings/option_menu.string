@@ -52,8 +52,17 @@ Game Difficulty
 #org @gText_LevelScaling
 Level Scaling
 
+#org @gText_TrainerAI
+Trainer AI
+
 #org @gText_AutoOption
 Auto
+
+#org @gText_VanillaOption
+Vanilla
+
+#org @gText_SmartOption
+Smart
 
 #org @gText_Normal
 Normal
