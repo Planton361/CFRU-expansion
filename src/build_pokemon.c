@@ -858,16 +858,14 @@ static u8 CreateNPCTrainerParty(struct Pokemon* const party, const u16 trainerId
 
 		//Get details for level scaling
 		#if (defined SCALED_TRAINERS && !defined DEBUG_NO_LEVEL_SCALING)
-		#ifdef VAR_GAME_DIFFICULTY
-		levelScaling = gameDifficulty != OPTIONS_EASY_DIFFICULTY //Don't scale Trainers on easy mode
+		enum TrainerLevelScalingMode trainerLevelScalingMode = GetTrainerLevelScalingMode();
+		levelScaling = trainerLevelScalingMode != TRAINER_LEVEL_SCALING_OFF
+				 && (trainerLevelScalingMode != TRAINER_LEVEL_SCALING_EASY //Don't scale Trainers on easy scaling mode
 					|| GetCurrentRegionMapSectionId() == MAPSEC_POKEMON_LEAGUE //Unless you're facing the final bosses
 					#ifdef UNBOUND
 					|| trainerId == 0x223 //Auburn Waterway Hiker needs to scale to confirm you're prepared to face the wild mons below
 					#endif
-					|| (!(gBattleTypeFlags & BATTLE_TYPE_TRAINER) && FlagGet(FLAG_SCALE_WILD_BOSS_LEVEL)); //Scale the partner up against a scaled wild boss
-		#else
-		levelScaling = TRUE;
-		#endif
+					|| (!(gBattleTypeFlags & BATTLE_TYPE_TRAINER) && FlagGet(FLAG_SCALE_WILD_BOSS_LEVEL))); //Scale the partner up against a scaled wild boss
 
 		minPartyLevel = MAX_LEVEL;
 		maxPartyLevel = 0;
@@ -1408,10 +1406,10 @@ static bool8 DoesTrainerBattleModeAllowMonEvolution(void)
 
 static bool8 IsPseudoBossTrainerPartyForLevelScaling(u8 trainerPartyFlags)
 {
-	#ifdef VAR_GAME_DIFFICULTY
-	if (VarGet(VAR_GAME_DIFFICULTY) == OPTIONS_EASY_DIFFICULTY)
-		return FALSE; //No pseudo bosses in easy mode
-	#endif
+	enum TrainerLevelScalingMode trainerLevelScalingMode = GetTrainerLevelScalingMode();
+	if (trainerLevelScalingMode == TRAINER_LEVEL_SCALING_OFF
+	||  trainerLevelScalingMode == TRAINER_LEVEL_SCALING_EASY)
+		return FALSE; //No pseudo bosses in off/easy scaling mode
 
 	//If the Trainer has custom moves, then they must be important
 	switch (trainerPartyFlags) {
@@ -1427,10 +1425,10 @@ static bool8 IsPseudoBossTrainerPartyForLevelScaling(u8 trainerPartyFlags)
 
 static bool8 IsBossTrainerClassForLevelScaling(u16 trainerId)
 {
-	#ifdef VAR_GAME_DIFFICULTY
-	if (VarGet(VAR_GAME_DIFFICULTY) == OPTIONS_EASY_DIFFICULTY)
-		return FALSE; //No bosses in easy mode
-	#endif
+	enum TrainerLevelScalingMode trainerLevelScalingMode = GetTrainerLevelScalingMode();
+	if (trainerLevelScalingMode == TRAINER_LEVEL_SCALING_OFF
+	||  trainerLevelScalingMode == TRAINER_LEVEL_SCALING_EASY)
+		return FALSE; //No bosses in off/easy scaling mode
 
 	switch (gTrainers[trainerId].trainerClass) {
 		case CLASS_LEADER:
@@ -1454,6 +1452,7 @@ static void ModifySpeciesAndLevelForGenericBattle(unusedArg u16* species, unused
 	#if (defined SCALED_TRAINERS && !defined  DEBUG_NO_LEVEL_SCALING)
 	u8 minEnemyLevel, startScalingAtLevel, prevStartScalingAtLevel, levelRange, newLevel, badgeCount, levelSubtractor;
 	bool8 levelChangedForEvolution = FALSE;
+	enum TrainerLevelScalingMode trainerLevelScalingMode = GetTrainerLevelScalingMode();
 
 	badgeCount = GetOpenWorldBadgeCount();
 	minEnemyLevel = sLevelScales[badgeCount].minLevel;
@@ -1463,17 +1462,14 @@ static void ModifySpeciesAndLevelForGenericBattle(unusedArg u16* species, unused
 	newLevel = minEnemyLevel + levelRange;
 	
 	if (IsPseudoBossTrainerPartyForLevelScaling(trainerPartyFlags)
-	#ifdef VAR_GAME_DIFFICULTY //Scale partners well in wild boss battles on easy
-	|| (VarGet(VAR_GAME_DIFFICULTY) == OPTIONS_EASY_DIFFICULTY && (!(gBattleTypeFlags & BATTLE_TYPE_TRAINER) && FlagGet(FLAG_SCALE_WILD_BOSS_LEVEL)))
-	#endif
+	|| (trainerLevelScalingMode == TRAINER_LEVEL_SCALING_EASY && (!(gBattleTypeFlags & BATTLE_TYPE_TRAINER) && FlagGet(FLAG_SCALE_WILD_BOSS_LEVEL))) //Scale partners well in wild boss battles on easy scaling mode
 	)
 	{
 		levelSubtractor = 0; //Allow pseudo bosses to be closer to the player's average level (and maybe even surpass their max)
 	}
 	else
 	{
-		#ifdef VAR_GAME_DIFFICULTY
-		if  (VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY)
+		if  (trainerLevelScalingMode >= TRAINER_LEVEL_SCALING_EXPERT)
 			levelSubtractor = 2; //In the hardest mode, Trainers scale closer to your average level
 		else
 		{
@@ -1499,10 +1495,6 @@ static void ModifySpeciesAndLevelForGenericBattle(unusedArg u16* species, unused
 					break;
 			}
 		}
-
-		#else
-		levelSubtractor = 6;
-		#endif
 	}
 
 	if (newLevel > *level) //Trainer is weaker than they should be based on badge count
@@ -1513,9 +1505,7 @@ static void ModifySpeciesAndLevelForGenericBattle(unusedArg u16* species, unused
 
 	if (highestPlayerTeamLevel >= startScalingAtLevel //Strongest is stronger than Gym Leader would be normally
 	|| IsPseudoBossTrainerPartyForLevelScaling(trainerPartyFlags) //Fighting a pseudo boss on Difficult
-	#ifdef VAR_GAME_DIFFICULTY
-	|| VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_HARD_DIFFICULTY //Or the game is on on a harder setting
-	#endif
+	|| trainerLevelScalingMode >= TRAINER_LEVEL_SCALING_HARD //Or trainer level scaling is on a harder setting
 	)
 	{
 		//So scale normal enemies based on the average team level
@@ -1529,9 +1519,7 @@ static void ModifySpeciesAndLevelForGenericBattle(unusedArg u16* species, unused
 		{
 			*level = newLevel;
 			if (IsPseudoBossTrainerPartyForLevelScaling(trainerPartyFlags)
-			#ifdef VAR_GAME_DIFFICULTY
-			|| VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY //Or the game is on on a harder setting
-			#endif
+			|| trainerLevelScalingMode >= TRAINER_LEVEL_SCALING_EXPERT //Or trainer level scaling is on its hardest setting
 			)
 				levelChangedForEvolution = TRUE; //Always evolve Pseudobosses or regular trainers on Insane
 		}
