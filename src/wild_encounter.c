@@ -1504,7 +1504,7 @@ static void CreateScriptedWildMon(u16 species, u8 level, u16 item, u16* moves, b
 		u8 ppBonus = 0;
 
 		#ifdef VAR_GAME_DIFFICULTY
-		if (VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY)
+		if (GetGameDifficultyMode() >= DIFFICULTY_MODE_EXPERT)
 			ppBonus = 0xFF; //Max PP on all moves
 		#endif
 
@@ -1543,7 +1543,7 @@ static void CreateScriptedWildMon(u16 species, u8 level, u16 item, u16* moves, b
 		SetMonData(&gEnemyParty[index], MON_DATA_PERSONALITY, &shadowWarriorPersonalities[Random() & 1]); //Randomly set one of the above natures
 		SetMonData(&gEnemyParty[index], MON_DATA_OT_ID, &shadowWarriorOtId);
 
-		if (VarGet(VAR_GAME_DIFFICULTY) == OPTIONS_EXPERT_DIFFICULTY)
+		if (GetGameDifficultyMode() == DIFFICULTY_MODE_EXPERT)
 			gEnemyParty[index].hiddenAbility = TRUE; //Give it Wonder Guard
 	}
 	#endif

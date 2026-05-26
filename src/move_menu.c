@@ -1873,7 +1873,7 @@ u8 TrySetCantSelectMoveBattleScript(void)
 	}
 	#ifdef VAR_GAME_DIFFICULTY
 	else if (!isAnyMaxMove && (gBattleMoves[move].effect == EFFECT_MINIMIZE || gBattleMoves[move].effect == EFFECT_EVASION_UP_2)
-	&& VarGet(VAR_GAME_DIFFICULTY) >= OPTIONS_EXPERT_DIFFICULTY && !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER) && IsPlayerInControl(gActiveBattler)) //AI can still use Minimize
+	&& GetGameDifficultyMode() >= DIFFICULTY_MODE_EXPERT && !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER) && IsPlayerInControl(gActiveBattler)) //AI can still use Minimize
 	{
 		gSelectionBattleScripts[gActiveBattler] = BattleScript_SelectingNotAllowedMinimize;
 		++limitations;
@@ -2235,7 +2235,7 @@ bool8 IsBagDisabled(void)
 {
 	#ifdef VAR_GAME_DIFFICULTY
 	u8 itemRestrictions = 0;
-	u8 difficulty = VarGet(VAR_GAME_DIFFICULTY);
+	enum DifficultyMode difficulty = GetGameDifficultyMode();
 
 	#ifdef VAR_ITEM_RESTRICTIONS
 	itemRestrictions = VarGet(VAR_ITEM_RESTRICTIONS);
@@ -2251,19 +2251,19 @@ bool8 IsBagDisabled(void)
 			return TRUE;
 
 		//Determine based on difficulty set restrictions
-		if (difficulty == OPTIONS_HARD_DIFFICULTY)
+		if (difficulty == DIFFICULTY_MODE_HARD)
 		{
 			if (gNewBS->playerItemUsedCount >= 4) //Max four items can be used
 				return TRUE;
 		}
-		else if (difficulty >= OPTIONS_EXPERT_DIFFICULTY) //No items in battles for Insane players
+		else if (difficulty >= DIFFICULTY_MODE_EXPERT) //No items in battles for Insane players
 			return TRUE;
 	}
 	else
 	{
 		if (!IsRaidBattle()
 		&& CantCatchBecauseFlag() //Can't be caught
-		&& (difficulty >= OPTIONS_EXPERT_DIFFICULTY //No items in battles for Insane players
+		&& (difficulty >= DIFFICULTY_MODE_EXPERT //No items in battles for Insane players
 		 || itemRestrictions >= OPTIONS_ITEM_RESTRICTIONS_NO_ITEMS))
 			return TRUE;
 	}

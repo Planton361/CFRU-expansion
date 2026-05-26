@@ -510,7 +510,7 @@ static u32 AccuracyCalcPassDefAbilityItemEffect(u16 move, u8 bankAtk, u8 bankDef
 			if (!BypassesFog(atkAbility, atkEffect))
 			{
 				#ifdef VAR_GAME_DIFFICULTY
-				if (VarGet(VAR_GAME_DIFFICULTY) == OPTIONS_EASY_DIFFICULTY
+				if (GetGameDifficultyMode() == DIFFICULTY_MODE_EASY
 				&& !FlagGet(FLAG_SYS_GAME_CLEAR)
 				&& !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER))
 					calc = (calc * 8) / 10; // 0.8 Fog loss
@@ -621,7 +621,7 @@ u32 VisualAccuracyCalc_NoTarget(u16 move, u8 bankAtk)
 		if (!BypassesFog(atkAbility, atkEffect))
 		{
 			#ifdef VAR_GAME_DIFFICULTY
-			if (VarGet(VAR_GAME_DIFFICULTY) == OPTIONS_EASY_DIFFICULTY
+			if (GetGameDifficultyMode() == DIFFICULTY_MODE_EASY
 			&& !FlagGet(FLAG_SYS_GAME_CLEAR)
 			&& !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER))
 				calc = (calc * 8) / 10; // 0.8 Fog loss
