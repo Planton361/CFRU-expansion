@@ -166,10 +166,6 @@ u32 GetAIFlags(void)
 {
 	u32 flags;
 
-	#ifdef VAR_GAME_DIFFICULTY
-	enum DifficultyMode difficulty = GetGameDifficultyMode();
-	#endif
-
 	if (gBattleTypeFlags & BATTLE_TYPE_SAFARI)
 		flags = AI_SCRIPT_SAFARI;
 	else if (gBattleTypeFlags & BATTLE_TYPE_ROAMER)
@@ -222,7 +218,7 @@ u32 GetAIFlags(void)
 			}
 		}
 		#ifdef VAR_GAME_DIFFICULTY
-		else if (difficulty == DIFFICULTY_MODE_EXPERT)
+		else if (IsGameDifficultyExpert())
 			flags = AI_SCRIPT_CHECK_BAD_MOVE | WildMonIsSmart(gActiveBattler); //Even Wild Pokemon are moderately smart in expert mode
 		#endif
 
@@ -1068,7 +1064,7 @@ u32 WildMonIsSmart(u8 bank)
 		return AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_SEMI_SMART;
 
 	#ifdef VAR_GAME_DIFFICULTY
-	if (GetGameDifficultyMode() >= DIFFICULTY_MODE_HARD
+	if (IsGameDifficultyHardOrHigher()
 	&& gSpecialSpeciesFlags[species].smartWild)
 		return AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_SEMI_SMART;
 	#endif
@@ -1627,7 +1623,7 @@ static bool8 ShouldPredictRandomPlayerSwitch(u8 playerBank)
 	&& (gBattleTypeFlags & BATTLE_TYPE_FRONTIER //In Frontier battles
 	 || ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
 		? GetTrainerAIProfile() >= TRAINER_AI_PROFILE_HARD
-		: GetGameDifficultyMode() >= DIFFICULTY_MODE_HARD)) //Or only on harder AI profiles/game modes
+		: IsGameDifficultyHardOrHigher())) //Or only on harder AI profiles/game modes
 		#ifdef UNBOUND
 		&& AI_THINKING_STRUCT->aiFlags & AI_SCRIPT_CHECK_GOOD_MOVE
 		&& AIRandom() % 100 < GetChanceOfPredictingPlayerNormalSwitch()
@@ -1643,7 +1639,7 @@ static u8 IsPlayerTryingToCheeseAI(unusedArg u8 playerBank, unusedArg u8 aiBank)
 		if (!(gBattleTypeFlags & BATTLE_TYPE_FRONTIER) //Not fair in Frontier where player doesn't know opponent's lead
 		&& ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
 			? GetTrainerAIProfile() >= TRAINER_AI_PROFILE_EXPERT
-			: GetGameDifficultyMode() >= DIFFICULTY_MODE_EXPERT) //Only on hardest AI profile/game mode
+			: IsGameDifficultyExpert()) //Only on hardest AI profile/game mode
 		&& (IsPlayerTryingToCheeseWithRepeatedSwitches(playerBank)
 		|| IsPlayerTryingToCheeseChoiceLockFirstTurn(aiBank)))
 			return CHEESING;
@@ -1738,7 +1734,7 @@ void TryChangeMoveTargetToCounterPlayerProtectCheese(void)
 	&& !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER) //Unfair in Frontier battles
 	&& ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
 		? GetTrainerAIProfile() >= TRAINER_AI_PROFILE_EXPERT
-		: GetGameDifficultyMode() >= DIFFICULTY_MODE_EXPERT) //On hardest AI profile/game mode
+		: IsGameDifficultyExpert()) //On hardest AI profile/game mode
 	&& AI_THINKING_STRUCT->aiFlags & AI_SCRIPT_CHECK_GOOD_MOVE //Only very smart Trainers
 	&& SIDE(gBankAttacker) == B_SIDE_OPPONENT //Fake Out user is AI
 	&& IsPlayerInControl(playerBank) //Protect user is player
@@ -1767,7 +1763,7 @@ void PickRaidBossRepeatedMove(u8 moveLimitations)
 
 	if (AI_THINKING_STRUCT->aiFlags > AI_SCRIPT_CHECK_BAD_MOVE //Has smart AI
 	#ifdef VAR_GAME_DIFFICULTY
-	&& GetGameDifficultyMode() != DIFFICULTY_MODE_EASY //And the player doesn't want a challenge
+	&& IsGameDifficultyNormalOrHigher() //And the player wants Normal-or-harder raid pressure
 	#endif
 	)
 	{

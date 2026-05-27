@@ -2429,7 +2429,7 @@ void PopulateDamageCalcStructWithBaseDefenderData(struct DamageCalc* data)
 		#ifdef VAR_GAME_DIFFICULTY
 		 || ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
 			? GetTrainerAIProfile() < TRAINER_AI_PROFILE_EXPERT
-			: GetGameDifficultyMode() < DIFFICULTY_MODE_EXPERT)
+			: !IsGameDifficultyExpert())
 		#endif
 		))
 		{

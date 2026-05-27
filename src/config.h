@@ -376,7 +376,7 @@ enum //These vars need to be one after the other (hence the enum)
 //#define SKIP_INTRO_CONTROLS_GUIDE //Uncomment this line to remove the intro constrols guide.
 #define FLAG_SPAWN_INVISIBLE 0xA0A //This feature allows us to spawn the player object as invisible after a warp, which can be useful for cutscenes, etc. Note that the camera will still be centered on the player.
 #define FLAG_PORTABLE_PC 0xA0B //Flag to Enable/Disable Pocket PC.
-#define VAR_GAME_DIFFICULTY 0x5157 //Var to store the game difficulty level. If 0 difficulty is normal(vanilla), if 1 its easy, if 2 its Hard, if 3 its Expert. ShouldGiveTrainerMonMaxFriendship and ShouldGiveTrainerMonMaxEVs need to be set at your choice in build_pokemon.c
+#define VAR_GAME_DIFFICULTY 0x5157 //Var to store the game difficulty level. Raw 0 is legacy Normal, 1 Easy, 2 Hard, 3 Expert, 4 Vanilla.
 #define VAR_TRAINER_LEVEL_SCALING_MODE 0x515A //0 is legacy/unset. Explicit values are stored as enum TrainerLevelScalingMode + 1.
 #define VAR_TRAINER_AI_PROFILE 0x515B //0 is legacy/unset. Explicit values are stored as enum TrainerAIProfile + 1.
 #define SCALED_TRAINERS //Compile the runtime trainer level scaling path used by VAR_TRAINER_LEVEL_SCALING_MODE.

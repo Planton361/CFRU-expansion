@@ -458,6 +458,7 @@ extern const u8 gText_Normal[];
 extern const u8 gText_Easy[];
 extern const u8 gText_Hard[];
 extern const u8 gText_Expert[];
+extern const u8 gText_VanillaOption[];
 
 static const u8 sTextColors[][4] = {
     { 0, 1, 2 },
@@ -477,6 +478,9 @@ void HallOfFame_PrintWelcomeText(unusedArg u8 not, unusedArg u8 used)
 		switch (GetGameDifficultyMode()) {
 			case DIFFICULTY_MODE_EASY:
 				difficultyText = gText_Easy;
+				break;
+			case DIFFICULTY_MODE_VANILLA:
+				difficultyText = gText_VanillaOption;
 				break;
 			case DIFFICULTY_MODE_NORMAL:
 				difficultyText = gText_Normal;

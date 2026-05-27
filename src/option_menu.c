@@ -57,6 +57,8 @@ void CloseAndSaveOptionMenu(u8 taskId);
 u8 OptionMenu_ProcessInput(void);
 void BufferOptionMenuString(u8 selection);
 void OptionMenu_PickSwitchCancel(void);
+static u16 DifficultyRawToMenuSelection(u16 raw);
+static u16 DifficultyMenuSelectionToRaw(u16 selection);
 static u16 TrainerLevelScalingRawToMenuSelection(u16 raw);
 static u16 TrainerAIProfileRawToMenuSelection(u16 raw);
 static void MarkThirdPageOptionDirty(u16 selection);
@@ -245,8 +247,9 @@ static const u8 *const sAutoSortBagOptions[] =
 };
 static const u8 *const sGameDifficultyOptions[] =
 {
-	gText_Normal,
-	gText_Easy,
+    gText_VanillaOption,
+    gText_Easy,
+    gText_Normal,
 	gText_Hard,
 	gText_Expert,
 };
@@ -271,8 +274,42 @@ static const u8 *const sTrainerAIProfileOptions[] =
 };
 
 static const u16 sOptionMenuItemCounts[MENUITEM_COUNT] = {3, 2, 2, 2, 3, 10, 0};
-static const u16 sOptionMenuItemCounts_SecondPage[MENUITEM_PAGE2_COUNT] = {3, 2, 2, 4, 4, 0};
+static const u16 sOptionMenuItemCounts_SecondPage[MENUITEM_PAGE2_COUNT] = {3, 2, 2, 4, 5, 0};
 static const u16 sOptionMenuItemCounts_ThirdPage[MENUITEM_PAGE3_COUNT] = {6, 7, 0};
+
+static u16 DifficultyRawToMenuSelection(u16 raw)
+{
+    switch (raw) {
+        case OPTIONS_VANILLA_DIFFICULTY:
+            return 0;
+        case OPTIONS_EASY_DIFFICULTY:
+            return 1;
+        case OPTIONS_HARD_DIFFICULTY:
+            return 3;
+        case OPTIONS_EXPERT_DIFFICULTY:
+            return 4;
+        case OPTIONS_NORMAL_DIFFICULTY:
+        default:
+            return 2;
+    }
+}
+
+static u16 DifficultyMenuSelectionToRaw(u16 selection)
+{
+    switch (selection) {
+        case 0:
+            return OPTIONS_VANILLA_DIFFICULTY;
+        case 1:
+            return OPTIONS_EASY_DIFFICULTY;
+        case 3:
+            return OPTIONS_HARD_DIFFICULTY;
+        case 4:
+            return OPTIONS_EXPERT_DIFFICULTY;
+        case 2:
+        default:
+            return OPTIONS_NORMAL_DIFFICULTY;
+    }
+}
 
 static u16 TrainerLevelScalingRawToMenuSelection(u16 raw)
 {
@@ -319,7 +356,8 @@ void CB2_OptionsMenuFromStartMenu(void)
     sOptionMenuPtr->option_secondPage[MENUITEM_BATTLEMUSIC] = VarGet(VAR_BATTLE_MUSIC);
     sOptionMenuPtr->option_secondPage[MENUITEM_WILDLEVELSCALING] = VarGet(VAR_WILD_LEVEL_SCALING);
     sOptionMenuPtr->option_secondPage[MENUITEM_AUTOSORTBAG] = VarGet(VAR_AUTO_SORT_BAG);
-    sOptionMenuPtr->option_secondPage[MENUITEM_GAME_DIFFICULTY] = VarGet(VAR_GAME_DIFFICULTY);
+    sOptionMenuPtr->option_secondPage[MENUITEM_GAME_DIFFICULTY] =
+        DifficultyRawToMenuSelection(VarGet(VAR_GAME_DIFFICULTY));
     sOptionMenuPtr->trainerLevelScalingModeOriginalRaw = VarGet(VAR_TRAINER_LEVEL_SCALING_MODE);
     sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_LEVEL_SCALING] =
         TrainerLevelScalingRawToMenuSelection(sOptionMenuPtr->trainerLevelScalingModeOriginalRaw);
@@ -430,7 +468,7 @@ void CloseAndSaveOptionMenu(u8 taskId)
     VarSet(VAR_BATTLE_MUSIC, sOptionMenuPtr->option_secondPage[MENUITEM_BATTLEMUSIC]);
     VarSet(VAR_WILD_LEVEL_SCALING, sOptionMenuPtr->option_secondPage[MENUITEM_WILDLEVELSCALING]);
     VarSet(VAR_AUTO_SORT_BAG, sOptionMenuPtr->option_secondPage[MENUITEM_AUTOSORTBAG]);
-    VarSet(VAR_GAME_DIFFICULTY, sOptionMenuPtr->option_secondPage[MENUITEM_GAME_DIFFICULTY]);
+    VarSet(VAR_GAME_DIFFICULTY, DifficultyMenuSelectionToRaw(sOptionMenuPtr->option_secondPage[MENUITEM_GAME_DIFFICULTY]));
     if (sOptionMenuPtr->trainerLevelScalingModeDirty)
         VarSet(VAR_TRAINER_LEVEL_SCALING_MODE, sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_LEVEL_SCALING]);
     else
