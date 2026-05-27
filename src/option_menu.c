@@ -61,7 +61,9 @@ static u16 DifficultyRawToMenuSelection(u16 raw);
 static u16 DifficultyMenuSelectionToRaw(u16 selection);
 static u16 TrainerLevelScalingRawToMenuSelection(u16 raw);
 static u16 TrainerAIProfileRawToMenuSelection(u16 raw);
+static u16 HardLevelCapRawToMenuSelection(u16 raw);
 static void MarkThirdPageOptionDirty(u16 selection);
+static void ApplyHardLevelCapMode(u16 raw);
 
 // Menu items
 enum
@@ -91,6 +93,7 @@ enum
 {
     MENUITEM_TRAINER_LEVEL_SCALING = 0,
     MENUITEM_TRAINER_AI_PROFILE,
+    MENUITEM_HARD_LEVEL_CAP,
     MENUITEM_CANCEL_PAGE_3,
     MENUITEM_PAGE3_COUNT,
 };
@@ -114,8 +117,10 @@ struct OptionMenu
     /*0x??*/ u16 option_thirdPage[MENUITEM_PAGE3_COUNT];
     /*0x??*/ u16 trainerLevelScalingModeOriginalRaw;
     /*0x??*/ u16 trainerAIProfileOriginalRaw;
+    /*0x??*/ u16 hardLevelCapModeOriginalRaw;
     /*0x??*/ bool8 trainerLevelScalingModeDirty;
     /*0x??*/ bool8 trainerAIProfileDirty;
+    /*0x??*/ bool8 hardLevelCapModeDirty;
 };
 
 extern struct OptionMenu *sOptionMenuPtr;
@@ -133,6 +138,7 @@ extern const u8 gText_AutoSortBag[];
 extern const u8 gText_GameDifficulty[];
 extern const u8 gText_LevelScaling[];
 extern const u8 gText_TrainerAI[];
+extern const u8 gText_HardCap[];
 
 static const u8 *const sOptionMenuItemsNames[MENUITEM_COUNT] =
 {
@@ -157,6 +163,7 @@ static const u8 *const sOptionMenuItemsNames_ThirdPage[MENUITEM_PAGE3_COUNT] =
 {
     [MENUITEM_TRAINER_LEVEL_SCALING] = gText_LevelScaling,
     [MENUITEM_TRAINER_AI_PROFILE] = gText_TrainerAI,
+    [MENUITEM_HARD_LEVEL_CAP] = gText_HardCap,
     [MENUITEM_CANCEL_PAGE_3] = gText_OptionMenuCancel,
 };
 
@@ -272,10 +279,16 @@ static const u8 *const sTrainerAIProfileOptions[] =
     gText_Expert,
     gText_SmartOption,
 };
+static const u8 *const sHardLevelCapOptions[] =
+{
+    gText_AutoOption,
+    gText_OffOption,
+    gText_OnOption,
+};
 
 static const u16 sOptionMenuItemCounts[MENUITEM_COUNT] = {3, 2, 2, 2, 3, 10, 0};
 static const u16 sOptionMenuItemCounts_SecondPage[MENUITEM_PAGE2_COUNT] = {3, 2, 2, 4, 5, 0};
-static const u16 sOptionMenuItemCounts_ThirdPage[MENUITEM_PAGE3_COUNT] = {6, 7, 0};
+static const u16 sOptionMenuItemCounts_ThirdPage[MENUITEM_PAGE3_COUNT] = {6, 7, 3, 0};
 
 static u16 DifficultyRawToMenuSelection(u16 raw)
 {
@@ -327,12 +340,32 @@ static u16 TrainerAIProfileRawToMenuSelection(u16 raw)
     return 0;
 }
 
+static u16 HardLevelCapRawToMenuSelection(u16 raw)
+{
+    if (raw <= 2)
+        return raw;
+
+    return 0;
+}
+
 static void MarkThirdPageOptionDirty(u16 selection)
 {
     if (selection == MENUITEM_TRAINER_LEVEL_SCALING)
         sOptionMenuPtr->trainerLevelScalingModeDirty = TRUE;
     else if (selection == MENUITEM_TRAINER_AI_PROFILE)
         sOptionMenuPtr->trainerAIProfileDirty = TRUE;
+    else if (selection == MENUITEM_HARD_LEVEL_CAP)
+        sOptionMenuPtr->hardLevelCapModeDirty = TRUE;
+}
+
+static void ApplyHardLevelCapMode(u16 raw)
+{
+    #ifdef FLAG_HARD_LEVEL_CAP
+    if (raw == 1)
+        FlagClear(FLAG_HARD_LEVEL_CAP);
+    else if (raw == 2)
+        FlagSet(FLAG_HARD_LEVEL_CAP);
+    #endif
 }
 
 void CB2_OptionsMenuFromStartMenu(void)
@@ -364,6 +397,9 @@ void CB2_OptionsMenuFromStartMenu(void)
     sOptionMenuPtr->trainerAIProfileOriginalRaw = VarGet(VAR_TRAINER_AI_PROFILE);
     sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_AI_PROFILE] =
         TrainerAIProfileRawToMenuSelection(sOptionMenuPtr->trainerAIProfileOriginalRaw);
+    sOptionMenuPtr->hardLevelCapModeOriginalRaw = VarGet(VAR_HARD_LEVEL_CAP_MODE);
+    sOptionMenuPtr->option_thirdPage[MENUITEM_HARD_LEVEL_CAP] =
+        HardLevelCapRawToMenuSelection(sOptionMenuPtr->hardLevelCapModeOriginalRaw);
 
     
     for (i = 0; i < MENUITEM_COUNT - 1; i++)
@@ -477,6 +513,16 @@ void CloseAndSaveOptionMenu(u8 taskId)
         VarSet(VAR_TRAINER_AI_PROFILE, sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_AI_PROFILE]);
     else
         VarSet(VAR_TRAINER_AI_PROFILE, sOptionMenuPtr->trainerAIProfileOriginalRaw);
+    if (sOptionMenuPtr->hardLevelCapModeDirty)
+    {
+        VarSet(VAR_HARD_LEVEL_CAP_MODE, sOptionMenuPtr->option_thirdPage[MENUITEM_HARD_LEVEL_CAP]);
+        ApplyHardLevelCapMode(sOptionMenuPtr->option_thirdPage[MENUITEM_HARD_LEVEL_CAP]);
+    }
+    else
+    {
+        VarSet(VAR_HARD_LEVEL_CAP_MODE, sOptionMenuPtr->hardLevelCapModeOriginalRaw);
+        ApplyHardLevelCapMode(sOptionMenuPtr->hardLevelCapModeOriginalRaw);
+    }
     SetPokemonCryStereo(gSaveBlock2->optionsSound);
     FREE_AND_SET_NULL(sOptionMenuPtr);
     DestroyTask(taskId);
@@ -603,6 +649,9 @@ void BufferOptionMenuString(u8 selection)
                 break;
             case MENUITEM_TRAINER_AI_PROFILE:
                 AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sTrainerAIProfileOptions[sOptionMenuPtr->option_thirdPage[selection]]);
+                break;
+            case MENUITEM_HARD_LEVEL_CAP:
+                AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sHardLevelCapOptions[sOptionMenuPtr->option_thirdPage[selection]]);
                 break;
             default:
                 break;

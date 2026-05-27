@@ -379,6 +379,7 @@ enum //These vars need to be one after the other (hence the enum)
 #define VAR_GAME_DIFFICULTY 0x5157 //Var to store the game difficulty level. Raw 0 is legacy Normal, 1 Easy, 2 Hard, 3 Expert, 4 Vanilla.
 #define VAR_TRAINER_LEVEL_SCALING_MODE 0x515A //0 is legacy/unset. Explicit values are stored as enum TrainerLevelScalingMode + 1.
 #define VAR_TRAINER_AI_PROFILE 0x515B //0 is legacy/unset. Explicit values are stored as enum TrainerAIProfile + 1.
+#define VAR_HARD_LEVEL_CAP_MODE 0x515C //0 is legacy/script-owned Auto, 1 explicit Off, 2 explicit On.
 #define SCALED_TRAINERS //Compile the runtime trainer level scaling path used by VAR_TRAINER_LEVEL_SCALING_MODE.
 #define CRY_SPECIES SPECIES_CHARIZARD //The species that will be used for the cry in the titlescreen. Currently its 0x6 (Charizard).
 #define OAK_INTRO_SPECIES SPECIES_NIDORAN_F //The species that appears in Oak's intro(New Game).
