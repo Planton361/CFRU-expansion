@@ -510,13 +510,18 @@ static u32 AccuracyCalcPassDefAbilityItemEffect(u16 move, u8 bankAtk, u8 bankDef
 			if (!BypassesFog(atkAbility, atkEffect))
 			{
 				#ifdef VAR_GAME_DIFFICULTY
-				if (GetGameDifficultyMode() == DIFFICULTY_MODE_EASY
-				&& !FlagGet(FLAG_SYS_GAME_CLEAR)
-				&& !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER))
-					calc = (calc * 8) / 10; // 0.8 Fog loss
-				else
+				if (!IsGameDifficultyVanilla())
+				{
+					if (GetGameDifficultyMode() == DIFFICULTY_MODE_EASY
+					&& !FlagGet(FLAG_SYS_GAME_CLEAR)
+					&& !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER))
+						calc = (calc * 8) / 10; // 0.8 Fog loss
+					else
+						calc = (calc * 6) / 10; // 0.6 Fog loss
+				}
+				#else
+				calc = (calc * 6) / 10; // 0.6 Fog loss
 				#endif
-					calc = (calc * 6) / 10; // 0.6 Fog loss
 			}
 		}
 	}
@@ -621,13 +626,18 @@ u32 VisualAccuracyCalc_NoTarget(u16 move, u8 bankAtk)
 		if (!BypassesFog(atkAbility, atkEffect))
 		{
 			#ifdef VAR_GAME_DIFFICULTY
-			if (GetGameDifficultyMode() == DIFFICULTY_MODE_EASY
-			&& !FlagGet(FLAG_SYS_GAME_CLEAR)
-			&& !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER))
-				calc = (calc * 8) / 10; // 0.8 Fog loss
-			else
+			if (!IsGameDifficultyVanilla())
+			{
+				if (GetGameDifficultyMode() == DIFFICULTY_MODE_EASY
+				&& !FlagGet(FLAG_SYS_GAME_CLEAR)
+				&& !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER))
+					calc = (calc * 8) / 10; // 0.8 Fog loss
+				else
+					calc = (calc * 6) / 10; // 0.6 Fog loss
+			}
+			#else
+			calc = (calc * 6) / 10; // 0.6 Fog loss
 			#endif
-				calc = (calc * 6) / 10; // 0.6 Fog loss
 		}
 	}
 

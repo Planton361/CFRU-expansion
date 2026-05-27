@@ -2024,6 +2024,7 @@ u32 GetBadThoughtsDamage(u8 bank)
 		{
 			#ifdef VAR_GAME_DIFFICULTY
 			switch (GetGameDifficultyMode()) {
+				case DIFFICULTY_MODE_VANILLA:
 				case DIFFICULTY_MODE_EASY:
 				case DIFFICULTY_MODE_NORMAL:
 					divisor = 16; //1/16 of HP

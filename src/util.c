@@ -45,6 +45,8 @@ enum DifficultyMode GetGameDifficultyMode(void)
 {
 	#ifdef VAR_GAME_DIFFICULTY
 	switch (VarGet(VAR_GAME_DIFFICULTY)) {
+		case OPTIONS_VANILLA_DIFFICULTY:
+			return DIFFICULTY_MODE_VANILLA;
 		case OPTIONS_EASY_DIFFICULTY:
 			return DIFFICULTY_MODE_EASY;
 		case OPTIONS_HARD_DIFFICULTY:
@@ -60,6 +62,39 @@ enum DifficultyMode GetGameDifficultyMode(void)
 	#endif
 }
 
+bool8 IsGameDifficultyVanilla(void)
+{
+	return GetGameDifficultyMode() == DIFFICULTY_MODE_VANILLA;
+}
+
+bool8 IsGameDifficultyNormalOrHigher(void)
+{
+	switch (GetGameDifficultyMode()) {
+		case DIFFICULTY_MODE_NORMAL:
+		case DIFFICULTY_MODE_HARD:
+		case DIFFICULTY_MODE_EXPERT:
+			return TRUE;
+		default:
+			return FALSE;
+	}
+}
+
+bool8 IsGameDifficultyHardOrHigher(void)
+{
+	switch (GetGameDifficultyMode()) {
+		case DIFFICULTY_MODE_HARD:
+		case DIFFICULTY_MODE_EXPERT:
+			return TRUE;
+		default:
+			return FALSE;
+	}
+}
+
+bool8 IsGameDifficultyExpert(void)
+{
+	return GetGameDifficultyMode() == DIFFICULTY_MODE_EXPERT;
+}
+
 static enum TrainerLevelScalingMode GetLegacyTrainerLevelScalingMode(void)
 {
 	switch (GetGameDifficultyMode()) {
@@ -69,6 +104,7 @@ static enum TrainerLevelScalingMode GetLegacyTrainerLevelScalingMode(void)
 			return TRAINER_LEVEL_SCALING_HARD;
 		case DIFFICULTY_MODE_EXPERT:
 			return TRAINER_LEVEL_SCALING_EXPERT;
+		case DIFFICULTY_MODE_VANILLA:
 		case DIFFICULTY_MODE_NORMAL:
 		default:
 			return TRAINER_LEVEL_SCALING_NORMAL;
@@ -107,6 +143,7 @@ static enum TrainerAIProfile GetLegacyTrainerAIProfile(void)
 			return TRAINER_AI_PROFILE_HARD;
 		case DIFFICULTY_MODE_EXPERT:
 			return TRAINER_AI_PROFILE_EXPERT;
+		case DIFFICULTY_MODE_VANILLA:
 		case DIFFICULTY_MODE_NORMAL:
 		default:
 			return TRAINER_AI_PROFILE_NORMAL;

@@ -35,16 +35,12 @@ void OpponentHandleChooseMove(void)
 	u8 chosenMovePos;
 	struct ChooseMoveStruct* moveInfo = (struct ChooseMoveStruct*)(&gBattleBufferA[gActiveBattler][4]);
 
-	#ifdef VAR_GAME_DIFFICULTY
-	enum DifficultyMode difficulty = GetGameDifficultyMode();
-	#endif
-
 	if ((gBattleTypeFlags & (BATTLE_TYPE_TRAINER | BATTLE_TYPE_OAK_TUTORIAL | BATTLE_TYPE_SAFARI | BATTLE_TYPE_ROAMER))
 	#ifdef FLAG_SMART_WILD
 	||  FlagGet(FLAG_SMART_WILD)
 	#endif
 	#ifdef VAR_GAME_DIFFICULTY //Wild Pokemon are smart in expert mode
-	||  difficulty == DIFFICULTY_MODE_EXPERT
+	||  IsGameDifficultyExpert()
 	#endif
 	|| (gBattleTypeFlags & BATTLE_TYPE_SHADOW_WARRIOR)
 	|| (!(gBattleTypeFlags & BATTLE_TYPE_TRAINER) && WildMonIsSmart(gActiveBattler))
