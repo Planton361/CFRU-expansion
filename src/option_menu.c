@@ -59,7 +59,7 @@ void BufferOptionMenuString(u8 selection);
 void OptionMenu_PickSwitchCancel(void);
 static u16 TrainerLevelScalingRawToMenuSelection(u16 raw);
 static u16 TrainerAIProfileRawToMenuSelection(u16 raw);
-static void MarkSecondPageOptionDirty(u16 selection);
+static void MarkThirdPageOptionDirty(u16 selection);
 
 // Menu items
 enum
@@ -81,10 +81,16 @@ enum
     MENUITEM_WILDLEVELSCALING,
     MENUITEM_AUTOSORTBAG,
 	MENUITEM_GAME_DIFFICULTY,
-    MENUITEM_TRAINER_LEVEL_SCALING,
-    MENUITEM_TRAINER_AI_PROFILE,
     MENUITEM_CANCEL_PAGE_2,
     MENUITEM_PAGE2_COUNT,
+};
+
+enum
+{
+    MENUITEM_TRAINER_LEVEL_SCALING = 0,
+    MENUITEM_TRAINER_AI_PROFILE,
+    MENUITEM_CANCEL_PAGE_3,
+    MENUITEM_PAGE3_COUNT,
 };
 
 // Window Ids
@@ -103,6 +109,7 @@ struct OptionMenu
     /*0x??*/ u8 loadPaletteState;
     /*0x??*/ u8 page;
     /*0x??*/ u16 option_secondPage[MENUITEM_PAGE2_COUNT];
+    /*0x??*/ u16 option_thirdPage[MENUITEM_PAGE3_COUNT];
     /*0x??*/ u16 trainerLevelScalingModeOriginalRaw;
     /*0x??*/ u16 trainerAIProfileOriginalRaw;
     /*0x??*/ bool8 trainerLevelScalingModeDirty;
@@ -142,9 +149,13 @@ static const u8 *const sOptionMenuItemsNames_SecondPage[MENUITEM_PAGE2_COUNT] =
     [MENUITEM_WILDLEVELSCALING] = gText_WildLevelScaling,
     [MENUITEM_AUTOSORTBAG] = gText_AutoSortBag,
 	[MENUITEM_GAME_DIFFICULTY] = gText_GameDifficulty,
+    [MENUITEM_CANCEL_PAGE_2] = gText_OptionMenuCancel,
+};
+static const u8 *const sOptionMenuItemsNames_ThirdPage[MENUITEM_PAGE3_COUNT] =
+{
     [MENUITEM_TRAINER_LEVEL_SCALING] = gText_LevelScaling,
     [MENUITEM_TRAINER_AI_PROFILE] = gText_TrainerAI,
-    [MENUITEM_CANCEL_PAGE_2] = gText_OptionMenuCancel,
+    [MENUITEM_CANCEL_PAGE_3] = gText_OptionMenuCancel,
 };
 
 extern const u8 gText_TextSpeedSlow[];
@@ -260,7 +271,8 @@ static const u8 *const sTrainerAIProfileOptions[] =
 };
 
 static const u16 sOptionMenuItemCounts[MENUITEM_COUNT] = {3, 2, 2, 2, 3, 10, 0};
-static const u16 sOptionMenuItemCounts_SecondPage[MENUITEM_PAGE2_COUNT] = {3, 2, 2, 4, 4, 6, 7, 0};
+static const u16 sOptionMenuItemCounts_SecondPage[MENUITEM_PAGE2_COUNT] = {3, 2, 2, 4, 4, 0};
+static const u16 sOptionMenuItemCounts_ThirdPage[MENUITEM_PAGE3_COUNT] = {6, 7, 0};
 
 static u16 TrainerLevelScalingRawToMenuSelection(u16 raw)
 {
@@ -278,7 +290,7 @@ static u16 TrainerAIProfileRawToMenuSelection(u16 raw)
     return 0;
 }
 
-static void MarkSecondPageOptionDirty(u16 selection)
+static void MarkThirdPageOptionDirty(u16 selection)
 {
     if (selection == MENUITEM_TRAINER_LEVEL_SCALING)
         sOptionMenuPtr->trainerLevelScalingModeDirty = TRUE;
@@ -309,10 +321,10 @@ void CB2_OptionsMenuFromStartMenu(void)
     sOptionMenuPtr->option_secondPage[MENUITEM_AUTOSORTBAG] = VarGet(VAR_AUTO_SORT_BAG);
     sOptionMenuPtr->option_secondPage[MENUITEM_GAME_DIFFICULTY] = VarGet(VAR_GAME_DIFFICULTY);
     sOptionMenuPtr->trainerLevelScalingModeOriginalRaw = VarGet(VAR_TRAINER_LEVEL_SCALING_MODE);
-    sOptionMenuPtr->option_secondPage[MENUITEM_TRAINER_LEVEL_SCALING] =
+    sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_LEVEL_SCALING] =
         TrainerLevelScalingRawToMenuSelection(sOptionMenuPtr->trainerLevelScalingModeOriginalRaw);
     sOptionMenuPtr->trainerAIProfileOriginalRaw = VarGet(VAR_TRAINER_AI_PROFILE);
-    sOptionMenuPtr->option_secondPage[MENUITEM_TRAINER_AI_PROFILE] =
+    sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_AI_PROFILE] =
         TrainerAIProfileRawToMenuSelection(sOptionMenuPtr->trainerAIProfileOriginalRaw);
 
     
@@ -378,6 +390,15 @@ void Task_OptionMenu(u8 taskId)
             UpdateSettingSelectionDisplay(sOptionMenuPtr->cursorPos);
             OptionMenu_PickSwitchCancel();
             break;
+        case 7:
+            sOptionMenuPtr->page = 2;
+            LoadOptionMenuItemNames();
+            for(i = 0; i < MENUITEM_PAGE3_COUNT; i++)
+            BufferOptionMenuString(i);
+            sOptionMenuPtr->cursorPos = 0;
+            UpdateSettingSelectionDisplay(sOptionMenuPtr->cursorPos);
+            OptionMenu_PickSwitchCancel();
+            break;
         }
         break;
     case 3:
@@ -411,11 +432,11 @@ void CloseAndSaveOptionMenu(u8 taskId)
     VarSet(VAR_AUTO_SORT_BAG, sOptionMenuPtr->option_secondPage[MENUITEM_AUTOSORTBAG]);
     VarSet(VAR_GAME_DIFFICULTY, sOptionMenuPtr->option_secondPage[MENUITEM_GAME_DIFFICULTY]);
     if (sOptionMenuPtr->trainerLevelScalingModeDirty)
-        VarSet(VAR_TRAINER_LEVEL_SCALING_MODE, sOptionMenuPtr->option_secondPage[MENUITEM_TRAINER_LEVEL_SCALING]);
+        VarSet(VAR_TRAINER_LEVEL_SCALING_MODE, sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_LEVEL_SCALING]);
     else
         VarSet(VAR_TRAINER_LEVEL_SCALING_MODE, sOptionMenuPtr->trainerLevelScalingModeOriginalRaw);
     if (sOptionMenuPtr->trainerAIProfileDirty)
-        VarSet(VAR_TRAINER_AI_PROFILE, sOptionMenuPtr->option_secondPage[MENUITEM_TRAINER_AI_PROFILE]);
+        VarSet(VAR_TRAINER_AI_PROFILE, sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_AI_PROFILE]);
     else
         VarSet(VAR_TRAINER_AI_PROFILE, sOptionMenuPtr->trainerAIProfileOriginalRaw);
     SetPokemonCryStereo(gSaveBlock2->optionsSound);
@@ -512,7 +533,7 @@ void BufferOptionMenuString(u8 selection)
             break;
         }
     }
-    else
+    else if(sOptionMenuPtr->page == 1)
     {
         switch (selection)
         {
@@ -531,11 +552,19 @@ void BufferOptionMenuString(u8 selection)
             case MENUITEM_GAME_DIFFICULTY:
                 AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sGameDifficultyOptions[sOptionMenuPtr->option_secondPage[selection]]);
                 break;
+            default:
+                break;
+        }
+    }
+    else
+    {
+        switch (selection)
+        {
             case MENUITEM_TRAINER_LEVEL_SCALING:
-                AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sTrainerLevelScalingOptions[sOptionMenuPtr->option_secondPage[selection]]);
+                AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sTrainerLevelScalingOptions[sOptionMenuPtr->option_thirdPage[selection]]);
                 break;
             case MENUITEM_TRAINER_AI_PROFILE:
-                AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sTrainerAIProfileOptions[sOptionMenuPtr->option_secondPage[selection]]);
+                AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sTrainerAIProfileOptions[sOptionMenuPtr->option_thirdPage[selection]]);
                 break;
             default:
                 break;
@@ -565,12 +594,23 @@ u8 OptionMenu_ProcessInput(void)
         }
         else
         {
-            current = sOptionMenuPtr->option_secondPage[(sOptionMenuPtr->cursorPos)];
-            if (current == (sOptionMenuItemCounts_SecondPage[sOptionMenuPtr->cursorPos] - 1))
-                sOptionMenuPtr->option_secondPage[sOptionMenuPtr->cursorPos] = 0;
+            if (sOptionMenuPtr->page == 1)
+            {
+                current = sOptionMenuPtr->option_secondPage[(sOptionMenuPtr->cursorPos)];
+                if (current == (sOptionMenuItemCounts_SecondPage[sOptionMenuPtr->cursorPos] - 1))
+                    sOptionMenuPtr->option_secondPage[sOptionMenuPtr->cursorPos] = 0;
+                else
+                    sOptionMenuPtr->option_secondPage[sOptionMenuPtr->cursorPos] = current + 1;
+            }
             else
-                sOptionMenuPtr->option_secondPage[sOptionMenuPtr->cursorPos] = current + 1;
-            MarkSecondPageOptionDirty(sOptionMenuPtr->cursorPos);
+            {
+                current = sOptionMenuPtr->option_thirdPage[(sOptionMenuPtr->cursorPos)];
+                if (current == (sOptionMenuItemCounts_ThirdPage[sOptionMenuPtr->cursorPos] - 1))
+                    sOptionMenuPtr->option_thirdPage[sOptionMenuPtr->cursorPos] = 0;
+                else
+                    sOptionMenuPtr->option_thirdPage[sOptionMenuPtr->cursorPos] = current + 1;
+                MarkThirdPageOptionDirty(sOptionMenuPtr->cursorPos);
+            }
             return 4;
         }
     }
@@ -591,12 +631,23 @@ u8 OptionMenu_ProcessInput(void)
         }
         else
         {
-            curr = &sOptionMenuPtr->option_secondPage[sOptionMenuPtr->cursorPos];
-            if (*curr == 0)
-                *curr = sOptionMenuItemCounts_SecondPage[sOptionMenuPtr->cursorPos] - 1;
+            if (sOptionMenuPtr->page == 1)
+            {
+                curr = &sOptionMenuPtr->option_secondPage[sOptionMenuPtr->cursorPos];
+                if (*curr == 0)
+                    *curr = sOptionMenuItemCounts_SecondPage[sOptionMenuPtr->cursorPos] - 1;
+                else
+                    --*curr;
+            }
             else
-                --*curr;
-            MarkSecondPageOptionDirty(sOptionMenuPtr->cursorPos);
+            {
+                curr = &sOptionMenuPtr->option_thirdPage[sOptionMenuPtr->cursorPos];
+                if (*curr == 0)
+                    *curr = sOptionMenuItemCounts_ThirdPage[sOptionMenuPtr->cursorPos] - 1;
+                else
+                    --*curr;
+                MarkThirdPageOptionDirty(sOptionMenuPtr->cursorPos);
+            }
 
             return 4;
         }
@@ -612,10 +663,20 @@ u8 OptionMenu_ProcessInput(void)
         }
         else
         {
-            if (sOptionMenuPtr->cursorPos == MENUITEM_RBUTTONMODE)
-                sOptionMenuPtr->cursorPos = MENUITEM_CANCEL_PAGE_2;
+            if (sOptionMenuPtr->page == 1)
+            {
+                if (sOptionMenuPtr->cursorPos == MENUITEM_RBUTTONMODE)
+                    sOptionMenuPtr->cursorPos = MENUITEM_CANCEL_PAGE_2;
+                else
+                    sOptionMenuPtr->cursorPos = sOptionMenuPtr->cursorPos - 1;
+            }
             else
-                sOptionMenuPtr->cursorPos = sOptionMenuPtr->cursorPos - 1;
+            {
+                if (sOptionMenuPtr->cursorPos == MENUITEM_TRAINER_LEVEL_SCALING)
+                    sOptionMenuPtr->cursorPos = MENUITEM_CANCEL_PAGE_3;
+                else
+                    sOptionMenuPtr->cursorPos = sOptionMenuPtr->cursorPos - 1;
+            }
         }
         return 3;        
     }
@@ -630,26 +691,44 @@ u8 OptionMenu_ProcessInput(void)
         }
         else
         {
-            if (sOptionMenuPtr->cursorPos == MENUITEM_CANCEL_PAGE_2)
-                sOptionMenuPtr->cursorPos = MENUITEM_RBUTTONMODE;
+            if (sOptionMenuPtr->page == 1)
+            {
+                if (sOptionMenuPtr->cursorPos == MENUITEM_CANCEL_PAGE_2)
+                    sOptionMenuPtr->cursorPos = MENUITEM_RBUTTONMODE;
+                else
+                    sOptionMenuPtr->cursorPos = sOptionMenuPtr->cursorPos + 1;
+            }
             else
-                sOptionMenuPtr->cursorPos = sOptionMenuPtr->cursorPos + 1;
+            {
+                if (sOptionMenuPtr->cursorPos == MENUITEM_CANCEL_PAGE_3)
+                    sOptionMenuPtr->cursorPos = MENUITEM_TRAINER_LEVEL_SCALING;
+                else
+                    sOptionMenuPtr->cursorPos = sOptionMenuPtr->cursorPos + 1;
+            }
         }
         return 3;
     }
     else if (JOY_NEW(R_BUTTON))
-    {   if(sOptionMenuPtr->page == 1)
-        return 0;
-        sOptionMenuPtr->page = 1;
+    {
+        if(sOptionMenuPtr->page == 2)
+            return 0;
+        sOptionMenuPtr->page++;
         PlaySE(SE_SELECT);
-        return 5;
+        if(sOptionMenuPtr->page == 1)
+            return 5;
+        else
+            return 7;
     }
     else if (JOY_NEW(L_BUTTON))
-    {   if(sOptionMenuPtr->page == 0)
-        return 0;
-        sOptionMenuPtr->page = 0;
+    {
+        if(sOptionMenuPtr->page == 0)
+            return 0;
+        sOptionMenuPtr->page--;
         PlaySE(SE_SELECT);
-        return 6;
+        if(sOptionMenuPtr->page == 0)
+            return 6;
+        else
+            return 5;
     }
     else if (JOY_NEW(B_BUTTON) || JOY_NEW(A_BUTTON))
     {
@@ -698,15 +777,26 @@ void LoadOptionMenuItemNames(void)
     }
     else
     {
-        for (i = 0; i < MENUITEM_PAGE2_COUNT; i++)
+        if(sOptionMenuPtr->page == 1)
         {
-            AddTextPrinterParameterized(WIN_OPTIONS, 2, sOptionMenuItemsNames_SecondPage[i], 8, (u8)((i * (GetFontAttribute(2, FONTATTR_MAX_LETTER_HEIGHT))) + 2) - i, TEXT_SPEED_FF, NULL);       
-        } 
+            for (i = 0; i < MENUITEM_PAGE2_COUNT; i++)
+            {
+                AddTextPrinterParameterized(WIN_OPTIONS, 2, sOptionMenuItemsNames_SecondPage[i], 8, (u8)((i * (GetFontAttribute(2, FONTATTR_MAX_LETTER_HEIGHT))) + 2) - i, TEXT_SPEED_FF, NULL);
+            }
+        }
+        else
+        {
+            for (i = 0; i < MENUITEM_PAGE3_COUNT; i++)
+            {
+                AddTextPrinterParameterized(WIN_OPTIONS, 2, sOptionMenuItemsNames_ThirdPage[i], 8, (u8)((i * (GetFontAttribute(2, FONTATTR_MAX_LETTER_HEIGHT))) + 2) - i, TEXT_SPEED_FF, NULL);
+            }
+        }
     }
 }
 
 extern const u8 gText_PickSwitchCancel_Page1[];
 extern const u8 gText_PickSwitchCancel_Page2[];
+extern const u8 gText_PickSwitchCancel_Page3[];
 
 void OptionMenu_PickSwitchCancel(void)
 {
@@ -719,11 +809,19 @@ void OptionMenu_PickSwitchCancel(void)
         PutWindowTilemap(2);
         CopyWindowToVram(2, COPYWIN_BOTH);   
     }
-    else
+    else if(sOptionMenuPtr->page == 1)
     {
         x = 0xE4 - GetStringWidth(0, gText_PickSwitchCancel_Page2, 0);
         FillWindowPixelBuffer(2, PIXEL_FILL(15)); 
         AddTextPrinterParameterized3(2, 0, x, 0, sOptionMenuPickSwitchCancelTextColor, 0, gText_PickSwitchCancel_Page2);
+        PutWindowTilemap(2);
+        CopyWindowToVram(2, COPYWIN_BOTH);
+    }
+    else
+    {
+        x = 0xE4 - GetStringWidth(0, gText_PickSwitchCancel_Page3, 0);
+        FillWindowPixelBuffer(2, PIXEL_FILL(15));
+        AddTextPrinterParameterized3(2, 0, x, 0, sOptionMenuPickSwitchCancelTextColor, 0, gText_PickSwitchCancel_Page3);
         PutWindowTilemap(2);
         CopyWindowToVram(2, COPYWIN_BOTH);
     }

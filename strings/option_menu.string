@@ -16,6 +16,9 @@ Items
 #org @gText_PickSwitchCancel_Page2
 [L_BUTTON][R_BUTTON]Page 2 [DPAD_UP_DOWN]Pick [DPAD_LEFT_RIGHT]Switch [A_BUTTON][B_BUTTON]Cancel
 
+#org @gText_PickSwitchCancel_Page3
+[L_BUTTON][R_BUTTON]Page 3 [DPAD_UP_DOWN]Pick [DPAD_LEFT_RIGHT]Switch [A_BUTTON][B_BUTTON]Cancel
+
 #org @gText_BattleMusic
 Battle Music
 
