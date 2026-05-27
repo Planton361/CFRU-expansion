@@ -67,6 +67,7 @@
 #define FLAG_FOLLOWER_IGNORE_ACTIVE_SCRIPT 0x926 //If set, the follower will reappear and move even when a script is in progress
 #define FLAG_KEEP_CONSUMABLE_ITEMS 0x927 //If set, consumable items are returned after battles
 #define FLAG_UNLOCKED_DEXNAV_HELD_ITEMS 0x92A //If set, possible held items will be displayed for wild Pokemon on the DexNav UI
+#define FLAG_SCALE_WILD_BOSS_LEVEL 0x92B //Optional wild boss level scaling flag used by the compiled trainer scaling path.
 #define FLAG_DAILY_EVENTS_START 0xE00 //To flag + 0xFF, resets every new day.
 
 /*===== Start Menu/Poketools Flags =====*/
@@ -378,6 +379,7 @@ enum //These vars need to be one after the other (hence the enum)
 #define VAR_GAME_DIFFICULTY 0x5157 //Var to store the game difficulty level. If 0 difficulty is normal(vanilla), if 1 its easy, if 2 its Hard, if 3 its Expert. ShouldGiveTrainerMonMaxFriendship and ShouldGiveTrainerMonMaxEVs need to be set at your choice in build_pokemon.c
 #define VAR_TRAINER_LEVEL_SCALING_MODE 0x515A //0 is legacy/unset. Explicit values are stored as enum TrainerLevelScalingMode + 1.
 #define VAR_TRAINER_AI_PROFILE 0x515B //0 is legacy/unset. Explicit values are stored as enum TrainerAIProfile + 1.
+#define SCALED_TRAINERS //Compile the runtime trainer level scaling path used by VAR_TRAINER_LEVEL_SCALING_MODE.
 #define CRY_SPECIES SPECIES_CHARIZARD //The species that will be used for the cry in the titlescreen. Currently its 0x6 (Charizard).
 #define OAK_INTRO_SPECIES SPECIES_NIDORAN_F //The species that appears in Oak's intro(New Game).
 //#define OPEN_WORLD_TRAINERS // Custom Trainers and teams based on party levels (Not area based, making game open world). CAUTION: NOT TO USE WQITH EXPAND_TRAINERS

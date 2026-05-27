@@ -28,6 +28,7 @@
 #include "../include/new/damage_calc.h"
 #include "../include/new/dexnav.h"
 #include "../include/new/dynamax.h"
+#include "../include/new/exp.h"
 #include "../include/new/form_change.h"
 #include "../include/new/frontier.h"
 #include "../include/new/item.h"
