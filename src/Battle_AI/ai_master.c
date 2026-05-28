@@ -69,7 +69,10 @@ static void UpdateStrongestMoves(void);
 static void UpdateBestDoublesKillingMoves(void);
 static u32 GetMaxByteIndexInList(const u8 array[], const u32 size);
 static bool8 ShouldAIUseItem(void);
+static bool8 TrainerAIProfileHasFullSmartMoveAI(enum TrainerAIProfile trainerAIProfile);
 #ifdef VAR_GAME_DIFFICULTY
+static bool8 TrainerAIProfileHasFairAntiCheese(enum TrainerAIProfile trainerAIProfile);
+static bool8 TrainerAIProfileHasExpertPrediction(enum TrainerAIProfile trainerAIProfile);
 static void TryRechooseAIMoveIfPlayerSwitchCheesed(u8 aiBank, u8 playerBank);
 static bool8 IsPlayerTryingToCheeseWithRepeatedSwitches(u8 playerBank);
 static bool8 IsPlayerTryingToCheeseAI(u8 playerBank, u8 aiBank);
@@ -206,15 +209,9 @@ u32 GetAIFlags(void)
 				else
 					flags = AI_SCRIPT_CHECK_BAD_MOVE; //Trainers are always barely smart in easy AI profile
 			}
-			else if (trainerAIProfile == TRAINER_AI_PROFILE_HARD)
+			else if (TrainerAIProfileHasFullSmartMoveAI(trainerAIProfile))
 			{
-				if (!(flags & AI_SCRIPT_CHECK_GOOD_MOVE)) //Not Trainers who are already smart
-					flags |= AI_SCRIPT_SEMI_SMART; //Regular Trainers are always semi smart in hard AI profile
-			}
-			else if (trainerAIProfile == TRAINER_AI_PROFILE_EXPERT)
-			{
-				if (!(flags & AI_SCRIPT_CHECK_GOOD_MOVE)) //Not Trainers who are already smart
-					flags |= AI_SCRIPT_SEMI_SMART; //Regular Trainers are always semi smart in expert AI profile
+				flags |= AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_SEMI_SMART | AI_SCRIPT_CHECK_GOOD_MOVE; //Full smart move AI; advanced gates stay profile-specific
 			}
 		}
 		#ifdef VAR_GAME_DIFFICULTY
@@ -223,7 +220,7 @@ u32 GetAIFlags(void)
 		#endif
 
 		if (isTrainerBattle && IsSmartTrainerAIEnabled())
-			flags |= AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_SEMI_SMART;
+			flags |= AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_SEMI_SMART | AI_SCRIPT_CHECK_GOOD_MOVE;
 
 		if (!(gBattleTypeFlags & BATTLE_TYPE_TRAINER)) //Generic wild battle
 			flags |= WildMonIsSmart(gActiveBattler);
@@ -234,6 +231,26 @@ u32 GetAIFlags(void)
 
 	return flags;
 }
+
+static bool8 TrainerAIProfileHasFullSmartMoveAI(enum TrainerAIProfile trainerAIProfile)
+{
+	return trainerAIProfile == TRAINER_AI_PROFILE_HARD
+		|| trainerAIProfile == TRAINER_AI_PROFILE_EXPERT
+		|| trainerAIProfile == TRAINER_AI_PROFILE_SMART_AI;
+}
+
+#ifdef VAR_GAME_DIFFICULTY
+static bool8 TrainerAIProfileHasFairAntiCheese(enum TrainerAIProfile trainerAIProfile)
+{
+	return trainerAIProfile == TRAINER_AI_PROFILE_HARD
+		|| trainerAIProfile == TRAINER_AI_PROFILE_EXPERT;
+}
+
+static bool8 TrainerAIProfileHasExpertPrediction(enum TrainerAIProfile trainerAIProfile)
+{
+	return trainerAIProfile == TRAINER_AI_PROFILE_EXPERT;
+}
+#endif
 
 #define NUM_COPY_STATS STAT_SPDEF
 u8 BattleAI_ChooseMoveOrAction(void)
@@ -1622,8 +1639,8 @@ static bool8 ShouldPredictRandomPlayerSwitch(u8 playerBank)
 	return gChosenActionByBank[playerBank] == ACTION_SWITCH //Player decided to switch
 	&& (gBattleTypeFlags & BATTLE_TYPE_FRONTIER //In Frontier battles
 	 || ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
-		? GetTrainerAIProfile() >= TRAINER_AI_PROFILE_HARD
-		: IsGameDifficultyHardOrHigher())) //Or only on harder AI profiles/game modes
+		? TrainerAIProfileHasExpertPrediction(GetTrainerAIProfile())
+		: IsGameDifficultyHardOrHigher())) //Or only on prediction-enabled AI profiles/game modes
 		#ifdef UNBOUND
 		&& AI_THINKING_STRUCT->aiFlags & AI_SCRIPT_CHECK_GOOD_MOVE
 		&& AIRandom() % 100 < GetChanceOfPredictingPlayerNormalSwitch()
@@ -1638,8 +1655,8 @@ static u8 IsPlayerTryingToCheeseAI(unusedArg u8 playerBank, unusedArg u8 aiBank)
 	{
 		if (!(gBattleTypeFlags & BATTLE_TYPE_FRONTIER) //Not fair in Frontier where player doesn't know opponent's lead
 		&& ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
-			? GetTrainerAIProfile() >= TRAINER_AI_PROFILE_EXPERT
-			: IsGameDifficultyExpert()) //Only on hardest AI profile/game mode
+			? TrainerAIProfileHasFairAntiCheese(GetTrainerAIProfile())
+			: IsGameDifficultyExpert()) //Only on anti-cheese AI profiles/hardest game mode
 		&& (IsPlayerTryingToCheeseWithRepeatedSwitches(playerBank)
 		|| IsPlayerTryingToCheeseChoiceLockFirstTurn(aiBank)))
 			return CHEESING;
@@ -1733,8 +1750,8 @@ void TryChangeMoveTargetToCounterPlayerProtectCheese(void)
 	if (IS_DOUBLE_BATTLE
 	&& !(gBattleTypeFlags & BATTLE_TYPE_FRONTIER) //Unfair in Frontier battles
 	&& ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
-		? GetTrainerAIProfile() >= TRAINER_AI_PROFILE_EXPERT
-		: IsGameDifficultyExpert()) //On hardest AI profile/game mode
+		? TrainerAIProfileHasFairAntiCheese(GetTrainerAIProfile())
+		: IsGameDifficultyExpert()) //On anti-cheese AI profiles/hardest game mode
 	&& AI_THINKING_STRUCT->aiFlags & AI_SCRIPT_CHECK_GOOD_MOVE //Only very smart Trainers
 	&& SIDE(gBankAttacker) == B_SIDE_OPPONENT //Fake Out user is AI
 	&& IsPlayerInControl(playerBank) //Protect user is player
