@@ -2428,7 +2428,7 @@ void PopulateDamageCalcStructWithBaseDefenderData(struct DamageCalc* data)
 		&& (gBattleTypeFlags & BATTLE_TYPE_FRONTIER //Never allow knowledge in the Frontier
 		#ifdef VAR_GAME_DIFFICULTY
 		 || ((gBattleTypeFlags & BATTLE_TYPE_TRAINER)
-			? GetTrainerAIProfile() < TRAINER_AI_PROFILE_EXPERT
+			? GetTrainerAIProfile() != TRAINER_AI_PROFILE_EXPERT
 			: !IsGameDifficultyExpert())
 		#endif
 		))
