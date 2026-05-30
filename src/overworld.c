@@ -78,10 +78,32 @@ tables:
 
 extern const u16 gClassBasedTrainerEncounterBGM[NUM_TRAINER_CLASSES];
 
+#define BG_EVENT_HIDDEN_ITEM 7
+#define HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION 0
+#define HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE 1
+#define FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION (FLAG_HIDDEN_ITEMS_START + HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION)
+#define FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE (FLAG_HIDDEN_ITEMS_START + HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE)
+
+struct HiddenItemSparklePilot
+{
+	u16 x;
+	u16 y;
+	u8 elevation;
+	u8 hiddenItemId;
+	u16 flag;
+};
+
+static const struct HiddenItemSparklePilot sViridianForestHiddenItemSparklePilots[] =
+{
+	{3, 22, 3, HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION, FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION},
+	{28, 57, 0, HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE, FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE},
+};
+
 //External functions
 extern void sp09A_StopSounds(void);
 
 //This file's functions:
+static void TryShowViridianForestHiddenItemSparkles(void);
 static bool8 CheckTrainerSpotting(u8 eventObjId);
 static bool8 GetTrainerFlagFromScriptPointer(const u8* data);
 static bool8 CheckNPCSpotting(u8 eventObjId);
@@ -1632,6 +1654,55 @@ static const u8* TryUseFlashInDarkCave(void)
 }
 #endif
 
+static bool8 TryShowViridianForestHiddenItemSparkle(const struct BgEvent* bgEvent)
+{
+	const struct HiddenItemStruct* hiddenItem;
+	u32 i;
+
+	if (bgEvent->kind != BG_EVENT_HIDDEN_ITEM)
+		return FALSE;
+
+	hiddenItem = &bgEvent->bgUnion.hiddenItemStr;
+
+	for (i = 0; i < ARRAY_COUNT(sViridianForestHiddenItemSparklePilots); ++i)
+	{
+		const struct HiddenItemSparklePilot* pilot = &sViridianForestHiddenItemSparklePilots[i];
+
+		if (bgEvent->x == pilot->x
+		 && bgEvent->y == pilot->y
+		 && bgEvent->elevation == pilot->elevation
+		 && hiddenItem->hiddenItemId == pilot->hiddenItemId)
+		{
+			if (FlagGet(pilot->flag))
+				return TRUE;
+
+			gFieldEffectArguments[0] = bgEvent->x;
+			gFieldEffectArguments[1] = bgEvent->y;
+			gFieldEffectArguments[2] = ZCoordToPriority(bgEvent->elevation);
+			FieldEffectStart(FLDEFF_SPARKLE);
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
+static void TryShowViridianForestHiddenItemSparkles(void)
+{
+	const struct MapEvents* events;
+	u32 i;
+
+	if (!MAP_IS(VIRIDIAN_FOREST))
+		return;
+
+	events = gMapHeader.events;
+	if (events == NULL || events->bgEvents == NULL)
+		return;
+
+	for (i = 0; i < events->bgEventCount; ++i)
+		TryShowViridianForestHiddenItemSparkle(&events->bgEvents[i]);
+}
+
 void RunOnTransitionMapScript(void)
 {
 	//Reset streaks upon moving to a new map
@@ -1642,6 +1713,7 @@ void RunOnTransitionMapScript(void)
 	ResetMiningSpots();
 	ForceClockUpdate();
 	MapHeaderRunScriptByTag(3);
+	TryShowViridianForestHiddenItemSparkles();
 	if (FlagGet(FLAG_NUZLOCKE))
 	{
 		u16 sectionId = Overworld_GetMapHeaderByGroupAndId(
