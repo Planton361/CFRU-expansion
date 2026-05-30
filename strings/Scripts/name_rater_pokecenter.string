@@ -1,0 +1,26 @@
+#org @gText_PokeCenterNameRater_Intro
+Hello, hello! I am the\nName Rater.\pWould you like me to rate one\nof your Pok\emon's nicknames?
+
+#org @gText_PokeCenterNameRater_ChooseMon
+Which Pok\emon's nickname\nshould I rate?
+
+#org @gText_PokeCenterNameRater_Rename
+[BUFFER1], is it?\pThat is a fine nickname.\nWould you like a nicer one?
+
+#org @gText_PokeCenterNameRater_NewName
+What shall the new nickname be?
+
+#org @gText_PokeCenterNameRater_Unchanged
+Very well. [BUFFER1] it remains.
+
+#org @gText_PokeCenterNameRater_Changed
+Done! From now on, this Pok\emon\nshall be known as [BUFFER1].
+
+#org @gText_PokeCenterNameRater_Egg
+That is merely an Egg.\pIt has no nickname for me\nto rate.
+
+#org @gText_PokeCenterNameRater_TradeMon
+That nickname is already quite\nimpeccable.\pI cannot change a name given\nby another Trainer.
+
+#org @gText_PokeCenterNameRater_No
+I see.\pDo visit again if a nickname\nstarts to itch.
