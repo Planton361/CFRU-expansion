@@ -221,7 +221,7 @@ enum //These vars need to be one after the other (hence the enum)
 #define BRIDGE_FIX //If this remains uncommented, the water battle background will only be loaded if the player's surfing sprite is shown
 #define MEGA_EVOLUTION_FEATURE //Comment this line to remove Mega Evolutions
 #define DYNAMAX_FEATURE //Comment this line to remove Dynamax and Raid Battles
-#define TUTORIAL_BATTLES //Comment this line to remove Oak's Tutorial
+//#define TUTORIAL_BATTLES //Comment this line to remove Oak's Tutorial
 #define TANOBY_RUINS_ENABLED //The Tanoby Ruins will be the only location Unown can be encountered
 #define ALTERING_CAVE_ENABLED //The Altering Cave from FR will work as intended provided the proper var is set
 #define SWEET_SCENT_ONLY_IN_CLEAR_WEATHER //Sweet Scent won't attract any wild Pokemon if the weather is not clear
@@ -240,7 +240,7 @@ enum //These vars need to be one after the other (hence the enum)
 #define FRLG_ROAMING //When a roaming Pokemon is created, it will either be a Entei, Raikou, or Suicune, depending on the player's starter choice
 #define CAN_RUN_IN_BUILDINGS //Comment this line out to prevent the player from running indoors.
 //#define NO_POISON_IN_OW //Uncommenting this line will stop Pokemon from taking Poison damage in the overworld.
-#define POISON_1_HP_SURVIVAL //Comment this line to allow Pokemon to faint from Poison in the overworld.
+//#define POISON_1_HP_SURVIVAL //Comment this line to allow Pokemon to faint from Poison in the overworld.
 #define BW_REPEL_SYSTEM  //Keep this uncommented if you want the game to ask the user to re-use another repel when it runs out
 #define AUTO_NAMING_SCREEN_SWAP  //Comment out if you don't want naming screens to auto-swap to lower-case after first upper-case letter
 #define NON_TRAINER_SPOTTING //Comment out if you don't want regular NPCs to be able to spot the player in the oveworld (vanilla only trainers can or the game will crash)
@@ -306,12 +306,12 @@ enum //These vars need to be one after the other (hence the enum)
 /*===== Capturing Pokemon Options =====*/
 //#define NO_HARDER_WILD_DOUBLES //In Gen 5, Pokemon encountered in double wild battles were harder to catch (based on how many species are owned). Uncomment this line to remove the catch rate decrement.
 #define CRITICAL_CAPTURE //Comment this line to remove the Critical Capture feature
-#define SWSH_CATCHING_DIFFICULTY_MODIFIER //Trying to catch a Pokemon that's higher level than your current Pokemon makes it harder to catch
+//#define SWSH_CATCHING_DIFFICULTY_MODIFIER //Trying to catch a Pokemon that's higher level than your current Pokemon makes it harder to catch
 
 /*===== Exp Gain Options =====*/
 #define TRAINER_EXP_BOOST // Uncomment this line to give the Exp boost for battling a Trainer's Pokemon (Pre Gen 7)
-//#define OLD_EXP_SPLIT //Uncomment this line to split the Exp amongst all participating pokemon (Pre Gen 6)
-//#define FLAT_EXP_FORMULA //Uncomment this line to use a Flat Exp calculation formula (Gens 2 - 4, 6)
+#define OLD_EXP_SPLIT //Uncomment this line to split the Exp amongst all participating pokemon (Pre Gen 6)
+#define FLAT_EXP_FORMULA //Uncomment this line to use a Flat Exp calculation formula (Gens 2 - 4, 6)
 #define GEN_7_BASE_EXP_YIELD //Base Exp Yield is read from gBaseExpBySpecies to use larger values that match Gen 7
 #define CAPTURE_EXPERIENCE //Experience is awared upon capturing Pokemon.
 #define EXP_AFFECTION_BOOST //Pokemon with friendship >= 220 gain boosted experience
@@ -373,7 +373,7 @@ enum //These vars need to be one after the other (hence the enum)
 //#define BW_SUMMARY_SCREEN // Implements the BW summary screen
 //#define NATURE_COLORS_ON_SUMMARY_SCREEN //will implement nature coloured stats and IV ranking in summary (Don't uncomment if you're using BW Summary Screen)
 //#define MID_BATTLE_EVO //Comment this line to remove Mid-Battle Evolution.
-//#define SKIP_INTRO_CONTROLS_GUIDE //Uncomment this line to remove the intro constrols guide.
+#define SKIP_INTRO_CONTROLS_GUIDE //Uncomment this line to remove the intro constrols guide.
 #define FLAG_SPAWN_INVISIBLE 0xA0A //This feature allows us to spawn the player object as invisible after a warp, which can be useful for cutscenes, etc. Note that the camera will still be centered on the player.
 #define FLAG_PORTABLE_PC 0xA0B //Flag to Enable/Disable Pocket PC.
 #define VAR_GAME_DIFFICULTY 0x5157 //Var to store the game difficulty level. Raw 0 is legacy Normal, 1 Easy, 2 Hard, 3 Expert, 4 Vanilla.
