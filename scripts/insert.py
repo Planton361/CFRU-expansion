@@ -45,10 +45,14 @@ REPOINT_ALL = 'repointall'
 ROUTINE_POINTERS = 'routinepointers'
 FUNCTION_REWRITES = 'functionrewrites'
 EVENT_SCRIPTS = "eventscripts"
+MAP_OBJECT_OVERLAYS = "mapobjectoverlays"
 SONGS = "songs"
 SPECIAL_INSERTS = 'special_inserts.asm'
 SPECIAL_INSERTS_OUT = 'build/special_inserts.bin'
 FREE_BYTE_REPLACEMENTS = 'free_bytereplacements'
+MAP_BANKS_HEADER_POINTER = 0x5524C
+MAP_HEADER_EVENTS_OFFSET = 0x4
+EVENT_OBJECT_TEMPLATE_SIZE = 0x18
 
 
 def ExtractPointer(byteList: [bytes]):
@@ -57,6 +61,159 @@ def ExtractPointer(byteList: [bytes]):
         pointer += (int(byteList[a])) << (8 * a)
 
     return pointer
+
+
+def AlignOffset(offset: int, alignment: int = 4) -> int:
+    while offset % alignment != 0:
+        offset += 1
+    return offset
+
+
+def ReadPointer(rom: _io.BufferedReader, offset: int) -> int:
+    rom.seek(offset)
+    return ExtractPointer(rom.read(4))
+
+
+def WritePointer(rom: _io.BufferedReader, offset: int, pointer: int):
+    rom.seek(offset)
+    rom.write(pointer.to_bytes(4, 'little'))
+
+
+def ResolveNumericOrDefine(token: str, definesDict: dict) -> int:
+    if token in definesDict:
+        token = definesDict[token]
+
+    return int(str(token), 0)
+
+
+def ResolveMapHeader(rom: _io.BufferedReader, mapBanksHeader: int, mapBank: int, mapNum: int) -> int:
+    mapBankHeader = ReadPointer(rom, mapBanksHeader + mapBank * 4) - 0x08000000
+    if mapBankHeader == (0xF7F7F7F7 - 0x08000000):
+        raise ValueError("Garbage map bank header")
+
+    mapHeader = ReadPointer(rom, mapBankHeader + mapNum * 4) - 0x08000000
+    if mapHeader == (0xF7F7F7F7 - 0x08000000):
+        raise ValueError("Garbage map header")
+
+    return mapHeader
+
+
+def BuildEventObjectTemplate(localId: int, graphicsId: int, x: int, y: int, elevation: int, movementType: int,
+                             movementRangeX: int, movementRangeY: int, trainerType: int, trainerRange: int,
+                             scriptPointer: int, flagId: int, flagId2: int) -> bytes:
+    data = bytearray()
+    data += localId.to_bytes(1, 'little')
+    data += (graphicsId & 0xFF).to_bytes(1, 'little')
+    data += (0).to_bytes(1, 'little')  # inConnection
+    data += ((graphicsId >> 8) & 0xFF).to_bytes(1, 'little')
+    data += x.to_bytes(2, 'little', signed=True)
+    data += y.to_bytes(2, 'little', signed=True)
+    data += elevation.to_bytes(1, 'little')
+    data += movementType.to_bytes(1, 'little')
+    data += ((movementRangeX & 0xF) | ((movementRangeY & 0xF) << 4)).to_bytes(1, 'little')
+    data += (0).to_bytes(1, 'little')  # struct padding before u16 fields
+    data += trainerType.to_bytes(2, 'little')
+    data += trainerRange.to_bytes(2, 'little')
+    data += scriptPointer.to_bytes(4, 'little')
+    data += flagId.to_bytes(2, 'little')
+    data += flagId2.to_bytes(2, 'little')
+    return bytes(data)
+
+
+def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOffset: int) -> int:
+    if not os.path.isfile(MAP_OBJECT_OVERLAYS):
+        return startOffset
+
+    insertOffset = AlignOffset(startOffset)
+    mapBanksHeader = ReadPointer(rom, MAP_BANKS_HEADER_POINTER) - 0x08000000
+    definesDict = {}
+    conditionals = []
+
+    with open(MAP_OBJECT_OVERLAYS, 'r') as file:
+        for i, line in enumerate(file):
+            if TryProcessFileInclusion(line, definesDict):
+                continue
+            if TryProcessConditionalCompilation(line, definesDict, conditionals):
+                continue
+            if line.strip().startswith('#') or line.strip() == '':
+                continue
+
+            try:
+                parts = line.split()
+                if len(parts) != 17 or parts[0].lower() != "append":
+                    print("There was an error inserting the map object overlay on line {}: {}".format(i, line.strip()))
+                    sys.exit(1)
+
+                _, mapBank, mapNum, expectedCount, localId, graphicsId, x, y, elevation, movementType, \
+                    movementRangeX, movementRangeY, trainerType, trainerRange, scriptSymbol, flagId, flagId2 = parts
+
+                mapBank = ResolveNumericOrDefine(mapBank, definesDict)
+                mapNum = ResolveNumericOrDefine(mapNum, definesDict)
+                expectedCount = ResolveNumericOrDefine(expectedCount, definesDict)
+                localId = ResolveNumericOrDefine(localId, definesDict)
+                graphicsId = ResolveNumericOrDefine(graphicsId, definesDict)
+                x = ResolveNumericOrDefine(x, definesDict)
+                y = ResolveNumericOrDefine(y, definesDict)
+                elevation = ResolveNumericOrDefine(elevation, definesDict)
+                movementType = ResolveNumericOrDefine(movementType, definesDict)
+                movementRangeX = ResolveNumericOrDefine(movementRangeX, definesDict)
+                movementRangeY = ResolveNumericOrDefine(movementRangeY, definesDict)
+                trainerType = ResolveNumericOrDefine(trainerType, definesDict)
+                trainerRange = ResolveNumericOrDefine(trainerRange, definesDict)
+                flagId = ResolveNumericOrDefine(flagId, definesDict)
+                flagId2 = ResolveNumericOrDefine(flagId2, definesDict)
+
+                if scriptSymbol not in table:
+                    print("Symbol missing:", scriptSymbol)
+                    sys.exit(1)
+
+                mapHeader = ResolveMapHeader(rom, mapBanksHeader, mapBank, mapNum)
+                eventHeader = ReadPointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET) - 0x08000000
+                rom.seek(eventHeader)
+                eventObjectCount = rom.read(1)[0]
+                warpCount = rom.read(1)[0]
+                coordEventCount = rom.read(1)[0]
+                bgEventCount = rom.read(1)[0]
+                eventObjectsPointer = ReadPointer(rom, eventHeader + 0x4)
+                warpsPointer = ReadPointer(rom, eventHeader + 0x8)
+                coordEventsPointer = ReadPointer(rom, eventHeader + 0xC)
+                bgEventsPointer = ReadPointer(rom, eventHeader + 0x10)
+
+                if eventObjectCount != expectedCount:
+                    print("Error! Map object overlay expected {} objects for map bank {}, map {}, found {} on line {}: {}".format(
+                        expectedCount, mapBank, mapNum, eventObjectCount, i, line.strip()))
+                    sys.exit(1)
+
+                rom.seek(eventObjectsPointer - 0x08000000)
+                objectData = rom.read(eventObjectCount * EVENT_OBJECT_TEMPLATE_SIZE)
+                objectData += BuildEventObjectTemplate(
+                    localId, graphicsId, x, y, elevation, movementType,
+                    movementRangeX, movementRangeY, trainerType, trainerRange,
+                    table[scriptSymbol] + 0x08000000, flagId, flagId2)
+
+                insertOffset = AlignOffset(insertOffset)
+                newObjectTableOffset = insertOffset
+                rom.seek(newObjectTableOffset)
+                rom.write(objectData)
+                insertOffset += len(objectData)
+
+                insertOffset = AlignOffset(insertOffset)
+                newMapEventsOffset = insertOffset
+                rom.seek(newMapEventsOffset)
+                rom.write(bytes([eventObjectCount + 1, warpCount, coordEventCount, bgEventCount]))
+                rom.write((newObjectTableOffset + 0x08000000).to_bytes(4, 'little'))
+                rom.write(warpsPointer.to_bytes(4, 'little'))
+                rom.write(coordEventsPointer.to_bytes(4, 'little'))
+                rom.write(bgEventsPointer.to_bytes(4, 'little'))
+                insertOffset += 0x14
+
+                WritePointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET, newMapEventsOffset + 0x08000000)
+            except Exception as e:
+                print("There was an error inserting the map object overlay on line {}: {}".format(i, line.strip()))
+                print(e)
+                sys.exit(1)
+
+    return insertOffset
 
 
 def GetTextSection() -> int:
@@ -717,6 +874,8 @@ def main():
                             Repoint(rom, code, offset)
                     except OSError:
                         print("There was an error inserting the event script on line {}: {}".format(i, line.strip()))
+
+        endInsertOffset = InsertMapObjectOverlays(rom, table, endInsertOffset)
 
         # Insert Song Pointers
         if os.path.isfile(SONGS):

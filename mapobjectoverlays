@@ -1,0 +1,5 @@
+#include "include/constants/map_objects.h"
+#include "include/constants/event_object_movement_constants.h"
+
+## append mapBank mapNum expectedCount localId graphicsId x y elevation movementType rangeX rangeY trainerType trainerRange script flagId flagId2
+append 5 4 4 5 MAP_OBJ_GFX_GENTLEMAN 10 5 3 MOVEMENT_TYPE_FACE_DOWN 1 1 0 0 EventScript_PokeCenterNameRater 0 0
