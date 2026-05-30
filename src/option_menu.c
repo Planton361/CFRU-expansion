@@ -64,6 +64,8 @@ static u16 TrainerAIProfileRawToMenuSelection(u16 raw);
 static u16 HardLevelCapRawToMenuSelection(u16 raw);
 static void MarkThirdPageOptionDirty(u16 selection);
 static void ApplyHardLevelCapMode(u16 raw);
+static void ApplyNuzlockeMode(u16 selection);
+static void ApplyWildPrebattleMode(u16 selection);
 
 // Menu items
 enum
@@ -94,6 +96,8 @@ enum
     MENUITEM_TRAINER_LEVEL_SCALING = 0,
     MENUITEM_TRAINER_AI_PROFILE,
     MENUITEM_HARD_LEVEL_CAP,
+    MENUITEM_NUZLOCKE,
+    MENUITEM_WILD_PREBATTLE,
     MENUITEM_CANCEL_PAGE_3,
     MENUITEM_PAGE3_COUNT,
 };
@@ -121,6 +125,8 @@ struct OptionMenu
     /*0x??*/ bool8 trainerLevelScalingModeDirty;
     /*0x??*/ bool8 trainerAIProfileDirty;
     /*0x??*/ bool8 hardLevelCapModeDirty;
+    /*0x??*/ bool8 nuzlockeModeDirty;
+    /*0x??*/ bool8 wildPrebattleModeDirty;
 };
 
 extern struct OptionMenu *sOptionMenuPtr;
@@ -139,6 +145,8 @@ extern const u8 gText_GameDifficulty[];
 extern const u8 gText_LevelScaling[];
 extern const u8 gText_TrainerAI[];
 extern const u8 gText_HardCap[];
+extern const u8 gText_Nuzlocke[];
+extern const u8 gText_WildPrebattle[];
 
 static const u8 *const sOptionMenuItemsNames[MENUITEM_COUNT] =
 {
@@ -164,6 +172,8 @@ static const u8 *const sOptionMenuItemsNames_ThirdPage[MENUITEM_PAGE3_COUNT] =
     [MENUITEM_TRAINER_LEVEL_SCALING] = gText_LevelScaling,
     [MENUITEM_TRAINER_AI_PROFILE] = gText_TrainerAI,
     [MENUITEM_HARD_LEVEL_CAP] = gText_HardCap,
+    [MENUITEM_NUZLOCKE] = gText_Nuzlocke,
+    [MENUITEM_WILD_PREBATTLE] = gText_WildPrebattle,
     [MENUITEM_CANCEL_PAGE_3] = gText_OptionMenuCancel,
 };
 
@@ -285,10 +295,15 @@ static const u8 *const sHardLevelCapOptions[] =
     gText_OffOption,
     gText_OnOption,
 };
+static const u8 *const sOffOnOptions[] =
+{
+    gText_OffOption,
+    gText_OnOption,
+};
 
 static const u16 sOptionMenuItemCounts[MENUITEM_COUNT] = {3, 2, 2, 2, 3, 10, 0};
 static const u16 sOptionMenuItemCounts_SecondPage[MENUITEM_PAGE2_COUNT] = {3, 2, 2, 4, 5, 0};
-static const u16 sOptionMenuItemCounts_ThirdPage[MENUITEM_PAGE3_COUNT] = {6, 7, 3, 0};
+static const u16 sOptionMenuItemCounts_ThirdPage[MENUITEM_PAGE3_COUNT] = {6, 7, 3, 2, 2, 0};
 
 static u16 DifficultyRawToMenuSelection(u16 raw)
 {
@@ -356,6 +371,10 @@ static void MarkThirdPageOptionDirty(u16 selection)
         sOptionMenuPtr->trainerAIProfileDirty = TRUE;
     else if (selection == MENUITEM_HARD_LEVEL_CAP)
         sOptionMenuPtr->hardLevelCapModeDirty = TRUE;
+    else if (selection == MENUITEM_NUZLOCKE)
+        sOptionMenuPtr->nuzlockeModeDirty = TRUE;
+    else if (selection == MENUITEM_WILD_PREBATTLE)
+        sOptionMenuPtr->wildPrebattleModeDirty = TRUE;
 }
 
 static void ApplyHardLevelCapMode(u16 raw)
@@ -365,6 +384,26 @@ static void ApplyHardLevelCapMode(u16 raw)
         FlagClear(FLAG_HARD_LEVEL_CAP);
     else if (raw == 2)
         FlagSet(FLAG_HARD_LEVEL_CAP);
+    #endif
+}
+
+static void ApplyNuzlockeMode(u16 selection)
+{
+    #ifdef FLAG_NUZLOCKE
+    if (selection == 0)
+        FlagClear(FLAG_NUZLOCKE);
+    else
+        FlagSet(FLAG_NUZLOCKE);
+    #endif
+}
+
+static void ApplyWildPrebattleMode(u16 selection)
+{
+    #ifdef FLAG_ENABLE_WILD_PMN_PREBATTLE_SCREEN
+    if (selection == 0)
+        FlagClear(FLAG_ENABLE_WILD_PMN_PREBATTLE_SCREEN);
+    else
+        FlagSet(FLAG_ENABLE_WILD_PMN_PREBATTLE_SCREEN);
     #endif
 }
 
@@ -400,6 +439,13 @@ void CB2_OptionsMenuFromStartMenu(void)
     sOptionMenuPtr->hardLevelCapModeOriginalRaw = VarGet(VAR_HARD_LEVEL_CAP_MODE);
     sOptionMenuPtr->option_thirdPage[MENUITEM_HARD_LEVEL_CAP] =
         HardLevelCapRawToMenuSelection(sOptionMenuPtr->hardLevelCapModeOriginalRaw);
+    #ifdef FLAG_NUZLOCKE
+    sOptionMenuPtr->option_thirdPage[MENUITEM_NUZLOCKE] = FlagGet(FLAG_NUZLOCKE) ? 1 : 0;
+    #endif
+    #ifdef FLAG_ENABLE_WILD_PMN_PREBATTLE_SCREEN
+    sOptionMenuPtr->option_thirdPage[MENUITEM_WILD_PREBATTLE] =
+        FlagGet(FLAG_ENABLE_WILD_PMN_PREBATTLE_SCREEN) ? 1 : 0;
+    #endif
 
     
     for (i = 0; i < MENUITEM_COUNT - 1; i++)
@@ -523,6 +569,10 @@ void CloseAndSaveOptionMenu(u8 taskId)
         VarSet(VAR_HARD_LEVEL_CAP_MODE, sOptionMenuPtr->hardLevelCapModeOriginalRaw);
         ApplyHardLevelCapMode(sOptionMenuPtr->hardLevelCapModeOriginalRaw);
     }
+    if (sOptionMenuPtr->nuzlockeModeDirty)
+        ApplyNuzlockeMode(sOptionMenuPtr->option_thirdPage[MENUITEM_NUZLOCKE]);
+    if (sOptionMenuPtr->wildPrebattleModeDirty)
+        ApplyWildPrebattleMode(sOptionMenuPtr->option_thirdPage[MENUITEM_WILD_PREBATTLE]);
     SetPokemonCryStereo(gSaveBlock2->optionsSound);
     FREE_AND_SET_NULL(sOptionMenuPtr);
     DestroyTask(taskId);
@@ -652,6 +702,10 @@ void BufferOptionMenuString(u8 selection)
                 break;
             case MENUITEM_HARD_LEVEL_CAP:
                 AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sHardLevelCapOptions[sOptionMenuPtr->option_thirdPage[selection]]);
+                break;
+            case MENUITEM_NUZLOCKE:
+            case MENUITEM_WILD_PREBATTLE:
+                AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sOffOnOptions[sOptionMenuPtr->option_thirdPage[selection]]);
                 break;
             default:
                 break;
