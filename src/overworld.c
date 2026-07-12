@@ -81,11 +81,13 @@ extern const u16 gClassBasedTrainerEncounterBGM[NUM_TRAINER_CLASSES];
 #define BG_EVENT_HIDDEN_ITEM 7
 #define HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION 0
 #define HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE 1
-#define FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION (FLAG_HIDDEN_ITEMS_START + HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION)
-#define FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE (FLAG_HIDDEN_ITEMS_START + HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE)
-#define HIDDEN_ITEM_SPARKLE_PILOT_INTERVAL 16
+#define HIDDEN_ITEM_SPARKLE_PILOT_INTERVAL 60
 #define HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER 0x5348
 #define HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_TAG 0x2711
+#define HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID 2
+#define HIDDEN_ITEM_SPARKLE_PILOT_ACTIVE_ID 3
+#define HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_LOADED 4
+#define HIDDEN_ITEM_SPARKLE_PILOT_NEXT_ID 5
 
 struct HiddenItemSparklePilot
 {
@@ -93,41 +95,40 @@ struct HiddenItemSparklePilot
 	u16 y;
 	u8 elevation;
 	u8 hiddenItemId;
-	u16 flag;
 };
 
 static const struct HiddenItemSparklePilot sViridianForestHiddenItemSparklePilots[] =
 {
-	{3, 22, 3, HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION, FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION},
-	{28, 57, 0, HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE, FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE},
+	{3, 22, 3, HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION},
+	{28, 57, 0, HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE},
 };
 
 static void SpriteCB_ViridianForestHiddenItemSmallSparkle(struct Sprite* sprite);
 
-// Two-frame 16x16 sparkle and subtle palette derived from the CyanSMP64 NatDex source assets.
+// Two-frame 16x16 canvas with an approximately 8x8 warm item sparkle at its center.
 static const u8 sViridianForestHiddenItemSmallSparkleTiles[] __attribute__((aligned(4))) =
 {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x10, 0x32,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x23, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x31, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x23, 0x01, 0x00, 0x00,
+	0x00, 0x00, 0x10, 0x32, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x33, 0x01, 0x00, 0x00, 0x23, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x23, 0x01, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x41,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-	0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x13, 0x02, 0x00, 0x00, 0x43, 0x01, 0x00, 0x00,
-	0x00, 0x12, 0x33, 0x33, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x21, 0x33,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x33, 0x33, 0x13, 0x02, 0x43, 0x01, 0x00, 0x00, 0x13, 0x02, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
-	0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x33, 0x12, 0x00, 0x00,
+	0x00, 0x00, 0x21, 0x33, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x10,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x33, 0x12, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
 static const u16 sViridianForestHiddenItemSmallSparklePaletteData[] =
 {
-	0x0000, 0x7F53, 0x7F09, 0x7FFF, 0x7FD9, 0x0000, 0x0000, 0x0000,
+	0x0000, 0x1ADD, 0x379F, 0x67FF, 0x0000, 0x0000, 0x0000, 0x0000,
 	0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
 };
 
@@ -139,9 +140,9 @@ static const struct SpriteFrameImage sViridianForestHiddenItemSmallSparkleImages
 
 static const union AnimCmd sViridianForestHiddenItemSmallSparkleAnim[] =
 {
-	ANIMCMD_FRAME(0, 3),
-	ANIMCMD_FRAME(1, 5),
-	ANIMCMD_FRAME(0, 5),
+	ANIMCMD_FRAME(0, 6),
+	ANIMCMD_FRAME(1, 10),
+	ANIMCMD_FRAME(0, 8),
 	ANIMCMD_END,
 };
 
@@ -1731,13 +1732,13 @@ static const u8* TryUseFlashInDarkCave(void)
 }
 #endif
 
-static bool8 IsViridianForestHiddenItemSparklePilotEvent(const struct HiddenItemSparklePilot* pilot)
+static const struct BgEvent* GetViridianForestHiddenItemSparklePilotEvent(const struct HiddenItemSparklePilot* pilot)
 {
 	const struct MapEvents* events = gMapHeader.events;
 	u32 i;
 
 	if (events == NULL || events->bgEvents == NULL)
-		return FALSE;
+		return NULL;
 
 	for (i = 0; i < events->bgEventCount; ++i)
 	{
@@ -1749,10 +1750,10 @@ static bool8 IsViridianForestHiddenItemSparklePilotEvent(const struct HiddenItem
 		 && bgEvent->y == pilot->y
 		 && bgEvent->elevation == pilot->elevation
 		 && hiddenItem->hiddenItemId == pilot->hiddenItemId)
-			return TRUE;
+			return bgEvent;
 	}
 
-	return FALSE;
+	return NULL;
 }
 
 static bool8 IsViridianForestHiddenItemSparklePilotVisible(const struct HiddenItemSparklePilot* pilot)
@@ -1781,48 +1782,58 @@ static bool8 IsViridianForestHiddenItemSparklePilotReady(void)
 
 static void StopViridianForestHiddenItemSparklePilotSprite(struct Task* task)
 {
-	u8 spriteId = task->data[2];
+	u8 spriteId = task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID];
 
 	if (spriteId < MAX_SPRITES
 	 && gSprites[spriteId].inUse
 	 && gSprites[spriteId].data[7] == HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER)
-		FieldEffectFreeGraphicsResources(&gSprites[spriteId]);
+		DestroySprite(&gSprites[spriteId]);
 
-	task->data[2] = MAX_SPRITES;
+	task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] = MAX_SPRITES;
 }
 
 static void SpriteCB_ViridianForestHiddenItemSmallSparkle(struct Sprite* sprite)
 {
 	if (sprite->animEnded)
-		FieldEffectFreeGraphicsResources(sprite);
+	{
+		u8 spriteId = sprite - gSprites;
+		u8 taskId = sprite->data[6];
+
+		if (taskId < NUM_TASKS
+		 && gTasks[taskId].isActive
+		 && gTasks[taskId].func == Task_ViridianForestHiddenItemSparkles
+		 && gTasks[taskId].data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] == spriteId)
+			gTasks[taskId].data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] = MAX_SPRITES;
+
+		DestroySprite(sprite);
+	}
 }
 
-static bool8 TryStartViridianForestHiddenItemSparklePilotSprite(struct Task* task, u32 pilotId)
+static bool8 TryStartViridianForestHiddenItemSparklePilotSprite(u8 taskId, u32 pilotId)
 {
+	struct Task* task = &gTasks[taskId];
 	const struct HiddenItemSparklePilot* pilot = &sViridianForestHiddenItemSparklePilots[pilotId];
+	const struct BgEvent* bgEvent = GetViridianForestHiddenItemSparklePilotEvent(pilot);
 	s32 x = pilot->x + 7;
 	s32 y = pilot->y + 7;
 	u8 spriteId;
 
-	if (FlagGet(pilot->flag)
-	 || !IsViridianForestHiddenItemSparklePilotEvent(pilot)
+	if (bgEvent == NULL
+	 || FlagGet(FLAG_HIDDEN_ITEMS_START + bgEvent->bgUnion.hiddenItemStr.hiddenItemId)
 	 || !IsViridianForestHiddenItemSparklePilotVisible(pilot))
 		return FALSE;
 
 	SetSpritePosToOffsetMapCoords(&x, &y, 8, 8);
-	LoadSpritePalette(&sViridianForestHiddenItemSmallSparklePalette);
 	spriteId = CreateSpriteAtEnd(&sViridianForestHiddenItemSmallSparkleTemplate, x, y, 82);
 	if (spriteId == MAX_SPRITES)
-	{
-		FreeSpritePaletteByTag(HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_TAG);
 		return FALSE;
-	}
 
 	gSprites[spriteId].coordOffsetEnabled = TRUE;
 	gSprites[spriteId].oam.priority = ZCoordToPriority(pilot->elevation);
+	gSprites[spriteId].data[6] = taskId;
 	gSprites[spriteId].data[7] = HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER;
-	task->data[2] = spriteId;
-	task->data[3] = pilotId;
+	task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] = spriteId;
+	task->data[HIDDEN_ITEM_SPARKLE_PILOT_ACTIVE_ID] = pilotId;
 	return TRUE;
 }
 
@@ -1834,6 +1845,8 @@ static void Task_ViridianForestHiddenItemSparkles(u8 taskId)
 	if (!MAP_IS(VIRIDIAN_FOREST))
 	{
 		StopViridianForestHiddenItemSparklePilotSprite(task);
+		if (task->data[HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_LOADED])
+			FreeSpritePaletteByTag(HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_TAG);
 		DestroyTask(taskId);
 		return;
 	}
@@ -1841,15 +1854,32 @@ static void Task_ViridianForestHiddenItemSparkles(u8 taskId)
 	if (!IsViridianForestHiddenItemSparklePilotReady())
 		return;
 
-	if (task->data[2] < MAX_SPRITES)
+	if (!task->data[HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_LOADED])
 	{
-		const struct HiddenItemSparklePilot* activePilot = &sViridianForestHiddenItemSparklePilots[task->data[3]];
+		if (LoadSpritePalette(&sViridianForestHiddenItemSmallSparklePalette) == 0xFF)
+			return;
+		task->data[HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_LOADED] = TRUE;
+	}
 
-		if (!gSprites[task->data[2]].inUse
-		 || gSprites[task->data[2]].data[7] != HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER)
-			task->data[2] = MAX_SPRITES;
-		else if (FlagGet(activePilot->flag))
+	if (task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] < MAX_SPRITES)
+	{
+		u32 activePilotId = task->data[HIDDEN_ITEM_SPARKLE_PILOT_ACTIVE_ID];
+		u8 spriteId = task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID];
+
+		if (activePilotId >= ARRAY_COUNT(sViridianForestHiddenItemSparklePilots))
 			StopViridianForestHiddenItemSparklePilotSprite(task);
+		else if (!gSprites[spriteId].inUse
+		 || gSprites[spriteId].data[7] != HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER)
+			task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] = MAX_SPRITES;
+		else
+		{
+			const struct HiddenItemSparklePilot* activePilot = &sViridianForestHiddenItemSparklePilots[activePilotId];
+			const struct BgEvent* activeBgEvent = GetViridianForestHiddenItemSparklePilotEvent(activePilot);
+
+			if (activeBgEvent == NULL
+			 || FlagGet(FLAG_HIDDEN_ITEMS_START + activeBgEvent->bgUnion.hiddenItemStr.hiddenItemId))
+				StopViridianForestHiddenItemSparklePilotSprite(task);
+		}
 	}
 
 	for (i = 0; i < ARRAY_COUNT(sViridianForestHiddenItemSparklePilots); ++i)
@@ -1858,14 +1888,19 @@ static void Task_ViridianForestHiddenItemSparkles(u8 taskId)
 			--task->data[i];
 	}
 
-	if (task->data[2] < MAX_SPRITES)
+	if (task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] < MAX_SPRITES)
 		return;
 
 	for (i = 0; i < ARRAY_COUNT(sViridianForestHiddenItemSparklePilots); ++i)
 	{
-		if (task->data[i] == 0 && TryStartViridianForestHiddenItemSparklePilotSprite(task, i))
+		u32 pilotId = (task->data[HIDDEN_ITEM_SPARKLE_PILOT_NEXT_ID] + i)
+		            % ARRAY_COUNT(sViridianForestHiddenItemSparklePilots);
+
+		if (task->data[pilotId] == 0 && TryStartViridianForestHiddenItemSparklePilotSprite(taskId, pilotId))
 		{
-			task->data[i] = HIDDEN_ITEM_SPARKLE_PILOT_INTERVAL;
+			task->data[pilotId] = HIDDEN_ITEM_SPARKLE_PILOT_INTERVAL;
+			task->data[HIDDEN_ITEM_SPARKLE_PILOT_NEXT_ID] =
+				(pilotId + 1) % ARRAY_COUNT(sViridianForestHiddenItemSparklePilots);
 			return;
 		}
 	}
@@ -1880,7 +1915,7 @@ static void TryStartViridianForestHiddenItemSparkleTask(void)
 
 	taskId = CreateTask(Task_ViridianForestHiddenItemSparkles, 0x50);
 	if (taskId != 0xFF)
-		gTasks[taskId].data[2] = MAX_SPRITES;
+		gTasks[taskId].data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] = MAX_SPRITES;
 }
 
 void RunOnTransitionMapScript(void)
