@@ -1720,6 +1720,8 @@ static void StopViridianForestHiddenItemSparklePilotSprite(struct Task* task)
 static bool8 TryStartViridianForestHiddenItemSparklePilotSprite(struct Task* task, u32 pilotId)
 {
 	const struct HiddenItemSparklePilot* pilot = &sViridianForestHiddenItemSparklePilots[pilotId];
+	bool8 wasInUse[MAX_SPRITES];
+	bool8 hasFreeSprite = FALSE;
 	u32 i;
 
 	if (FlagGet(pilot->flag)
@@ -1730,10 +1732,11 @@ static bool8 TryStartViridianForestHiddenItemSparklePilotSprite(struct Task* tas
 
 	for (i = 0; i < MAX_SPRITES; ++i)
 	{
+		wasInUse[i] = gSprites[i].inUse;
 		if (!gSprites[i].inUse)
-			break;
+			hasFreeSprite = TRUE;
 	}
-	if (i == MAX_SPRITES)
+	if (!hasFreeSprite)
 		return FALSE;
 
 	gFieldEffectArguments[0] = pilot->x;
@@ -1743,8 +1746,7 @@ static bool8 TryStartViridianForestHiddenItemSparklePilotSprite(struct Task* tas
 
 	for (i = 0; i < MAX_SPRITES; ++i)
 	{
-		if (gSprites[i].inUse
-		 && gSprites[i].template == gFieldEffectObjectTemplatePointers[FLDEFFOBJ_SMALL_SPARKLE])
+		if (!wasInUse[i] && gSprites[i].inUse)
 		{
 			gSprites[i].data[7] = HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER;
 			task->data[2] = i;
