@@ -17,6 +17,7 @@
 #include "../include/new/follow_me.h"
 #include "../include/new/frontier.h"
 #include "../include/new/multi.h"
+#include "../include/new/tm_itemball_graphics.h"
 #include "../include/new/util.h"
 
 /*
@@ -1496,6 +1497,7 @@ static NPCPtr sOverworldTable6[] =
 		sOverworldTable4,
 		sOverworldTable5,
 		sOverworldTable6,
+		[TM_ITEM_BALL_GRAPHICS_TABLE_ID] = gTmItemBallOverworldTable,
 		// etc...
 		// please note that this method makes compatability with OW Manager challenging
 	};

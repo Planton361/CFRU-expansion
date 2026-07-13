@@ -248,6 +248,9 @@
 #define MAP_OBJ_GFX_PLACEHOLDER_1              244
 #define MAP_OBJ_GFX_PLACEHOLDER_2              245
 
+// Table 6, entry OBJ_EVENT_GFX_ITEM_BALL (92 / 0x5C).
+#define MAP_OBJ_GFX_GOLD_TM_ITEM_BALL        0x065C
+
 #define SHADOW_SIZE_S   0
 #define SHADOW_SIZE_M   1
 #define SHADOW_SIZE_L   2
