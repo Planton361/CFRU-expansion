@@ -81,13 +81,10 @@ extern const u16 gClassBasedTrainerEncounterBGM[NUM_TRAINER_CLASSES];
 #define BG_EVENT_HIDDEN_ITEM 7
 #define HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION 0
 #define HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE 1
-#define HIDDEN_ITEM_SPARKLE_PILOT_INTERVAL 60
+#define FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION (FLAG_HIDDEN_ITEMS_START + HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION)
+#define FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE (FLAG_HIDDEN_ITEMS_START + HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE)
+#define HIDDEN_ITEM_SPARKLE_PILOT_INTERVAL 90
 #define HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER 0x5348
-#define HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_TAG 0x2711
-#define HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID 2
-#define HIDDEN_ITEM_SPARKLE_PILOT_ACTIVE_ID 3
-#define HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_LOADED 4
-#define HIDDEN_ITEM_SPARKLE_PILOT_NEXT_ID 5
 
 struct HiddenItemSparklePilot
 {
@@ -95,85 +92,13 @@ struct HiddenItemSparklePilot
 	u16 y;
 	u8 elevation;
 	u8 hiddenItemId;
+	u16 flag;
 };
 
 static const struct HiddenItemSparklePilot sViridianForestHiddenItemSparklePilots[] =
 {
-	{3, 22, 3, HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION},
-	{28, 57, 0, HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE},
-};
-
-static void SpriteCB_ViridianForestHiddenItemSmallSparkle(struct Sprite* sprite);
-
-// Two-frame 16x16 canvas with an approximately 8x8 warm item sparkle at its center.
-static const u8 sViridianForestHiddenItemSmallSparkleTiles[] __attribute__((aligned(4))) =
-{
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x10, 0x32,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x23, 0x01, 0x00, 0x00,
-	0x00, 0x00, 0x10, 0x32, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x23, 0x01, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x21, 0x33,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x33, 0x12, 0x00, 0x00,
-	0x00, 0x00, 0x21, 0x33, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x10,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x33, 0x12, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
-
-static const u16 sViridianForestHiddenItemSmallSparklePaletteData[] =
-{
-	0x0000, 0x1ADD, 0x379F, 0x67FF, 0x0000, 0x0000, 0x0000, 0x0000,
-	0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-};
-
-static const struct SpriteFrameImage sViridianForestHiddenItemSmallSparkleImages[] =
-{
-	overworld_frame(sViridianForestHiddenItemSmallSparkleTiles, 2, 2, 0),
-	overworld_frame(sViridianForestHiddenItemSmallSparkleTiles, 2, 2, 1),
-};
-
-static const union AnimCmd sViridianForestHiddenItemSmallSparkleAnim[] =
-{
-	ANIMCMD_FRAME(0, 6),
-	ANIMCMD_FRAME(1, 10),
-	ANIMCMD_FRAME(0, 8),
-	ANIMCMD_END,
-};
-
-static const union AnimCmd* const sViridianForestHiddenItemSmallSparkleAnims[] =
-{
-	sViridianForestHiddenItemSmallSparkleAnim,
-};
-
-static const struct OamData sViridianForestHiddenItemSmallSparkleOam =
-{
-	.affineMode = ST_OAM_AFFINE_OFF,
-	.objMode = ST_OAM_OBJ_NORMAL,
-	.shape = SPRITE_SHAPE(16x16),
-	.size = SPRITE_SIZE(16x16),
-};
-
-static const struct SpritePalette sViridianForestHiddenItemSmallSparklePalette =
-{
-	sViridianForestHiddenItemSmallSparklePaletteData,
-	HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_TAG,
-};
-
-static const struct SpriteTemplate sViridianForestHiddenItemSmallSparkleTemplate =
-{
-	.tileTag = 0xFFFF,
-	.paletteTag = HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_TAG,
-	.oam = &sViridianForestHiddenItemSmallSparkleOam,
-	.anims = sViridianForestHiddenItemSmallSparkleAnims,
-	.images = sViridianForestHiddenItemSmallSparkleImages,
-	.affineAnims = gDummySpriteAffineAnimTable,
-	.callback = SpriteCB_ViridianForestHiddenItemSmallSparkle,
+	{3, 22, 3, HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION, FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_POTION},
+	{28, 57, 0, HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE, FLAG_HIDDEN_ITEM_SPARKLE_PILOT_VIRIDIAN_FOREST_ANTIDOTE},
 };
 
 //External functions
@@ -1732,13 +1657,13 @@ static const u8* TryUseFlashInDarkCave(void)
 }
 #endif
 
-static const struct BgEvent* GetViridianForestHiddenItemSparklePilotEvent(const struct HiddenItemSparklePilot* pilot)
+static bool8 IsViridianForestHiddenItemSparklePilotEvent(const struct HiddenItemSparklePilot* pilot)
 {
 	const struct MapEvents* events = gMapHeader.events;
 	u32 i;
 
 	if (events == NULL || events->bgEvents == NULL)
-		return NULL;
+		return FALSE;
 
 	for (i = 0; i < events->bgEventCount; ++i)
 	{
@@ -1750,10 +1675,10 @@ static const struct BgEvent* GetViridianForestHiddenItemSparklePilotEvent(const 
 		 && bgEvent->y == pilot->y
 		 && bgEvent->elevation == pilot->elevation
 		 && hiddenItem->hiddenItemId == pilot->hiddenItemId)
-			return bgEvent;
+			return TRUE;
 	}
 
-	return NULL;
+	return FALSE;
 }
 
 static bool8 IsViridianForestHiddenItemSparklePilotVisible(const struct HiddenItemSparklePilot* pilot)
@@ -1782,59 +1707,56 @@ static bool8 IsViridianForestHiddenItemSparklePilotReady(void)
 
 static void StopViridianForestHiddenItemSparklePilotSprite(struct Task* task)
 {
-	u8 spriteId = task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID];
+	u8 spriteId = task->data[2];
 
 	if (spriteId < MAX_SPRITES
 	 && gSprites[spriteId].inUse
 	 && gSprites[spriteId].data[7] == HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER)
-		DestroySprite(&gSprites[spriteId]);
+		FieldEffectStop(&gSprites[spriteId], FLDEFF_SPARKLE);
 
-	task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] = MAX_SPRITES;
+	task->data[2] = MAX_SPRITES;
 }
 
-static void SpriteCB_ViridianForestHiddenItemSmallSparkle(struct Sprite* sprite)
+static bool8 TryStartViridianForestHiddenItemSparklePilotSprite(struct Task* task, u32 pilotId)
 {
-	if (sprite->animEnded)
-	{
-		u8 spriteId = sprite - gSprites;
-		u8 taskId = sprite->data[6];
-
-		if (taskId < NUM_TASKS
-		 && gTasks[taskId].isActive
-		 && gTasks[taskId].func == Task_ViridianForestHiddenItemSparkles
-		 && gTasks[taskId].data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] == spriteId)
-			gTasks[taskId].data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] = MAX_SPRITES;
-
-		DestroySprite(sprite);
-	}
-}
-
-static bool8 TryStartViridianForestHiddenItemSparklePilotSprite(u8 taskId, u32 pilotId)
-{
-	struct Task* task = &gTasks[taskId];
 	const struct HiddenItemSparklePilot* pilot = &sViridianForestHiddenItemSparklePilots[pilotId];
-	const struct BgEvent* bgEvent = GetViridianForestHiddenItemSparklePilotEvent(pilot);
-	s32 x = pilot->x + 7;
-	s32 y = pilot->y + 7;
-	u8 spriteId;
+	bool8 wasInUse[MAX_SPRITES];
+	bool8 hasFreeSprite = FALSE;
+	u32 i;
 
-	if (bgEvent == NULL
-	 || FlagGet(FLAG_HIDDEN_ITEMS_START + bgEvent->bgUnion.hiddenItemStr.hiddenItemId)
-	 || !IsViridianForestHiddenItemSparklePilotVisible(pilot))
+	if (FlagGet(pilot->flag)
+	 || !IsViridianForestHiddenItemSparklePilotEvent(pilot)
+	 || !IsViridianForestHiddenItemSparklePilotVisible(pilot)
+	 || FieldEffectActiveListContains(FLDEFF_SPARKLE))
 		return FALSE;
 
-	SetSpritePosToOffsetMapCoords(&x, &y, 8, 8);
-	spriteId = CreateSpriteAtEnd(&sViridianForestHiddenItemSmallSparkleTemplate, x, y, 82);
-	if (spriteId == MAX_SPRITES)
+	for (i = 0; i < MAX_SPRITES; ++i)
+	{
+		wasInUse[i] = gSprites[i].inUse;
+		if (!gSprites[i].inUse)
+			hasFreeSprite = TRUE;
+	}
+	if (!hasFreeSprite)
 		return FALSE;
 
-	gSprites[spriteId].coordOffsetEnabled = TRUE;
-	gSprites[spriteId].oam.priority = ZCoordToPriority(pilot->elevation);
-	gSprites[spriteId].data[6] = taskId;
-	gSprites[spriteId].data[7] = HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER;
-	task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] = spriteId;
-	task->data[HIDDEN_ITEM_SPARKLE_PILOT_ACTIVE_ID] = pilotId;
-	return TRUE;
+	gFieldEffectArguments[0] = pilot->x;
+	gFieldEffectArguments[1] = pilot->y;
+	gFieldEffectArguments[2] = ZCoordToPriority(pilot->elevation);
+	FieldEffectStart(FLDEFF_SPARKLE);
+
+	for (i = 0; i < MAX_SPRITES; ++i)
+	{
+		if (!wasInUse[i] && gSprites[i].inUse)
+		{
+			gSprites[i].data[7] = HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER;
+			task->data[2] = i;
+			task->data[3] = pilotId;
+			return TRUE;
+		}
+	}
+
+	FieldEffectActiveListRemove(FLDEFF_SPARKLE);
+	return FALSE;
 }
 
 static void Task_ViridianForestHiddenItemSparkles(u8 taskId)
@@ -1845,8 +1767,6 @@ static void Task_ViridianForestHiddenItemSparkles(u8 taskId)
 	if (!MAP_IS(VIRIDIAN_FOREST))
 	{
 		StopViridianForestHiddenItemSparklePilotSprite(task);
-		if (task->data[HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_LOADED])
-			FreeSpritePaletteByTag(HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_TAG);
 		DestroyTask(taskId);
 		return;
 	}
@@ -1854,32 +1774,15 @@ static void Task_ViridianForestHiddenItemSparkles(u8 taskId)
 	if (!IsViridianForestHiddenItemSparklePilotReady())
 		return;
 
-	if (!task->data[HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_LOADED])
+	if (task->data[2] < MAX_SPRITES)
 	{
-		if (LoadSpritePalette(&sViridianForestHiddenItemSmallSparklePalette) == 0xFF)
-			return;
-		task->data[HIDDEN_ITEM_SPARKLE_PILOT_PALETTE_LOADED] = TRUE;
-	}
+		const struct HiddenItemSparklePilot* activePilot = &sViridianForestHiddenItemSparklePilots[task->data[3]];
 
-	if (task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] < MAX_SPRITES)
-	{
-		u32 activePilotId = task->data[HIDDEN_ITEM_SPARKLE_PILOT_ACTIVE_ID];
-		u8 spriteId = task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID];
-
-		if (activePilotId >= ARRAY_COUNT(sViridianForestHiddenItemSparklePilots))
+		if (!gSprites[task->data[2]].inUse
+		 || gSprites[task->data[2]].data[7] != HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER)
+			task->data[2] = MAX_SPRITES;
+		else if (FlagGet(activePilot->flag))
 			StopViridianForestHiddenItemSparklePilotSprite(task);
-		else if (!gSprites[spriteId].inUse
-		 || gSprites[spriteId].data[7] != HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_MARKER)
-			task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] = MAX_SPRITES;
-		else
-		{
-			const struct HiddenItemSparklePilot* activePilot = &sViridianForestHiddenItemSparklePilots[activePilotId];
-			const struct BgEvent* activeBgEvent = GetViridianForestHiddenItemSparklePilotEvent(activePilot);
-
-			if (activeBgEvent == NULL
-			 || FlagGet(FLAG_HIDDEN_ITEMS_START + activeBgEvent->bgUnion.hiddenItemStr.hiddenItemId))
-				StopViridianForestHiddenItemSparklePilotSprite(task);
-		}
 	}
 
 	for (i = 0; i < ARRAY_COUNT(sViridianForestHiddenItemSparklePilots); ++i)
@@ -1888,19 +1791,14 @@ static void Task_ViridianForestHiddenItemSparkles(u8 taskId)
 			--task->data[i];
 	}
 
-	if (task->data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] < MAX_SPRITES)
+	if (task->data[2] < MAX_SPRITES)
 		return;
 
 	for (i = 0; i < ARRAY_COUNT(sViridianForestHiddenItemSparklePilots); ++i)
 	{
-		u32 pilotId = (task->data[HIDDEN_ITEM_SPARKLE_PILOT_NEXT_ID] + i)
-		            % ARRAY_COUNT(sViridianForestHiddenItemSparklePilots);
-
-		if (task->data[pilotId] == 0 && TryStartViridianForestHiddenItemSparklePilotSprite(taskId, pilotId))
+		if (task->data[i] == 0 && TryStartViridianForestHiddenItemSparklePilotSprite(task, i))
 		{
-			task->data[pilotId] = HIDDEN_ITEM_SPARKLE_PILOT_INTERVAL;
-			task->data[HIDDEN_ITEM_SPARKLE_PILOT_NEXT_ID] =
-				(pilotId + 1) % ARRAY_COUNT(sViridianForestHiddenItemSparklePilots);
+			task->data[i] = HIDDEN_ITEM_SPARKLE_PILOT_INTERVAL;
 			return;
 		}
 	}
@@ -1915,7 +1813,7 @@ static void TryStartViridianForestHiddenItemSparkleTask(void)
 
 	taskId = CreateTask(Task_ViridianForestHiddenItemSparkles, 0x50);
 	if (taskId != 0xFF)
-		gTasks[taskId].data[HIDDEN_ITEM_SPARKLE_PILOT_SPRITE_ID] = MAX_SPRITES;
+		gTasks[taskId].data[2] = MAX_SPRITES;
 }
 
 void RunOnTransitionMapScript(void)
