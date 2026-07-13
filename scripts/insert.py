@@ -181,9 +181,15 @@ def ValidateEventObjectTemplate(template: dict, expected: dict, label: str):
         raise ValueError("{} has an invalid script pointer".format(label))
 
 
-def ValidateFindItemScript(rom: _io.BufferedReader, scriptPointer: int, expectedItem: int, label: str):
-    rom.seek(scriptPointer - 0x08000000)
-    script = rom.read(FIND_ITEM_SCRIPT_SIZE)
+def BuildFindItemScript(expectedItem: int) -> bytes:
+    return bytes([
+        0x1A, 0x00, 0x80, expectedItem & 0xFF, (expectedItem >> 8) & 0xFF,
+        0x1A, 0x01, 0x80, 0x01, 0x00,
+        0x09, 0x01,
+    ])
+
+
+def ValidateFindItemScriptBytes(script: bytes, expectedItem: int, label: str):
     expected = bytes([
         0x1A, 0x00, 0x80, expectedItem & 0xFF, (expectedItem >> 8) & 0xFF,
         0x1A, 0x01, 0x80, 0x01, 0x00,
@@ -193,21 +199,28 @@ def ValidateFindItemScript(rom: _io.BufferedReader, scriptPointer: int, expected
         raise ValueError("{} does not point to the expected standard finditem script".format(label))
 
 
-def ReplaceEventObjectGraphics(objectData: bytes, expectedCount: int, target: dict, control: dict) -> (bytes, int, int):
+def ValidateFindItemScript(rom: _io.BufferedReader, scriptPointer: int, expectedItem: int, label: str):
+    rom.seek(scriptPointer - 0x08000000)
+    ValidateFindItemScriptBytes(rom.read(FIND_ITEM_SCRIPT_SIZE), expectedItem, label)
+
+
+def ReplaceEventObjectGraphics(objectData: bytes, expectedCount: int, target: dict, control: dict = None) -> (bytes, int, int):
     if len(objectData) != expectedCount * EVENT_OBJECT_TEMPLATE_SIZE:
         raise ValueError("Object data length does not match expected object count {}".format(expectedCount))
 
     targetOffset, targetTemplate = FindEventObjectTemplate(objectData, target["localId"])
-    controlOffset, controlTemplate = FindEventObjectTemplate(objectData, control["localId"])
     ValidateEventObjectTemplate(targetTemplate, target, "target object")
-    ValidateEventObjectTemplate(controlTemplate, control, "control object")
+    controlOffset = None
+    if control is not None:
+        controlOffset, controlTemplate = FindEventObjectTemplate(objectData, control["localId"])
+        ValidateEventObjectTemplate(controlTemplate, control, "control object")
 
     oldGraphicsId = target["graphicsId"]
     newGraphicsId = target["newGraphicsId"]
     if oldGraphicsId != 0x005C or newGraphicsId != 0x065C:
-        raise ValueError("TM itemball pilot requires the exact 0x005C -> 0x065C graphics contract")
+        raise ValueError("TM itemball rollout requires the exact 0x005C -> 0x065C graphics contract")
     if (oldGraphicsId & 0xFF) != 0x5C or (newGraphicsId & 0xFF) != 0x5C:
-        raise ValueError("TM itemball pilot must retain graphics-id lower byte 0x5C")
+        raise ValueError("TM itemball rollout must retain graphics-id lower byte 0x5C")
 
     replaced = bytearray(objectData)
     replaced[targetOffset + 3] = (newGraphicsId >> 8) & 0xFF
@@ -218,7 +231,7 @@ def ReplaceEventObjectGraphics(objectData: bytes, expectedCount: int, target: di
         raise ValueError("Serialized target must differ only at graphics-id upper byte")
     if replaced[targetOffset + 1] != 0x5C:
         raise ValueError("Serialized target graphics-id lower byte changed")
-    if replaced[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE] != \
+    if controlOffset is not None and replaced[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE] != \
             objectData[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE]:
         raise ValueError("Serialized control object changed")
 
@@ -237,39 +250,118 @@ def BuildMapEvents(eventObjectCount: int, warpCount: int, coordEventCount: int, 
 
 
 def RunMapObjectOverlaySelfTest():
-    target = {
-        "localId": 9, "graphicsId": 0x005C, "newGraphicsId": 0x065C,
-        "x": 11, "y": 35, "elevation": 3, "movementType": 8,
-        "movementRangeX": 1, "movementRangeY": 1, "trainerType": 0,
-        "trainerRange": 0, "expectedItem": 0x129, "flagId": 0x15A, "flagId2": 0,
+    expectedRows = [
+        (1, 1, 14, 9, 'ITEM_TM09', 'FLAG_HIDE_MT_MOON_1F_TM09'),
+        (1, 3, 11, 9, 'ITEM_TM46', 'FLAG_HIDE_MT_MOON_B2F_TM46'),
+        (3, 22, 7, 3, 'ITEM_TM05', 'FLAG_HIDE_ROUTE4_TM05'),
+        (3, 43, 8, 8, 'ITEM_TM45', 'FLAG_HIDE_ROUTE24_TM45'),
+        (3, 44, 13, 10, 'ITEM_TM43', 'FLAG_HIDE_ROUTE25_TM43'),
+        (1, 13, 4, 4, 'ITEM_TM31', 'FLAG_HIDE_SSANNE_1F_ROOM2_TM31'),
+        (1, 25, 2, 2, 'ITEM_TM44', 'FLAG_HIDE_SSANNE_B1F_ROOM2_TM44'),
+        (3, 27, 12, 11, 'ITEM_TM40', 'FLAG_HIDE_ROUTE9_TM40'),
+        (1, 43, 5, 4, 'ITEM_TM12', 'FLAG_HIDE_ROCKET_HIDEOUT_B2F_TM12'),
+        (1, 44, 5, 4, 'ITEM_TM21', 'FLAG_HIDE_ROCKET_HIDEOUT_B3F_TM21'),
+        (1, 45, 9, 7, 'ITEM_TM49', 'FLAG_HIDE_ROCKET_HIDEOUT_B4F_TM49'),
+        (3, 30, 14, 10, 'ITEM_TM48', 'FLAG_HIDE_ROUTE12_TM48'),
+        (3, 33, 14, 11, 'ITEM_TM18', 'FLAG_HIDE_ROUTE15_TM18'),
+        (1, 64, 4, 3, 'ITEM_TM11', 'FLAG_HIDE_SAFARI_ZONE_EAST_TM11'),
+        (1, 65, 3, 2, 'ITEM_TM47', 'FLAG_HIDE_SAFARI_ZONE_NORTH_TM47'),
+        (1, 66, 4, 2, 'ITEM_TM32', 'FLAG_HIDE_SAFARI_ZONE_WEST_TM32'),
+        (1, 51, 9, 7, 'ITEM_TM01', 'FLAG_HIDE_SILPH_CO_5F_TM01'),
+        (1, 53, 11, 11, 'ITEM_TM08', 'FLAG_HIDE_SILPH_CO_7F_TM08'),
+        (1, 95, 8, 2, 'ITEM_TM17', 'FLAG_HIDE_POWER_PLANT_TM17'),
+        (1, 95, 8, 3, 'ITEM_TM25', 'FLAG_HIDE_POWER_PLANT_TM25'),
+        (1, 62, 6, 1, 'ITEM_TM22', 'FLAG_HIDE_POKEMON_MANSION_B1F_TM22'),
+        (1, 62, 6, 4, 'ITEM_TM14', 'FLAG_HIDE_POKEMON_MANSION_B1F_TM14'),
+        (1, 39, 7, 4, 'ITEM_TM02', 'FLAG_HIDE_VICTORY_ROAD_1F_TM02'),
+        (1, 40, 13, 7, 'ITEM_TM07', 'FLAG_HIDE_VICTORY_ROAD_2F_TM07'),
+        (1, 40, 13, 9, 'ITEM_TM37', 'FLAG_HIDE_VICTORY_ROAD_2F_TM37'),
+        (1, 41, 12, 6, 'ITEM_TM50', 'FLAG_HIDE_VICTORY_ROAD_3F_TM50'),
+        (1, 111, 2, 2, 'ITEM_HM07_WATERFALL', 'FLAG_HIDE_FOUR_ISLAND_ICEFALL_CAVE_1F_HM07'),
+        (1, 114, 10, 8, 'ITEM_TM36', 'FLAG_HIDE_FIVE_ISLAND_ROCKET_WAREHOUSE_TM36'),
+        (1, 50, 8, 8, 'ITEM_TM41', 'FLAG_HIDE_SILPH_CO_4F_TM41'),
+    ]
+    expectedByKey = {(bank, mapNum, localId): (count, item, flag)
+                     for bank, mapNum, count, localId, item, flag in expectedRows}
+    noControlKeys = {
+        (3, 22, 3), (3, 43, 8), (3, 44, 10),
+        (1, 13, 4), (1, 25, 2), (3, 33, 11), (1, 66, 2),
     }
-    control = {
-        "localId": 10, "graphicsId": 0x005C,
-        "x": 26, "y": 32, "elevation": 3, "movementType": 8,
-        "movementRangeX": 1, "movementRangeY": 1, "trainerType": 0,
-        "trainerRange": 0, "expectedItem": 13, "flagId": 0x15B, "flagId2": 0,
-    }
-    objects = b''.join([
-        BuildEventObjectTemplate(1, 1, 1, 1, 3, 8, 1, 1, 0, 0, 0x08000100, 0, 0),
-        BuildEventObjectTemplate(9, 0x005C, 11, 35, 3, 8, 1, 1, 0, 0, 0x08000200, 0x15A, 0),
-        BuildEventObjectTemplate(10, 0x005C, 26, 32, 3, 8, 1, 1, 0, 0, 0x08000300, 0x15B, 0),
-    ])
-    replaced, targetOffset, controlOffset = ReplaceEventObjectGraphics(objects, 3, target, control)
-    assert [i for i, pair in enumerate(zip(objects, replaced)) if pair[0] != pair[1]] == [targetOffset + 3]
-    assert replaced[targetOffset + 1] == 0x5C
-    assert replaced[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE] == \
-        objects[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE]
+    assert len(expectedRows) == len(expectedByKey) == 29
 
-    beforeEvents = BuildMapEvents(3, 2, 1, 4, 0x08001000, 0x08002000, 0x08003000, 0x08004000)
-    afterEvents = BuildMapEvents(3, 2, 1, 4, 0x08100000, 0x08002000, 0x08003000, 0x08004000)
-    assert beforeEvents[0] == afterEvents[0] == 3
-    assert beforeEvents[8:] == afterEvents[8:]
-
+    definesDict = {}
+    conditionals = []
+    replaceLines = []
     with open(MAP_OBJECT_OVERLAYS, 'r') as overlayFile:
-        replaceLines = [line.split() for line in overlayFile
-                        if line.strip().lower().startswith('replace_graphics ')]
-    assert len(replaceLines) == 1
-    assert replaceLines[0][1:4] == ['1', '1', '14']
+        for line in overlayFile:
+            if TryProcessFileInclusion(line, definesDict):
+                continue
+            if TryProcessConditionalCompilation(line, definesDict, conditionals):
+                continue
+            if line.strip().lower().startswith('replace_graphics '):
+                replaceLines.append(line.split())
+    assert len(replaceLines) == 29
+
+    actualKeys = set()
+    actualItems = []
+    for line in replaceLines:
+        assert len(line) in (18, 31)
+        _, mapBank, mapNum, expectedCount = line[:4]
+        mapBank = ResolveNumericOrDefine(mapBank, definesDict)
+        mapNum = ResolveNumericOrDefine(mapNum, definesDict)
+        expectedCount = ResolveNumericOrDefine(expectedCount, definesDict)
+        target = ParseReplacementExpectation(line[4:18], definesDict, True)
+        key = (mapBank, mapNum, target['localId'])
+        assert key in expectedByKey
+        assert key not in actualKeys
+        actualKeys.add(key)
+        expectedObjectCount, expectedItemToken, expectedFlagToken = expectedByKey[key]
+        assert expectedCount == expectedObjectCount
+        assert target['graphicsId'] == 0x005C
+        assert target['newGraphicsId'] == 0x065C
+        assert target['graphicsId'] & 0xFF == target['newGraphicsId'] & 0xFF == 0x5C
+        assert target['expectedItem'] == ResolveNumericOrDefine(expectedItemToken, definesDict)
+        assert target['flagId'] == ResolveNumericOrDefine(expectedFlagToken, definesDict)
+        assert target['flagId2'] == 0
+        actualItems.append(target['expectedItem'])
+        ValidateFindItemScriptBytes(BuildFindItemScript(target['expectedItem']), target['expectedItem'], 'target object')
+
+        hasControl = len(line) == 31
+        assert hasControl == (key not in noControlKeys)
+        control = ParseReplacementExpectation(line[18:31], definesDict, False) if hasControl else None
+        if control is not None:
+            assert control['localId'] != target['localId']
+            assert control['graphicsId'] == 0x005C
+            assert control['flagId2'] == 0
+            ValidateFindItemScriptBytes(BuildFindItemScript(control['expectedItem']), control['expectedItem'], 'control object')
+
+        templates = []
+        for localId in range(1, expectedCount + 1):
+            expectation = target if localId == target['localId'] else control if control is not None and localId == control['localId'] else None
+            if expectation is None:
+                templates.append(BuildEventObjectTemplate(localId, 1, localId, localId, 3, 8, 1, 1, 0, 0, 0x08000100, 0, 0))
+            else:
+                templates.append(BuildEventObjectTemplate(
+                    expectation['localId'], expectation['graphicsId'], expectation['x'], expectation['y'],
+                    expectation['elevation'], expectation['movementType'], expectation['movementRangeX'],
+                    expectation['movementRangeY'], expectation['trainerType'], expectation['trainerRange'],
+                    0x08000200, expectation['flagId'], expectation['flagId2']))
+        objects = b''.join(templates)
+        replaced, targetOffset, controlOffset = ReplaceEventObjectGraphics(objects, expectedCount, target, control)
+        assert [index for index, pair in enumerate(zip(objects, replaced)) if pair[0] != pair[1]] == [targetOffset + 3]
+        assert replaced[targetOffset + 1] == 0x5C
+        if controlOffset is not None:
+            assert replaced[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE] == \
+                objects[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE]
+
+        beforeEvents = BuildMapEvents(expectedCount, 2, 1, 4, 0x08001000, 0x08002000, 0x08003000, 0x08004000)
+        afterEvents = BuildMapEvents(expectedCount, 2, 1, 4, 0x08100000, 0x08002000, 0x08003000, 0x08004000)
+        assert beforeEvents[0] == afterEvents[0] == expectedCount
+        assert beforeEvents[8:] == afterEvents[8:]
+
+    assert actualKeys == set(expectedByKey)
+    assert actualItems.count(ResolveNumericOrDefine('ITEM_TM09', definesDict)) == 1
+    assert actualItems.count(ResolveNumericOrDefine('ITEM_HM07_WATERFALL', definesDict)) == 1
 
     with open('src/character_customization.c', 'r') as graphicsSwitcherFile:
         graphicsSwitcherSource = graphicsSwitcherFile.read()
@@ -334,11 +426,11 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                     if scriptSymbol not in table:
                         raise ValueError("Symbol missing: {}".format(scriptSymbol))
                 elif action == "replace_graphics":
-                    if len(parts) != 31:
-                        raise ValueError("replace_graphics requires 31 fields")
+                    if len(parts) not in (18, 31):
+                        raise ValueError("replace_graphics requires 18 target fields or 31 target/control fields")
                     _, mapBank, mapNum, expectedCount = parts[:4]
                     target = ParseReplacementExpectation(parts[4:18], definesDict, True)
-                    control = ParseReplacementExpectation(parts[18:31], definesDict, False)
+                    control = ParseReplacementExpectation(parts[18:31], definesDict, False) if len(parts) == 31 else None
                 else:
                     raise ValueError("Unknown map object overlay action: {}".format(action))
 
@@ -376,10 +468,11 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                         objectData, expectedCount, target, control)
                     targetTemplate = ReadEventObjectTemplate(
                         objectData[targetOffset:targetOffset + EVENT_OBJECT_TEMPLATE_SIZE])
-                    controlTemplate = ReadEventObjectTemplate(
-                        objectData[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE])
                     ValidateFindItemScript(rom, targetTemplate["scriptPointer"], target["expectedItem"], "target object")
-                    ValidateFindItemScript(rom, controlTemplate["scriptPointer"], control["expectedItem"], "control object")
+                    if controlOffset is not None:
+                        controlTemplate = ReadEventObjectTemplate(
+                            objectData[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE])
+                        ValidateFindItemScript(rom, controlTemplate["scriptPointer"], control["expectedItem"], "control object")
                     newEventObjectCount = eventObjectCount
 
                 insertOffset = AlignOffset(insertOffset)
