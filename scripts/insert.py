@@ -53,6 +53,7 @@ FREE_BYTE_REPLACEMENTS = 'free_bytereplacements'
 MAP_BANKS_HEADER_POINTER = 0x5524C
 MAP_HEADER_EVENTS_OFFSET = 0x4
 EVENT_OBJECT_TEMPLATE_SIZE = 0x18
+FIND_ITEM_SCRIPT_SIZE = 0xC
 
 
 def ExtractPointer(byteList: [bytes]):
@@ -120,6 +121,183 @@ def BuildEventObjectTemplate(localId: int, graphicsId: int, x: int, y: int, elev
     return bytes(data)
 
 
+def ReadEventObjectTemplate(data: bytes) -> dict:
+    if len(data) != EVENT_OBJECT_TEMPLATE_SIZE:
+        raise ValueError("Event object template must be exactly {} bytes".format(EVENT_OBJECT_TEMPLATE_SIZE))
+
+    return {
+        "localId": data[0],
+        "graphicsId": data[1] | (data[3] << 8),
+        "graphicsIdLowerByte": data[1],
+        "inConnection": data[2],
+        "graphicsIdUpperByte": data[3],
+        "x": int.from_bytes(data[4:6], 'little', signed=True),
+        "y": int.from_bytes(data[6:8], 'little', signed=True),
+        "elevation": data[8],
+        "movementType": data[9],
+        "movementRangeX": data[10] & 0xF,
+        "movementRangeY": (data[10] >> 4) & 0xF,
+        "padding": data[11],
+        "trainerType": int.from_bytes(data[12:14], 'little'),
+        "trainerRange": int.from_bytes(data[14:16], 'little'),
+        "scriptPointer": int.from_bytes(data[16:20], 'little'),
+        "flagId": int.from_bytes(data[20:22], 'little'),
+        "flagId2": int.from_bytes(data[22:24], 'little'),
+    }
+
+
+def FindEventObjectTemplate(objectData: bytes, localId: int) -> (int, dict):
+    if len(objectData) % EVENT_OBJECT_TEMPLATE_SIZE != 0:
+        raise ValueError("Object table is not a sequence of 24-byte templates")
+
+    matches = []
+    for objectIndex in range(len(objectData) // EVENT_OBJECT_TEMPLATE_SIZE):
+        offset = objectIndex * EVENT_OBJECT_TEMPLATE_SIZE
+        template = ReadEventObjectTemplate(objectData[offset:offset + EVENT_OBJECT_TEMPLATE_SIZE])
+        if template["localId"] == localId:
+            matches.append((offset, template))
+
+    if len(matches) != 1:
+        raise ValueError("Expected exactly one object with local id {}, found {}".format(localId, len(matches)))
+
+    return matches[0]
+
+
+def ValidateEventObjectTemplate(template: dict, expected: dict, label: str):
+    expectedFields = (
+        "localId", "graphicsId", "x", "y", "elevation", "movementType",
+        "movementRangeX", "movementRangeY", "trainerType", "trainerRange",
+        "flagId", "flagId2",
+    )
+    for field in expectedFields:
+        if template[field] != expected[field]:
+            raise ValueError("{} {} expected {}, found {}".format(label, field, expected[field], template[field]))
+
+    if template["inConnection"] != 0:
+        raise ValueError("{} unexpectedly uses an in-connection template".format(label))
+    if template["padding"] != 0:
+        raise ValueError("{} has nonzero struct padding".format(label))
+    if template["scriptPointer"] < 0x08000000:
+        raise ValueError("{} has an invalid script pointer".format(label))
+
+
+def ValidateFindItemScript(rom: _io.BufferedReader, scriptPointer: int, expectedItem: int, label: str):
+    rom.seek(scriptPointer - 0x08000000)
+    script = rom.read(FIND_ITEM_SCRIPT_SIZE)
+    expected = bytes([
+        0x1A, 0x00, 0x80, expectedItem & 0xFF, (expectedItem >> 8) & 0xFF,
+        0x1A, 0x01, 0x80, 0x01, 0x00,
+        0x09, 0x01,
+    ])
+    if script != expected:
+        raise ValueError("{} does not point to the expected standard finditem script".format(label))
+
+
+def ReplaceEventObjectGraphics(objectData: bytes, expectedCount: int, target: dict, control: dict) -> (bytes, int, int):
+    if len(objectData) != expectedCount * EVENT_OBJECT_TEMPLATE_SIZE:
+        raise ValueError("Object data length does not match expected object count {}".format(expectedCount))
+
+    targetOffset, targetTemplate = FindEventObjectTemplate(objectData, target["localId"])
+    controlOffset, controlTemplate = FindEventObjectTemplate(objectData, control["localId"])
+    ValidateEventObjectTemplate(targetTemplate, target, "target object")
+    ValidateEventObjectTemplate(controlTemplate, control, "control object")
+
+    oldGraphicsId = target["graphicsId"]
+    newGraphicsId = target["newGraphicsId"]
+    if oldGraphicsId != 0x005C or newGraphicsId != 0x065C:
+        raise ValueError("TM itemball pilot requires the exact 0x005C -> 0x065C graphics contract")
+    if (oldGraphicsId & 0xFF) != 0x5C or (newGraphicsId & 0xFF) != 0x5C:
+        raise ValueError("TM itemball pilot must retain graphics-id lower byte 0x5C")
+
+    replaced = bytearray(objectData)
+    replaced[targetOffset + 3] = (newGraphicsId >> 8) & 0xFF
+    replaced = bytes(replaced)
+
+    changedOffsets = [i for i, (before, after) in enumerate(zip(objectData, replaced)) if before != after]
+    if changedOffsets != [targetOffset + 3]:
+        raise ValueError("Serialized target must differ only at graphics-id upper byte")
+    if replaced[targetOffset + 1] != 0x5C:
+        raise ValueError("Serialized target graphics-id lower byte changed")
+    if replaced[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE] != \
+            objectData[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE]:
+        raise ValueError("Serialized control object changed")
+
+    return replaced, targetOffset, controlOffset
+
+
+def BuildMapEvents(eventObjectCount: int, warpCount: int, coordEventCount: int, bgEventCount: int,
+                   eventObjectsPointer: int, warpsPointer: int, coordEventsPointer: int,
+                   bgEventsPointer: int) -> bytes:
+    data = bytearray([eventObjectCount, warpCount, coordEventCount, bgEventCount])
+    data += eventObjectsPointer.to_bytes(4, 'little')
+    data += warpsPointer.to_bytes(4, 'little')
+    data += coordEventsPointer.to_bytes(4, 'little')
+    data += bgEventsPointer.to_bytes(4, 'little')
+    return bytes(data)
+
+
+def RunMapObjectOverlaySelfTest():
+    target = {
+        "localId": 9, "graphicsId": 0x005C, "newGraphicsId": 0x065C,
+        "x": 11, "y": 35, "elevation": 3, "movementType": 8,
+        "movementRangeX": 1, "movementRangeY": 1, "trainerType": 0,
+        "trainerRange": 0, "expectedItem": 0x129, "flagId": 0x15A, "flagId2": 0,
+    }
+    control = {
+        "localId": 10, "graphicsId": 0x005C,
+        "x": 26, "y": 32, "elevation": 3, "movementType": 8,
+        "movementRangeX": 1, "movementRangeY": 1, "trainerType": 0,
+        "trainerRange": 0, "expectedItem": 13, "flagId": 0x15B, "flagId2": 0,
+    }
+    objects = b''.join([
+        BuildEventObjectTemplate(1, 1, 1, 1, 3, 8, 1, 1, 0, 0, 0x08000100, 0, 0),
+        BuildEventObjectTemplate(9, 0x005C, 11, 35, 3, 8, 1, 1, 0, 0, 0x08000200, 0x15A, 0),
+        BuildEventObjectTemplate(10, 0x005C, 26, 32, 3, 8, 1, 1, 0, 0, 0x08000300, 0x15B, 0),
+    ])
+    replaced, targetOffset, controlOffset = ReplaceEventObjectGraphics(objects, 3, target, control)
+    assert [i for i, pair in enumerate(zip(objects, replaced)) if pair[0] != pair[1]] == [targetOffset + 3]
+    assert replaced[targetOffset + 1] == 0x5C
+    assert replaced[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE] == \
+        objects[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE]
+
+    beforeEvents = BuildMapEvents(3, 2, 1, 4, 0x08001000, 0x08002000, 0x08003000, 0x08004000)
+    afterEvents = BuildMapEvents(3, 2, 1, 4, 0x08100000, 0x08002000, 0x08003000, 0x08004000)
+    assert beforeEvents[0] == afterEvents[0] == 3
+    assert beforeEvents[8:] == afterEvents[8:]
+
+    with open(MAP_OBJECT_OVERLAYS, 'r') as overlayFile:
+        replaceLines = [line.split() for line in overlayFile
+                        if line.strip().lower().startswith('replace_graphics ')]
+    assert len(replaceLines) == 1
+    assert replaceLines[0][1:4] == ['1', '1', '14']
+
+    with open('src/character_customization.c', 'r') as graphicsSwitcherFile:
+        graphicsSwitcherSource = graphicsSwitcherFile.read()
+    switcherStart = graphicsSwitcherSource.index('gOverworldTableSwitcher[255]')
+    switcherEnd = graphicsSwitcherSource.index('};', switcherStart)
+    switcherInitializer = graphicsSwitcherSource[switcherStart:switcherEnd]
+    assert switcherInitializer.count('[TM_ITEM_BALL_GRAPHICS_TABLE_ID]') == 1
+    assert switcherInitializer.count('gTmItemBallOverworldTable') == 1
+
+    with open('src/Tables/tm_itemball_graphics.c', 'r') as graphicsTableFile:
+        graphicsTableSource = graphicsTableFile.read()
+    assert graphicsTableSource.count('[TM_ITEM_BALL_GRAPHICS_INDEX] = &sTmItemBallGraphicsInfo') == 1
+    print("mapobjectoverlays replace_graphics serialized-diff checks passed")
+
+
+def ParseReplacementExpectation(tokens: [str], definesDict: dict, hasNewGraphicsId: bool) -> dict:
+    fieldNames = ["localId", "graphicsId"]
+    if hasNewGraphicsId:
+        fieldNames.append("newGraphicsId")
+    fieldNames += [
+        "x", "y", "elevation", "movementType", "movementRangeX", "movementRangeY",
+        "trainerType", "trainerRange", "expectedItem", "flagId", "flagId2",
+    ]
+    if len(tokens) != len(fieldNames):
+        raise ValueError("Invalid replace_graphics object expectation")
+    return {field: ResolveNumericOrDefine(token, definesDict) for field, token in zip(fieldNames, tokens)}
+
+
 def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOffset: int) -> int:
     if not os.path.isfile(MAP_OBJECT_OVERLAYS):
         return startOffset
@@ -140,32 +318,33 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
 
             try:
                 parts = line.split()
-                if len(parts) != 17 or parts[0].lower() != "append":
-                    print("There was an error inserting the map object overlay on line {}: {}".format(i, line.strip()))
-                    sys.exit(1)
-
-                _, mapBank, mapNum, expectedCount, localId, graphicsId, x, y, elevation, movementType, \
-                    movementRangeX, movementRangeY, trainerType, trainerRange, scriptSymbol, flagId, flagId2 = parts
+                action = parts[0].lower()
+                if action == "append":
+                    if len(parts) != 17:
+                        raise ValueError("append requires 17 fields")
+                    _, mapBank, mapNum, expectedCount, localId, graphicsId, x, y, elevation, movementType, \
+                        movementRangeX, movementRangeY, trainerType, trainerRange, scriptSymbol, flagId, flagId2 = parts
+                    appendValues = [
+                        localId, graphicsId, x, y, elevation, movementType, movementRangeX, movementRangeY,
+                        trainerType, trainerRange, flagId, flagId2,
+                    ]
+                    localId, graphicsId, x, y, elevation, movementType, movementRangeX, movementRangeY, \
+                        trainerType, trainerRange, flagId, flagId2 = \
+                        [ResolveNumericOrDefine(value, definesDict) for value in appendValues]
+                    if scriptSymbol not in table:
+                        raise ValueError("Symbol missing: {}".format(scriptSymbol))
+                elif action == "replace_graphics":
+                    if len(parts) != 31:
+                        raise ValueError("replace_graphics requires 31 fields")
+                    _, mapBank, mapNum, expectedCount = parts[:4]
+                    target = ParseReplacementExpectation(parts[4:18], definesDict, True)
+                    control = ParseReplacementExpectation(parts[18:31], definesDict, False)
+                else:
+                    raise ValueError("Unknown map object overlay action: {}".format(action))
 
                 mapBank = ResolveNumericOrDefine(mapBank, definesDict)
                 mapNum = ResolveNumericOrDefine(mapNum, definesDict)
                 expectedCount = ResolveNumericOrDefine(expectedCount, definesDict)
-                localId = ResolveNumericOrDefine(localId, definesDict)
-                graphicsId = ResolveNumericOrDefine(graphicsId, definesDict)
-                x = ResolveNumericOrDefine(x, definesDict)
-                y = ResolveNumericOrDefine(y, definesDict)
-                elevation = ResolveNumericOrDefine(elevation, definesDict)
-                movementType = ResolveNumericOrDefine(movementType, definesDict)
-                movementRangeX = ResolveNumericOrDefine(movementRangeX, definesDict)
-                movementRangeY = ResolveNumericOrDefine(movementRangeY, definesDict)
-                trainerType = ResolveNumericOrDefine(trainerType, definesDict)
-                trainerRange = ResolveNumericOrDefine(trainerRange, definesDict)
-                flagId = ResolveNumericOrDefine(flagId, definesDict)
-                flagId2 = ResolveNumericOrDefine(flagId2, definesDict)
-
-                if scriptSymbol not in table:
-                    print("Symbol missing:", scriptSymbol)
-                    sys.exit(1)
 
                 mapHeader = ResolveMapHeader(rom, mapBanksHeader, mapBank, mapNum)
                 eventHeader = ReadPointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET) - 0x08000000
@@ -186,10 +365,22 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
 
                 rom.seek(eventObjectsPointer - 0x08000000)
                 objectData = rom.read(eventObjectCount * EVENT_OBJECT_TEMPLATE_SIZE)
-                objectData += BuildEventObjectTemplate(
-                    localId, graphicsId, x, y, elevation, movementType,
-                    movementRangeX, movementRangeY, trainerType, trainerRange,
-                    table[scriptSymbol] + 0x08000000, flagId, flagId2)
+                if action == "append":
+                    objectData += BuildEventObjectTemplate(
+                        localId, graphicsId, x, y, elevation, movementType,
+                        movementRangeX, movementRangeY, trainerType, trainerRange,
+                        table[scriptSymbol] + 0x08000000, flagId, flagId2)
+                    newEventObjectCount = eventObjectCount + 1
+                else:
+                    objectData, targetOffset, controlOffset = ReplaceEventObjectGraphics(
+                        objectData, expectedCount, target, control)
+                    targetTemplate = ReadEventObjectTemplate(
+                        objectData[targetOffset:targetOffset + EVENT_OBJECT_TEMPLATE_SIZE])
+                    controlTemplate = ReadEventObjectTemplate(
+                        objectData[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE])
+                    ValidateFindItemScript(rom, targetTemplate["scriptPointer"], target["expectedItem"], "target object")
+                    ValidateFindItemScript(rom, controlTemplate["scriptPointer"], control["expectedItem"], "control object")
+                    newEventObjectCount = eventObjectCount
 
                 insertOffset = AlignOffset(insertOffset)
                 newObjectTableOffset = insertOffset
@@ -200,11 +391,15 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                 insertOffset = AlignOffset(insertOffset)
                 newMapEventsOffset = insertOffset
                 rom.seek(newMapEventsOffset)
-                rom.write(bytes([eventObjectCount + 1, warpCount, coordEventCount, bgEventCount]))
-                rom.write((newObjectTableOffset + 0x08000000).to_bytes(4, 'little'))
-                rom.write(warpsPointer.to_bytes(4, 'little'))
-                rom.write(coordEventsPointer.to_bytes(4, 'little'))
-                rom.write(bgEventsPointer.to_bytes(4, 'little'))
+                newMapEvents = BuildMapEvents(
+                    newEventObjectCount, warpCount, coordEventCount, bgEventCount,
+                    newObjectTableOffset + 0x08000000, warpsPointer, coordEventsPointer, bgEventsPointer)
+                if newMapEvents[0] != newEventObjectCount or \
+                        newMapEvents[8:20] != \
+                        warpsPointer.to_bytes(4, 'little') + coordEventsPointer.to_bytes(4, 'little') + \
+                        bgEventsPointer.to_bytes(4, 'little'):
+                    raise ValueError("MapEvents count or non-object pointers changed unexpectedly")
+                rom.write(newMapEvents)
                 insertOffset += 0x14
 
                 WritePointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET, newMapEventsOffset + 0x08000000)
@@ -929,4 +1124,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    if sys.argv[1:] == ['--check-map-object-overlays']:
+        RunMapObjectOverlaySelfTest()
+    else:
+        main()
