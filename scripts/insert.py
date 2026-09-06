@@ -179,6 +179,9 @@ def ValidateEventObjectTemplate(template: dict, expected: dict, label: str):
         raise ValueError("{} has nonzero struct padding".format(label))
     if template["scriptPointer"] < 0x08000000:
         raise ValueError("{} has an invalid script pointer".format(label))
+    if "scriptPointer" in expected and template["scriptPointer"] != expected["scriptPointer"]:
+        raise ValueError("{} scriptPointer expected {}, found {}".format(
+            label, expected["scriptPointer"], template["scriptPointer"]))
 
 
 def BuildFindItemScript(expectedItem: int) -> bytes:
@@ -236,6 +239,57 @@ def ReplaceEventObjectGraphics(objectData: bytes, expectedCount: int, target: di
         raise ValueError("Serialized control object changed")
 
     return replaced, targetOffset, controlOffset
+
+
+def ParseEventObjectExpectation(tokens: [str], definesDict: dict) -> dict:
+    fieldNames = [
+        "localId", "graphicsId", "x", "y", "elevation", "movementType", "movementRangeX", "movementRangeY",
+        "trainerType", "trainerRange", "scriptPointer", "flagId", "flagId2",
+    ]
+    if len(tokens) != len(fieldNames):
+        raise ValueError("Invalid replace object expectation")
+    return {field: ResolveNumericOrDefine(token, definesDict) for field, token in zip(fieldNames, tokens)}
+
+
+def ParseEventObjectReplacement(tokens: [str], definesDict: dict) -> dict:
+    fieldNames = [
+        "graphicsId", "x", "y", "elevation", "movementType", "movementRangeX", "movementRangeY",
+        "trainerType", "trainerRange", "scriptSymbol", "flagId", "flagId2",
+    ]
+    if len(tokens) != len(fieldNames):
+        raise ValueError("Invalid replace object replacement")
+
+    replacement = {}
+    for field, token in zip(fieldNames, tokens):
+        replacement[field] = token if field == "scriptSymbol" else ResolveNumericOrDefine(token, definesDict)
+    return replacement
+
+
+def ReplaceEventObject(objectData: bytes, expectedCount: int, expected: dict, replacement: dict,
+                       replacementScriptPointer: int) -> (bytes, int):
+    if len(objectData) != expectedCount * EVENT_OBJECT_TEMPLATE_SIZE:
+        raise ValueError("Object data length does not match expected object count {}".format(expectedCount))
+
+    targetOffset, targetTemplate = FindEventObjectTemplate(objectData, expected["localId"])
+    ValidateEventObjectTemplate(targetTemplate, expected, "target object")
+
+    replacementTemplate = BuildEventObjectTemplate(
+        expected["localId"], replacement["graphicsId"], replacement["x"], replacement["y"],
+        replacement["elevation"], replacement["movementType"], replacement["movementRangeX"],
+        replacement["movementRangeY"], replacement["trainerType"], replacement["trainerRange"],
+        replacementScriptPointer, replacement["flagId"], replacement["flagId2"])
+    replaced = bytearray(objectData)
+    replaced[targetOffset:targetOffset + EVENT_OBJECT_TEMPLATE_SIZE] = replacementTemplate
+    replaced = bytes(replaced)
+
+    if replaced[:targetOffset] != objectData[:targetOffset] or \
+            replaced[targetOffset + EVENT_OBJECT_TEMPLATE_SIZE:] != \
+            objectData[targetOffset + EVENT_OBJECT_TEMPLATE_SIZE:]:
+        raise ValueError("Object replacement changed a non-target object")
+    if replaced[targetOffset:targetOffset + EVENT_OBJECT_TEMPLATE_SIZE] != replacementTemplate:
+        raise ValueError("Object replacement did not serialize the requested target")
+
+    return replaced, targetOffset
 
 
 def BuildMapEvents(eventObjectCount: int, warpCount: int, coordEventCount: int, bgEventCount: int,
@@ -377,6 +431,70 @@ def RunMapObjectOverlaySelfTest():
     print("mapobjectoverlays replace_graphics serialized-diff checks passed")
 
 
+def RunViridianForestNurseOverlaySelfTest():
+    definesDict = {}
+    conditionals = []
+    replaceLines = []
+    with open(MAP_OBJECT_OVERLAYS, 'r') as overlayFile:
+        for line in overlayFile:
+            if TryProcessFileInclusion(line, definesDict):
+                continue
+            if TryProcessConditionalCompilation(line, definesDict, conditionals):
+                continue
+            if line.strip().lower().startswith('replace '):
+                replaceLines.append(line.split())
+
+    assert len(replaceLines) == 1
+    line = replaceLines[0]
+    assert len(line) == 29
+    _, mapBank, mapNum, expectedCount = line[:4]
+    assert ResolveNumericOrDefine(mapBank, definesDict) == 1
+    assert ResolveNumericOrDefine(mapNum, definesDict) == 0
+    assert ResolveNumericOrDefine(expectedCount, definesDict) == 11
+
+    expected = ParseEventObjectExpectation(line[4:17], definesDict)
+    replacement = ParseEventObjectReplacement(line[17:29], definesDict)
+    assert expected == {
+        "localId": 1, "graphicsId": 0x12,
+        "x": 29, "y": 58, "elevation": 3,
+        "movementType": ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_UP", definesDict),
+        "movementRangeX": 1, "movementRangeY": 1, "trainerType": 0, "trainerRange": 0,
+        "scriptPointer": 0x08160529, "flagId": 0, "flagId2": 0,
+    }
+    assert replacement == {
+        "graphicsId": 0x40,
+        "x": 29, "y": 58, "elevation": 3,
+        "movementType": ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_DOWN", definesDict),
+        "movementRangeX": 1, "movementRangeY": 1, "trainerType": 0, "trainerRange": 0,
+        "scriptSymbol": "EventScript_ViridianForest_Nurse", "flagId": 0, "flagId2": 0,
+    }
+
+    otherObjects = [
+        BuildEventObjectTemplate(localId, 1, localId, localId, 3, 8, 1, 1, 0, 0, 0x08000100, 0, 0)
+        for localId in range(2, 12)
+    ]
+    original = BuildEventObjectTemplate(
+        expected["localId"], expected["graphicsId"], expected["x"], expected["y"], expected["elevation"],
+        expected["movementType"], expected["movementRangeX"], expected["movementRangeY"], expected["trainerType"],
+        expected["trainerRange"], expected["scriptPointer"], expected["flagId"], expected["flagId2"]) + b''.join(otherObjects)
+    replaced, targetOffset = ReplaceEventObject(original, 11, expected, replacement, 0x08100000)
+    assert targetOffset == 0
+    assert replaced[EVENT_OBJECT_TEMPLATE_SIZE:] == original[EVENT_OBJECT_TEMPLATE_SIZE:]
+    assert ReadEventObjectTemplate(replaced[:EVENT_OBJECT_TEMPLATE_SIZE]) == {
+        "localId": 1, "graphicsId": replacement["graphicsId"], "graphicsIdLowerByte": replacement["graphicsId"] & 0xFF,
+        "inConnection": 0, "graphicsIdUpperByte": replacement["graphicsId"] >> 8,
+        "x": 29, "y": 58, "elevation": 3, "movementType": replacement["movementType"],
+        "movementRangeX": 1, "movementRangeY": 1, "padding": 0, "trainerType": 0, "trainerRange": 0,
+        "scriptPointer": 0x08100000, "flagId": 0, "flagId2": 0,
+    }
+
+    beforeEvents = BuildMapEvents(11, 6, 0, 8, 0x08001000, 0x08002000, 0x08003000, 0x08004000)
+    afterEvents = BuildMapEvents(11, 6, 0, 8, 0x08100000, 0x08002000, 0x08003000, 0x08004000)
+    assert beforeEvents[0] == afterEvents[0] == 11
+    assert beforeEvents[8:] == afterEvents[8:]
+    print("Viridian Forest nurse object replacement checks passed")
+
+
 def ParseReplacementExpectation(tokens: [str], definesDict: dict, hasNewGraphicsId: bool) -> dict:
     fieldNames = ["localId", "graphicsId"]
     if hasNewGraphicsId:
@@ -425,6 +543,14 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                         [ResolveNumericOrDefine(value, definesDict) for value in appendValues]
                     if scriptSymbol not in table:
                         raise ValueError("Symbol missing: {}".format(scriptSymbol))
+                elif action == "replace":
+                    if len(parts) != 29:
+                        raise ValueError("replace requires 29 fields")
+                    _, mapBank, mapNum, expectedCount = parts[:4]
+                    expected = ParseEventObjectExpectation(parts[4:17], definesDict)
+                    replacement = ParseEventObjectReplacement(parts[17:29], definesDict)
+                    if replacement["scriptSymbol"] not in table:
+                        raise ValueError("Symbol missing: {}".format(replacement["scriptSymbol"]))
                 elif action == "replace_graphics":
                     if len(parts) not in (18, 31):
                         raise ValueError("replace_graphics requires 18 target fields or 31 target/control fields")
@@ -463,6 +589,11 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                         movementRangeX, movementRangeY, trainerType, trainerRange,
                         table[scriptSymbol] + 0x08000000, flagId, flagId2)
                     newEventObjectCount = eventObjectCount + 1
+                elif action == "replace":
+                    objectData, targetOffset = ReplaceEventObject(
+                        objectData, expectedCount, expected, replacement,
+                        table[replacement["scriptSymbol"]] + 0x08000000)
+                    newEventObjectCount = eventObjectCount
                 else:
                     objectData, targetOffset, controlOffset = ReplaceEventObjectGraphics(
                         objectData, expectedCount, target, control)
@@ -1219,5 +1350,6 @@ def main():
 if __name__ == '__main__':
     if sys.argv[1:] == ['--check-map-object-overlays']:
         RunMapObjectOverlaySelfTest()
+        RunViridianForestNurseOverlaySelfTest()
     else:
         main()
