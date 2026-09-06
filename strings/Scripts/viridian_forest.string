@@ -1,0 +1,12 @@
+#org @gText_ViridianForest_NurseHealAsk
+Want me to heal your Pok\emon?
+
+#org @gText_ViridianForest_NurseHealed
+Your Pok\emon are healthy.
+
+#org @gText_ViridianForest_NurseNo
+Come again!
+
+#org @gText_ViridianForest_NurseCantHealPoison
+Sorry, but I can't heal if
+you have a poisoned Pok\emon.
