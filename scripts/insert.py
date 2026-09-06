@@ -170,7 +170,7 @@ def ValidateEventObjectTemplate(template: dict, expected: dict, label: str):
         "flagId", "flagId2",
     )
     for field in expectedFields:
-        if template[field] != expected[field]:
+        if field in expected and template[field] != expected[field]:
             raise ValueError("{} {} expected {}, found {}".format(label, field, expected[field], template[field]))
 
     if template["inConnection"] != 0:
@@ -182,6 +182,55 @@ def ValidateEventObjectTemplate(template: dict, expected: dict, label: str):
     if "scriptPointer" in expected and template["scriptPointer"] != expected["scriptPointer"]:
         raise ValueError("{} scriptPointer expected {}, found {}".format(
             label, expected["scriptPointer"], template["scriptPointer"]))
+
+
+def FindEventObjectTemplateByExpectation(objectData: bytes, expected: dict) -> (int, dict):
+    if len(objectData) % EVENT_OBJECT_TEMPLATE_SIZE != 0:
+        raise ValueError("Object table is not a sequence of 24-byte templates")
+
+    expectedFields = (
+        "localId", "graphicsId", "x", "y", "elevation", "movementType",
+        "movementRangeX", "movementRangeY", "trainerType", "trainerRange",
+        "flagId", "flagId2",
+    )
+    matches = []
+    for objectIndex in range(len(objectData) // EVENT_OBJECT_TEMPLATE_SIZE):
+        offset = objectIndex * EVENT_OBJECT_TEMPLATE_SIZE
+        template = ReadEventObjectTemplate(objectData[offset:offset + EVENT_OBJECT_TEMPLATE_SIZE])
+        if all(field not in expected or template[field] == expected[field] for field in expectedFields):
+            matches.append((offset, template))
+
+    if len(matches) != 1:
+        raise ValueError("Expected exactly one object matching the source-backed template, found {}".format(len(matches)))
+
+    offset, template = matches[0]
+    ValidateEventObjectTemplate(template, expected, "target object")
+    return offset, template
+
+
+def ValidatePokeCenterNurseWrapperBytes(script: bytes, label: str) -> int:
+    # lock; faceplayer; call EventScript_PkmnCenterNurse; release; end
+    if len(script) != 9 or script[0:3] != bytes([0x6A, 0x5A, 0x04]) or script[7:9] != bytes([0x6C, 0x02]):
+        raise ValueError("{} is not the expected vanilla PokeCenter Nurse wrapper".format(label))
+    commonScriptPointer = int.from_bytes(script[3:7], 'little')
+    if commonScriptPointer < 0x08000000:
+        raise ValueError("{} has an invalid common Nurse script pointer".format(label))
+    return commonScriptPointer
+
+
+def ValidatePokeCenterNurseWrapper(rom: _io.BufferedReader, scriptPointer: int, label: str) -> int:
+    rom.seek(scriptPointer - 0x08000000)
+    return ValidatePokeCenterNurseWrapperBytes(rom.read(9), label)
+
+
+def ReplaceEventObjectScript(objectData: bytes, expectedCount: int, expected: dict, scriptPointer: int) -> (bytes, int, int):
+    if len(objectData) != expectedCount * EVENT_OBJECT_TEMPLATE_SIZE:
+        raise ValueError("Object data length does not match expected object count {}".format(expectedCount))
+
+    targetOffset, targetTemplate = FindEventObjectTemplateByExpectation(objectData, expected)
+    replaced = bytearray(objectData)
+    replaced[targetOffset + 16:targetOffset + 20] = scriptPointer.to_bytes(4, 'little')
+    return bytes(replaced), targetOffset, targetTemplate["scriptPointer"]
 
 
 def BuildFindItemScript(expectedItem: int) -> bytes:
@@ -495,6 +544,69 @@ def RunViridianForestNurseOverlaySelfTest():
     print("Viridian Forest nurse object replacement checks passed")
 
 
+def RunInstantPokeCenterHealingOverlaySelfTest():
+    definesDict = {}
+    conditionals = []
+    scriptLines = []
+    with open(MAP_OBJECT_OVERLAYS, 'r') as overlayFile:
+        for line in overlayFile:
+            if TryProcessFileInclusion(line, definesDict):
+                continue
+            if TryProcessConditionalCompilation(line, definesDict, conditionals):
+                continue
+            if line.strip().lower().startswith('replace_script '):
+                scriptLines.append(line.split())
+
+    expectedMapKeys = {
+        (5, 4), (10, 12), (11, 5), (8, 0), (21, 0), (16, 0), (14, 6),
+        (7, 3), (12, 5), (13, 0), (33, 2), (34, 1), (35, 1), (36, 0),
+        (37, 0), (31, 3), (32, 0), (6, 5), (9, 1),
+    }
+    assert len(scriptLines) == len(expectedMapKeys)
+    actualMapKeys = set()
+    for line in scriptLines:
+        assert len(line) == 16
+        _, mapBank, mapNum, expectedCount = line[:4]
+        mapBank = ResolveNumericOrDefine(mapBank, definesDict)
+        mapNum = ResolveNumericOrDefine(mapNum, definesDict)
+        assert mapBank != 10 or mapNum != 10  # Trainer Tower is intentionally untouched.
+        actualMapKeys.add((mapBank, mapNum))
+        assert ResolveNumericOrDefine(expectedCount, definesDict) >= 4
+        expected = ParseScriptReplacementExpectation(line[4:15], definesDict)
+        assert expected["graphicsId"] == ResolveNumericOrDefine("MAP_OBJ_GFX_NURSE", definesDict)
+        assert expected["movementType"] == ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_DOWN", definesDict)
+        assert expected["movementRangeX"] == expected["movementRangeY"] == 1
+        assert expected["trainerType"] == expected["trainerRange"] == expected["flagId"] == expected["flagId2"] == 0
+        assert line[15] == "EventScript_InstantPokeCenterNurse"
+    assert actualMapKeys == expectedMapKeys
+
+    expected = ParseScriptReplacementExpectation(scriptLines[0][4:15], definesDict)
+    nurse = BuildEventObjectTemplate(
+        7, expected["graphicsId"], expected["x"], expected["y"], expected["elevation"],
+        expected["movementType"], expected["movementRangeX"], expected["movementRangeY"],
+        expected["trainerType"], expected["trainerRange"], 0x08123456, expected["flagId"], expected["flagId2"])
+    decoy = BuildEventObjectTemplate(8, 1, 1, 1, 3, 8, 1, 1, 0, 0, 0x08000100, 0, 0)
+    original = nurse + decoy
+    replaced, targetOffset, originalScriptPointer = ReplaceEventObjectScript(
+        original, 2, expected, 0x08100000)
+    assert targetOffset == 0
+    assert originalScriptPointer == 0x08123456
+    assert replaced[:16] == original[:16]
+    assert replaced[16:20] == (0x08100000).to_bytes(4, 'little')
+    assert replaced[20:] == original[20:]
+
+    commonScriptPointer = ValidatePokeCenterNurseWrapperBytes(
+        bytes([0x6A, 0x5A, 0x04]) + (0x08123456).to_bytes(4, 'little') + bytes([0x6C, 0x02]),
+        "self-test Nurse wrapper")
+    assert commonScriptPointer == 0x08123456
+    try:
+        ValidatePokeCenterNurseWrapperBytes(bytes([0x6A, 0x5A, 0x05, 0, 0, 0, 0, 0x6C, 0x02]), "invalid wrapper")
+        raise AssertionError("invalid Nurse wrapper unexpectedly validated")
+    except ValueError:
+        pass
+    print("instant PokeCenter healing overlay checks passed")
+
+
 def ParseReplacementExpectation(tokens: [str], definesDict: dict, hasNewGraphicsId: bool) -> dict:
     fieldNames = ["localId", "graphicsId"]
     if hasNewGraphicsId:
@@ -508,6 +620,16 @@ def ParseReplacementExpectation(tokens: [str], definesDict: dict, hasNewGraphics
     return {field: ResolveNumericOrDefine(token, definesDict) for field, token in zip(fieldNames, tokens)}
 
 
+def ParseScriptReplacementExpectation(tokens: [str], definesDict: dict) -> dict:
+    fieldNames = [
+        "graphicsId", "x", "y", "elevation", "movementType", "movementRangeX", "movementRangeY",
+        "trainerType", "trainerRange", "flagId", "flagId2",
+    ]
+    if len(tokens) != len(fieldNames):
+        raise ValueError("Invalid replace_script object expectation")
+    return {field: ResolveNumericOrDefine(token, definesDict) for field, token in zip(fieldNames, tokens)}
+
+
 def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOffset: int) -> int:
     if not os.path.isfile(MAP_OBJECT_OVERLAYS):
         return startOffset
@@ -516,6 +638,7 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
     mapBanksHeader = ReadPointer(rom, MAP_BANKS_HEADER_POINTER) - 0x08000000
     definesDict = {}
     conditionals = []
+    commonPokeCenterNurseScriptPointer = None
 
     with open(MAP_OBJECT_OVERLAYS, 'r') as file:
         for i, line in enumerate(file):
@@ -557,6 +680,14 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                     _, mapBank, mapNum, expectedCount = parts[:4]
                     target = ParseReplacementExpectation(parts[4:18], definesDict, True)
                     control = ParseReplacementExpectation(parts[18:31], definesDict, False) if len(parts) == 31 else None
+                elif action == "replace_script":
+                    if len(parts) != 16:
+                        raise ValueError("replace_script requires 16 fields")
+                    _, mapBank, mapNum, expectedCount = parts[:4]
+                    expected = ParseScriptReplacementExpectation(parts[4:15], definesDict)
+                    scriptSymbol = parts[15]
+                    if scriptSymbol not in table:
+                        raise ValueError("Symbol missing: {}".format(scriptSymbol))
                 else:
                     raise ValueError("Unknown map object overlay action: {}".format(action))
 
@@ -594,7 +725,7 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                         objectData, expectedCount, expected, replacement,
                         table[replacement["scriptSymbol"]] + 0x08000000)
                     newEventObjectCount = eventObjectCount
-                else:
+                elif action == "replace_graphics":
                     objectData, targetOffset, controlOffset = ReplaceEventObjectGraphics(
                         objectData, expectedCount, target, control)
                     targetTemplate = ReadEventObjectTemplate(
@@ -604,6 +735,16 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                         controlTemplate = ReadEventObjectTemplate(
                             objectData[controlOffset:controlOffset + EVENT_OBJECT_TEMPLATE_SIZE])
                         ValidateFindItemScript(rom, controlTemplate["scriptPointer"], control["expectedItem"], "control object")
+                    newEventObjectCount = eventObjectCount
+                else:
+                    objectData, targetOffset, originalScriptPointer = ReplaceEventObjectScript(
+                        objectData, expectedCount, expected, table[scriptSymbol] + 0x08000000)
+                    commonScriptPointer = ValidatePokeCenterNurseWrapper(
+                        rom, originalScriptPointer, "target object")
+                    if commonPokeCenterNurseScriptPointer is None:
+                        commonPokeCenterNurseScriptPointer = commonScriptPointer
+                    elif commonPokeCenterNurseScriptPointer != commonScriptPointer:
+                        raise ValueError("normal PokeCenter Nurse wrappers do not share the expected common script")
                     newEventObjectCount = eventObjectCount
 
                 insertOffset = AlignOffset(insertOffset)
@@ -1351,5 +1492,6 @@ if __name__ == '__main__':
     if sys.argv[1:] == ['--check-map-object-overlays']:
         RunMapObjectOverlaySelfTest()
         RunViridianForestNurseOverlaySelfTest()
+        RunInstantPokeCenterHealingOverlaySelfTest()
     else:
         main()
