@@ -1,0 +1,340 @@
+#include "defines.h"
+#include "../include/event_data.h"
+#include "../include/random.h"
+#include "../include/save.h"
+#include "../include/constants/flags.h"
+#include "../include/constants/maps.h"
+#include "../include/constants/vars.h"
+
+#define RENEWABLE_ITEM_STEP_LIMIT 1500
+#define NO_RENEWABLE_ITEM 0xFF
+#define RENEWABLE_TIER_COUNT 3
+
+enum RenewableItemTier
+{
+    RENEWABLE_TIER_RARE,
+    RENEWABLE_TIER_UNCOMMON,
+    RENEWABLE_TIER_COMMON,
+};
+
+// CFRU retains these vanilla BPRE hidden-item offsets in a commented legacy
+// block. Keep the values local to this renewal table rather than altering the
+// global flag header or any hidden-item event definition.
+enum RenewableHiddenItemOffset
+{
+    HIDDEN_ITEM_SEVEN_ISLAND_TANOBY_RUINS_HEART_SCALE_4 = 64,
+    HIDDEN_ITEM_SEVEN_ISLAND_TANOBY_RUINS_HEART_SCALE = 65,
+    HIDDEN_ITEM_SEVEN_ISLAND_TANOBY_RUINS_HEART_SCALE_2 = 66,
+    HIDDEN_ITEM_SEVEN_ISLAND_TANOBY_RUINS_HEART_SCALE_3 = 67,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_POTION = 70,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_ANTIDOTE = 71,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_PARALYZE_HEAL = 72,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_AWAKENING = 73,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_BURN_HEAL = 74,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_ICE_HEAL = 75,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_ETHER = 76,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_POTION = 77,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_ANTIDOTE = 78,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_PARALYZE_HEAL = 79,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_AWAKENING = 80,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_BURN_HEAL = 81,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_ICE_HEAL = 82,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_ETHER = 83,
+    HIDDEN_ITEM_MT_MOON_B1F_TINY_MUSHROOM = 84,
+    HIDDEN_ITEM_MT_MOON_B1F_TINY_MUSHROOM_2 = 85,
+    HIDDEN_ITEM_MT_MOON_B1F_TINY_MUSHROOM_3 = 86,
+    HIDDEN_ITEM_MT_MOON_B1F_BIG_MUSHROOM = 87,
+    HIDDEN_ITEM_MT_MOON_B1F_BIG_MUSHROOM_2 = 88,
+    HIDDEN_ITEM_MT_MOON_B1F_BIG_MUSHROOM_3 = 89,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_RAZZ_BERRY = 90,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_BLUK_BERRY = 91,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_NANAB_BERRY = 92,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_WEPEAR_BERRY = 93,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_ORAN_BERRY = 94,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_CHERI_BERRY = 95,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_CHESTO_BERRY = 96,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_PECHA_BERRY = 97,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_RAWST_BERRY = 98,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_ASPEAR_BERRY = 99,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_PERSIM_BERRY = 100,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_PINAP_BERRY = 101,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_LUM_BERRY = 102,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_STARDUST = 103,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_STARDUST_2 = 104,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_PEARL = 105,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_PEARL_2 = 106,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_ULTRA_BALL = 107,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_ULTRA_BALL_2 = 108,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_STAR_PIECE = 109,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_BIG_PEARL = 110,
+    HIDDEN_ITEM_ROUTE20_STARDUST = 153,
+    HIDDEN_ITEM_ROUTE21_NORTH_PEARL = 154,
+    HIDDEN_ITEM_THREE_ISLAND_BOND_BRIDGE_PEARL = 166,
+    HIDDEN_ITEM_THREE_ISLAND_BOND_BRIDGE_STARDUST = 167,
+    HIDDEN_ITEM_FOUR_ISLAND_PEARL = 168,
+    HIDDEN_ITEM_FOUR_ISLAND_ULTRA_BALL = 169,
+    HIDDEN_ITEM_FIVE_ISLAND_MEMORIAL_PILLAR_BIG_PEARL = 170,
+    HIDDEN_ITEM_FIVE_ISLAND_RESORT_GORGEOUS_NEST_BALL = 174,
+    HIDDEN_ITEM_FIVE_ISLAND_RESORT_GORGEOUS_STARDUST = 175,
+    HIDDEN_ITEM_FIVE_ISLAND_RESORT_GORGEOUS_STAR_PIECE = 176,
+    HIDDEN_ITEM_FIVE_ISLAND_RESORT_GORGEOUS_STARDUST_2 = 177,
+    HIDDEN_ITEM_SIX_ISLAND_OUTCAST_ISLAND_STAR_PIECE = 178,
+    HIDDEN_ITEM_SIX_ISLAND_OUTCAST_ISLAND_NET_BALL = 179,
+    HIDDEN_ITEM_SIX_ISLAND_GREEN_PATH_ULTRA_BALL = 180,
+    HIDDEN_ITEM_SEVEN_ISLAND_TRAINER_TOWER_BIG_PEARL = 185,
+    HIDDEN_ITEM_SEVEN_ISLAND_TRAINER_TOWER_PEARL = 186,
+};
+
+struct RenewableHiddenItemGroup
+{
+    u16 map;
+    bool8 guaranteeItem;
+    const u8 *tiers[RENEWABLE_TIER_COUNT];
+};
+
+static void SetAllRenewableItemFlags(void);
+static void SampleRenewableItemFlags(void);
+static bool8 IsCurrentRenewableItemMap(void);
+static const u8 *GetFirstPopulatedTier(const struct RenewableHiddenItemGroup *group);
+static void SetFlagsForTier(const u8 *flags);
+static void ClearFlagsForTier(const u8 *flags);
+
+// This is the source-backed FireRed renewable table. A terminator replaces
+// pret's fixed eight-entry padding; it represents the same eligible flags.
+static const u8 sNoRenewableItems[] = { NO_RENEWABLE_ITEM };
+static const u8 sRoute20Uncommon[] = { HIDDEN_ITEM_ROUTE20_STARDUST, NO_RENEWABLE_ITEM };
+static const u8 sRoute21NorthUncommon[] = { HIDDEN_ITEM_ROUTE21_NORTH_PEARL, NO_RENEWABLE_ITEM };
+
+static const u8 sUndergroundNorthSouthRare[] = {
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_ETHER, NO_RENEWABLE_ITEM,
+};
+static const u8 sUndergroundNorthSouthUncommon[] = {
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_POTION,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_ANTIDOTE,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_PARALYZE_HEAL,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_AWAKENING,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_BURN_HEAL,
+    HIDDEN_ITEM_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL_ICE_HEAL,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sUndergroundEastWestRare[] = {
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_ETHER, NO_RENEWABLE_ITEM,
+};
+static const u8 sUndergroundEastWestUncommon[] = {
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_POTION,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_ANTIDOTE,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_PARALYZE_HEAL,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_AWAKENING,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_BURN_HEAL,
+    HIDDEN_ITEM_UNDERGROUND_PATH_EAST_WEST_TUNNEL_ICE_HEAL,
+    NO_RENEWABLE_ITEM,
+};
+
+static const u8 sTanobyRuinsRare[] = {
+    HIDDEN_ITEM_SEVEN_ISLAND_TANOBY_RUINS_HEART_SCALE_4,
+    HIDDEN_ITEM_SEVEN_ISLAND_TANOBY_RUINS_HEART_SCALE,
+    HIDDEN_ITEM_SEVEN_ISLAND_TANOBY_RUINS_HEART_SCALE_2,
+    HIDDEN_ITEM_SEVEN_ISLAND_TANOBY_RUINS_HEART_SCALE_3,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sMtMoonRare[] = {
+    HIDDEN_ITEM_MT_MOON_B1F_TINY_MUSHROOM,
+    HIDDEN_ITEM_MT_MOON_B1F_TINY_MUSHROOM_2,
+    HIDDEN_ITEM_MT_MOON_B1F_TINY_MUSHROOM_3,
+    HIDDEN_ITEM_MT_MOON_B1F_BIG_MUSHROOM,
+    HIDDEN_ITEM_MT_MOON_B1F_BIG_MUSHROOM_2,
+    HIDDEN_ITEM_MT_MOON_B1F_BIG_MUSHROOM_3,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sMtMoonUncommon[] = {
+    HIDDEN_ITEM_MT_MOON_B1F_TINY_MUSHROOM,
+    HIDDEN_ITEM_MT_MOON_B1F_TINY_MUSHROOM_2,
+    HIDDEN_ITEM_MT_MOON_B1F_TINY_MUSHROOM_3,
+    NO_RENEWABLE_ITEM,
+};
+
+static const u8 sBerryForestRare[] = {
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_BLUK_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_WEPEAR_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_ORAN_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_CHERI_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_ASPEAR_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_PERSIM_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_PINAP_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_LUM_BERRY,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sBerryForestUncommon[] = {
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_BLUK_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_WEPEAR_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_ORAN_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_CHERI_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_ASPEAR_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_PERSIM_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_PINAP_BERRY,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sBerryForestCommon[] = {
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_RAZZ_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_NANAB_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_CHESTO_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_PECHA_BERRY,
+    HIDDEN_ITEM_THREE_ISLAND_BERRY_FOREST_RAWST_BERRY,
+    NO_RENEWABLE_ITEM,
+};
+
+static const u8 sTreasureBeachRare[] = {
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_ULTRA_BALL,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_ULTRA_BALL_2,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_STAR_PIECE,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_BIG_PEARL,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sTreasureBeachUncommon[] = {
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_STARDUST,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_STARDUST_2,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_PEARL,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_PEARL_2,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_ULTRA_BALL,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_ULTRA_BALL_2,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sTreasureBeachCommon[] = {
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_ULTRA_BALL,
+    HIDDEN_ITEM_ONE_ISLAND_TREASURE_BEACH_ULTRA_BALL_2,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sBondBridgeUncommon[] = {
+    HIDDEN_ITEM_THREE_ISLAND_BOND_BRIDGE_PEARL,
+    HIDDEN_ITEM_THREE_ISLAND_BOND_BRIDGE_STARDUST,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sFourIslandUncommon[] = { HIDDEN_ITEM_FOUR_ISLAND_PEARL, NO_RENEWABLE_ITEM };
+static const u8 sFourIslandCommon[] = { HIDDEN_ITEM_FOUR_ISLAND_ULTRA_BALL, NO_RENEWABLE_ITEM };
+static const u8 sMemorialPillarRare[] = {
+    HIDDEN_ITEM_FIVE_ISLAND_MEMORIAL_PILLAR_BIG_PEARL, NO_RENEWABLE_ITEM,
+};
+static const u8 sResortGorgeousRare[] = {
+    HIDDEN_ITEM_FIVE_ISLAND_RESORT_GORGEOUS_NEST_BALL,
+    HIDDEN_ITEM_FIVE_ISLAND_RESORT_GORGEOUS_STAR_PIECE,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sResortGorgeousUncommon[] = {
+    HIDDEN_ITEM_FIVE_ISLAND_RESORT_GORGEOUS_STARDUST,
+    HIDDEN_ITEM_FIVE_ISLAND_RESORT_GORGEOUS_STARDUST_2,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sOutcastIslandRare[] = {
+    HIDDEN_ITEM_SIX_ISLAND_OUTCAST_ISLAND_STAR_PIECE,
+    HIDDEN_ITEM_SIX_ISLAND_OUTCAST_ISLAND_NET_BALL,
+    NO_RENEWABLE_ITEM,
+};
+static const u8 sGreenPathCommon[] = { HIDDEN_ITEM_SIX_ISLAND_GREEN_PATH_ULTRA_BALL, NO_RENEWABLE_ITEM };
+static const u8 sTrainerTowerRare[] = { HIDDEN_ITEM_SEVEN_ISLAND_TRAINER_TOWER_BIG_PEARL, NO_RENEWABLE_ITEM };
+static const u8 sTrainerTowerUncommon[] = { HIDDEN_ITEM_SEVEN_ISLAND_TRAINER_TOWER_PEARL, NO_RENEWABLE_ITEM };
+
+static const struct RenewableHiddenItemGroup sRenewableHiddenItemGroups[] = {
+    { MAP_ROUTE_20, FALSE, { sNoRenewableItems, sRoute20Uncommon, sNoRenewableItems } },
+    { MAP_ROUTE_21_A, FALSE, { sNoRenewableItems, sRoute21NorthUncommon, sNoRenewableItems } },
+    { MAP_UNDERGROUND_PATH_NORTH_SOUTH_TUNNEL, TRUE, { sUndergroundNorthSouthRare, sUndergroundNorthSouthUncommon, sNoRenewableItems } },
+    { MAP_UNDERGROUND_PATH_EAST_WEST_TUNNEL, TRUE, { sUndergroundEastWestRare, sUndergroundEastWestUncommon, sNoRenewableItems } },
+    { MAP_SEVEN_ISLAND_TANOBY_RUINS, TRUE, { sTanobyRuinsRare, sNoRenewableItems, sNoRenewableItems } },
+    { MAP_MT_MOON_B1F, FALSE, { sMtMoonRare, sMtMoonUncommon, sNoRenewableItems } },
+    { MAP_THREE_ISLAND_BERRY_FOREST, TRUE, { sBerryForestRare, sBerryForestUncommon, sBerryForestCommon } },
+    { MAP_ONE_ISLAND_TREASURE_BEACH, TRUE, { sTreasureBeachRare, sTreasureBeachUncommon, sTreasureBeachCommon } },
+    { MAP_THREE_ISLAND_BOND_BRIDGE, TRUE, { sNoRenewableItems, sBondBridgeUncommon, sNoRenewableItems } },
+    { MAP_FOUR_ISLAND, TRUE, { sNoRenewableItems, sFourIslandUncommon, sFourIslandCommon } },
+    { MAP_FIVE_ISLAND_MEMORIAL_PILLAR, TRUE, { sMemorialPillarRare, sNoRenewableItems, sNoRenewableItems } },
+    { MAP_FIVE_ISLAND_RESORT_GORGEOUS, TRUE, { sResortGorgeousRare, sResortGorgeousUncommon, sNoRenewableItems } },
+    { MAP_SIX_ISLAND_OUTCAST_ISLAND, TRUE, { sOutcastIslandRare, sNoRenewableItems, sNoRenewableItems } },
+    { MAP_SIX_ISLAND_GREEN_PATH, TRUE, { sNoRenewableItems, sNoRenewableItems, sGreenPathCommon } },
+    { MAP_SEVEN_ISLAND_TRAINER_TOWER, TRUE, { sTrainerTowerRare, sTrainerTowerUncommon, sNoRenewableItems } },
+};
+
+void TryRegenerateGuaranteedRenewableHiddenItems(void)
+{
+    if (!IsCurrentRenewableItemMap())
+        return;
+
+    if (VarGet(VAR_RENEWABLE_ITEM_STEP_COUNTER) < RENEWABLE_ITEM_STEP_LIMIT)
+        return;
+
+    // This runs from CFRU's transition-map hook immediately before the
+    // vanilla regeneration call. Resetting the counter makes that call a no-op.
+    VarSet(VAR_RENEWABLE_ITEM_STEP_COUNTER, 0);
+    SetAllRenewableItemFlags();
+    SampleRenewableItemFlags();
+}
+
+static bool8 IsCurrentRenewableItemMap(void)
+{
+    u8 i;
+
+    for (i = 0; i < ARRAY_COUNT(sRenewableHiddenItemGroups); i++)
+    {
+        u16 map = sRenewableHiddenItemGroups[i].map;
+
+        if ((map >> 8) == gSaveBlock1->location.mapGroup
+         && (map & 0xFF) == gSaveBlock1->location.mapNum)
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+static void SetAllRenewableItemFlags(void)
+{
+    u8 i;
+    u8 tier;
+
+    for (i = 0; i < ARRAY_COUNT(sRenewableHiddenItemGroups); i++)
+        for (tier = 0; tier < RENEWABLE_TIER_COUNT; tier++)
+            SetFlagsForTier(sRenewableHiddenItemGroups[i].tiers[tier]);
+}
+
+static void SampleRenewableItemFlags(void)
+{
+    u8 i;
+
+    for (i = 0; i < ARRAY_COUNT(sRenewableHiddenItemGroups); i++)
+    {
+        const struct RenewableHiddenItemGroup *group = &sRenewableHiddenItemGroups[i];
+        const u8 *flags;
+        u16 randomValue = Random() % 100;
+
+        if (randomValue >= 90)
+            flags = group->tiers[RENEWABLE_TIER_RARE];
+        else if (randomValue >= 60)
+            flags = group->tiers[RENEWABLE_TIER_UNCOMMON];
+        else
+            flags = group->tiers[RENEWABLE_TIER_COMMON];
+
+        if (group->guaranteeItem && flags[0] == NO_RENEWABLE_ITEM)
+            flags = GetFirstPopulatedTier(group);
+
+        ClearFlagsForTier(flags);
+    }
+}
+
+static const u8 *GetFirstPopulatedTier(const struct RenewableHiddenItemGroup *group)
+{
+    u8 tier;
+
+    for (tier = 0; tier < RENEWABLE_TIER_COUNT; tier++)
+        if (group->tiers[tier][0] != NO_RENEWABLE_ITEM)
+            return group->tiers[tier];
+
+    return sNoRenewableItems;
+}
+
+static void SetFlagsForTier(const u8 *flags)
+{
+    while (*flags != NO_RENEWABLE_ITEM)
+        FlagSet(FLAG_HIDDEN_ITEMS_START + *flags++);
+}
+
+static void ClearFlagsForTier(const u8 *flags)
+{
+    while (*flags != NO_RENEWABLE_ITEM)
+        FlagClear(FLAG_HIDDEN_ITEMS_START + *flags++);
+}
