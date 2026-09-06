@@ -545,6 +545,7 @@ def RunViridianForestNurseOverlaySelfTest():
 
 
 def RunInstantPokeCenterHealingOverlaySelfTest():
+    BPRE_NURSE_GRAPHICS_ID = 0x40
     definesDict = {}
     conditionals = []
     scriptLines = []
@@ -563,6 +564,7 @@ def RunInstantPokeCenterHealingOverlaySelfTest():
         (37, 0), (31, 3), (32, 0), (6, 5), (9, 1),
     }
     assert len(scriptLines) == len(expectedMapKeys)
+    assert ResolveNumericOrDefine("MAP_OBJ_GFX_NURSE", definesDict) != BPRE_NURSE_GRAPHICS_ID
     actualMapKeys = set()
     for line in scriptLines:
         assert len(line) == 16
@@ -573,7 +575,7 @@ def RunInstantPokeCenterHealingOverlaySelfTest():
         actualMapKeys.add((mapBank, mapNum))
         assert ResolveNumericOrDefine(expectedCount, definesDict) >= 4
         expected = ParseScriptReplacementExpectation(line[4:15], definesDict)
-        assert expected["graphicsId"] == ResolveNumericOrDefine("MAP_OBJ_GFX_NURSE", definesDict)
+        assert expected["graphicsId"] == BPRE_NURSE_GRAPHICS_ID
         assert expected["movementType"] == ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_DOWN", definesDict)
         assert expected["movementRangeX"] == expected["movementRangeY"] == 1
         assert expected["trainerType"] == expected["trainerRange"] == expected["flagId"] == expected["flagId2"] == 0
@@ -582,7 +584,7 @@ def RunInstantPokeCenterHealingOverlaySelfTest():
 
     expected = ParseScriptReplacementExpectation(scriptLines[0][4:15], definesDict)
     nurse = BuildEventObjectTemplate(
-        7, expected["graphicsId"], expected["x"], expected["y"], expected["elevation"],
+        7, BPRE_NURSE_GRAPHICS_ID, expected["x"], expected["y"], expected["elevation"],
         expected["movementType"], expected["movementRangeX"], expected["movementRangeY"],
         expected["trainerType"], expected["trainerRange"], 0x08123456, expected["flagId"], expected["flagId2"])
     decoy = BuildEventObjectTemplate(8, 1, 1, 1, 3, 8, 1, 1, 0, 0, 0x08000100, 0, 0)
