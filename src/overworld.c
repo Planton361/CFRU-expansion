@@ -57,6 +57,7 @@
 #include "../include/new/overworld_data.h"
 #include "../include/new/party_menu.h"
 #include "../include/new/read_keys.h"
+#include "../include/new/renewable_hidden_items.h"
 #include "../include/new/wild_encounter.h"
 #include "../include/save.h"
 
@@ -1642,6 +1643,7 @@ void RunOnTransitionMapScript(void)
 	ResetMiningSpots();
 	ForceClockUpdate();
 	MapHeaderRunScriptByTag(3);
+	TryRegenerateGuaranteedRenewableHiddenItems();
 	if (FlagGet(FLAG_NUZLOCKE))
 	{
 		u16 sectionId = Overworld_GetMapHeaderByGroupAndId(
