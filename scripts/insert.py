@@ -544,6 +544,116 @@ def RunViridianForestNurseOverlaySelfTest():
     print("Viridian Forest nurse object replacement checks passed")
 
 
+def RunOaksLabPotionOverlaySelfTest():
+    BPRE_ITEM_BALL_GRAPHICS_ID = 0x005C
+    BPRE_OAKS_LAB_POTION_HIDE_FLAG = 0x1FF
+    definesDict = {}
+    conditionals = []
+    potionAppendLines = []
+    with open(MAP_OBJECT_OVERLAYS, 'r') as overlayFile:
+        for line in overlayFile:
+            if TryProcessFileInclusion(line, definesDict):
+                continue
+            if TryProcessConditionalCompilation(line, definesDict, conditionals):
+                continue
+            if line.strip().lower().startswith('append '):
+                parts = line.split()
+                if (ResolveNumericOrDefine(parts[1], definesDict),
+                        ResolveNumericOrDefine(parts[2], definesDict)) == (4, 3):
+                    potionAppendLines.append(parts)
+
+    assert len(potionAppendLines) == 1
+    line = potionAppendLines[0]
+    assert len(line) == 17
+    _, mapBank, mapNum, expectedCount, localId, graphicsId, x, y, elevation, movementType, \
+        movementRangeX, movementRangeY, trainerType, trainerRange, scriptSymbol, flagId, flagId2 = line
+    assert ResolveNumericOrDefine(mapBank, definesDict) == 4
+    assert ResolveNumericOrDefine(mapNum, definesDict) == 3
+    assert ResolveNumericOrDefine(expectedCount, definesDict) == 10
+    assert ResolveNumericOrDefine(localId, definesDict) == 11
+    assert ResolveNumericOrDefine(graphicsId, definesDict) == BPRE_ITEM_BALL_GRAPHICS_ID
+    assert ResolveNumericOrDefine("MAP_OBJ_GFX_ITEM_BALL", definesDict) != BPRE_ITEM_BALL_GRAPHICS_ID
+    assert ResolveNumericOrDefine(x, definesDict) == 12
+    assert ResolveNumericOrDefine(y, definesDict) == 4
+    assert ResolveNumericOrDefine(elevation, definesDict) == 0
+    assert ResolveNumericOrDefine(movementType, definesDict) == ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_DOWN", definesDict)
+    assert ResolveNumericOrDefine(movementRangeX, definesDict) == ResolveNumericOrDefine(movementRangeY, definesDict) == 1
+    assert ResolveNumericOrDefine(trainerType, definesDict) == ResolveNumericOrDefine(trainerRange, definesDict) == 0
+    assert scriptSymbol == "EventScript_OaksLabPotion"
+    assert ResolveNumericOrDefine(flagId, definesDict) == BPRE_OAKS_LAB_POTION_HIDE_FLAG
+    assert ResolveNumericOrDefine(flagId2, definesDict) == 0
+
+    with open("include/constants/flags.h", 'r') as flagsFile:
+        flagsSource = flagsFile.read()
+    assert flagsSource.count("FLAG_HIDE_PALLET_TOWN_PROFESSOR_OAKS_LAB_POTION") == 1
+    assert "#define FLAG_HIDE_PALLET_TOWN_PROFESSOR_OAKS_LAB_POTION 0x1FF" in flagsSource
+    activeFlagValues = []
+    inBlockComment = False
+    for flagsLine in flagsSource.splitlines():
+        strippedLine = flagsLine.strip()
+        if strippedLine.startswith("/*"):
+            inBlockComment = True
+        if not inBlockComment and strippedLine.startswith("#define FLAG_"):
+            parts = strippedLine.split()
+            if len(parts) == 3:
+                try:
+                    activeFlagValues.append((parts[1], int(parts[2], 0)))
+                except ValueError:
+                    pass
+        if inBlockComment and "*/" in strippedLine:
+            inBlockComment = False
+    assert [name for name, value in activeFlagValues if value == BPRE_OAKS_LAB_POTION_HIDE_FLAG] == [
+        "FLAG_HIDE_PALLET_TOWN_PROFESSOR_OAKS_LAB_POTION"
+    ]
+
+    with open("assembly/overworld_scripts/oaks_lab_potion.s", 'r') as potionScriptFile:
+        potionScriptSource = potionScriptFile.read()
+    assert potionScriptSource.count(".global EventScript_OaksLabPotion") == 1
+    assert potionScriptSource.count("finditem ITEM_POTION 1") == 1
+    assert potionScriptSource.count("\tend") == 1
+    ValidateFindItemScriptBytes(BuildFindItemScript(ResolveNumericOrDefine("ITEM_POTION", definesDict)),
+                                ResolveNumericOrDefine("ITEM_POTION", definesDict), "Oak's Lab Potion script")
+
+    with open("src/new_game_pc_items.c", 'r') as newGamePcItemsFile:
+        newGamePcItemsSource = newGamePcItemsFile.read()
+    assert newGamePcItemsSource.count("void NewGameInitPCItems(void)") == 1
+    assert "ClearItemSlots(gSaveBlock1->pcItems, PC_ITEMS_COUNT);" in newGamePcItemsSource
+    assert "AddPCItem" not in newGamePcItemsSource
+
+    rewriteRows = []
+    with open(FUNCTION_REWRITES, 'r') as rewritesFile:
+        for rewriteLine in rewritesFile:
+            if rewriteLine.startswith("NewGameInitPCItems "):
+                rewriteRows.append(rewriteLine.split())
+    assert rewriteRows == [["NewGameInitPCItems", "0x080EB658", "0", "0"]]
+
+    vanillaObjects = b''.join(
+        BuildEventObjectTemplate(localId, 1, localId, localId, 3, 8, 1, 1, 0, 0, 0x08000100, 0, 0)
+        for localId in range(1, 11))
+    appendedPotion = BuildEventObjectTemplate(
+        11, BPRE_ITEM_BALL_GRAPHICS_ID, 12, 4, 0,
+        ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_DOWN", definesDict), 1, 1, 0, 0,
+        0x08100000, BPRE_OAKS_LAB_POTION_HIDE_FLAG, 0)
+    updatedObjects = vanillaObjects + appendedPotion
+    assert updatedObjects[:len(vanillaObjects)] == vanillaObjects
+    assert len(updatedObjects) == 11 * EVENT_OBJECT_TEMPLATE_SIZE
+    assert ReadEventObjectTemplate(updatedObjects[-EVENT_OBJECT_TEMPLATE_SIZE:]) == {
+        "localId": 11, "graphicsId": BPRE_ITEM_BALL_GRAPHICS_ID,
+        "graphicsIdLowerByte": BPRE_ITEM_BALL_GRAPHICS_ID, "inConnection": 0,
+        "graphicsIdUpperByte": 0, "x": 12, "y": 4, "elevation": 0,
+        "movementType": ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_DOWN", definesDict),
+        "movementRangeX": 1, "movementRangeY": 1, "padding": 0,
+        "trainerType": 0, "trainerRange": 0, "scriptPointer": 0x08100000,
+        "flagId": BPRE_OAKS_LAB_POTION_HIDE_FLAG, "flagId2": 0,
+    }
+
+    beforeEvents = BuildMapEvents(10, 2, 6, 4, 0x08001000, 0x08002000, 0x08003000, 0x08004000)
+    afterEvents = BuildMapEvents(11, 2, 6, 4, 0x08100000, 0x08002000, 0x08003000, 0x08004000)
+    assert beforeEvents[1:4] == afterEvents[1:4]
+    assert beforeEvents[8:] == afterEvents[8:]
+    print("Oak's Lab Potion object append checks passed")
+
+
 def RunInstantPokeCenterHealingOverlaySelfTest():
     BPRE_NURSE_GRAPHICS_ID = 0x40
     definesDict = {}
@@ -1494,6 +1604,7 @@ if __name__ == '__main__':
     if sys.argv[1:] == ['--check-map-object-overlays']:
         RunMapObjectOverlaySelfTest()
         RunViridianForestNurseOverlaySelfTest()
+        RunOaksLabPotionOverlaySelfTest()
         RunInstantPokeCenterHealingOverlaySelfTest()
     else:
         main()
