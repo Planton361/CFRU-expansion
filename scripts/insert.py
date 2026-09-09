@@ -787,6 +787,15 @@ def RunTalkToMomOverlaySelfTest():
     assert ResolveNumericOrDefine(index, definesDict) == 0
     assert scriptSymbol == "EventScript_TalkToMomExitBlock"
 
+    # Vanilla BPRE Lab scene 1 only turns the player north before
+    # PlayerEnter walks eight tiles up. M-006 preserves that scene, so its
+    # Mom handoff must begin at (6, 12), which ends at the valid (6, 4).
+    # Cyan's (9, 6) requires Cyan-owned Lab positioning changes and must not
+    # be restored here independently.
+    vanillaLabPlayerEnterWalkUpSteps = 8
+    momLabHandoff = (6, 12)
+    assert momLabHandoff[1] - vanillaLabPlayerEnterWalkUpSteps == 4
+
     originalMom = BuildEventObjectTemplate(
         1, BPRE_MOM_GRAPHICS_ID, 8, 4, 3,
         ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_LEFT", definesDict), 0, 0, 0, 0,
@@ -828,10 +837,11 @@ def RunTalkToMomOverlaySelfTest():
         "checkflag FLAG_BEAT_RIVAL_IN_OAKS_LAB", "setvar VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB 1",
         "clearflag FLAG_HIDE_OAK_IN_HIS_LAB", "setvar VAR_MAP_SCENE_PALLET_TOWN_OAK 1",
         "setflag FLAG_HIDE_OAK_IN_PALLET_TOWN", "setflag FLAG_DONT_TRANSITION_MUSIC",
-        "warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 9 6",
+        "warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 6 12",
         "special SPECIAL_HEAL_PLAYER_PARTY", "Movement_TalkToMomExitRight",
     ):
         assert sourceFragment in momScriptSource
+    assert "warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 9 6" not in momScriptSource
     with open("strings/Scripts/talk_to_mom.string", 'r') as momStringsFile:
         momStringsSource = momStringsFile.read()
     assert "Mom: Want to see a magic trick?" in momStringsSource

@@ -49,7 +49,11 @@ EventScript_TalkToMom:
     setvar VAR_MAP_SCENE_PALLET_TOWN_OAK 1
     setflag FLAG_HIDE_OAK_IN_PALLET_TOWN
     setflag FLAG_DONT_TRANSITION_MUSIC
-    warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 9 6
+    @ Vanilla BPRE Lab scene 1 only turns the player north, then its existing
+    @ PlayerEnter movement walks eight tiles up. (6, 12) therefore reaches
+    @ (6, 4) safely. Cyan's (9, 6) handoff depends on separate Cyan Lab
+    @ positioning changes, which M-006 intentionally does not own.
+    warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 6 12
     waitstate
     release
     end
