@@ -20,3 +20,7 @@ ShowPokemonSummaryScreen 0x081344F8 0 1
 SetTitleScreenScene_Cry 0x080791c0 0 1
 Task_OakSpeech_IsInhabitedFarAndWide 0x0812fa78 0 1
 CreateOakIntroPokemonSprite 0x08130f2c 0 1
+
+## M-005: BPRE NewGameInitPCItems.  The replacement preserves clearing PC
+## storage but intentionally does not seed the starter Potion.
+NewGameInitPCItems 0x080EB658 0 0

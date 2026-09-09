@@ -571,6 +571,9 @@
 #define FLAG_0x22F               0x22F
 */
 
+// BPRE 0x1FF is unused; CyanSMP64 uses it for the Oak's Lab starter Potion.
+#define FLAG_HIDE_PALLET_TOWN_PROFESSOR_OAKS_LAB_POTION 0x1FF
+
 // Story flags
 /*
 #define STORY_FLAGS_START 0x230
