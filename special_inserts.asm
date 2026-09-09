@@ -269,24 +269,13 @@ RemoveDeoxysMewTradeRestrictions_2:
 	bx lr
 
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@ Fix Slow Camera Update
+@ M-009 supersedes Fix Slow Camera Update (see docs/M-009.md)
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 /*
-In bytereplacement
-.org 0x56578, 0xFF
-OverworldBasic:
-	push {LR}
-	bl 0x69AA8 @ScriptContext2_RunScript
-	bl 0x77578 @RunTasks
-	bl 0x6B5C @AnimateSprites
-	bl 0x5ABB0 @CameraUpdate
-	bl 0x5AE28 @UpdateCameraPanning
-	bl 0x704D0 @UpdatePaletteFade
-	bl 0x6FFBC @UpdateTilesetAnimations
-	bl 0xF67B8 @DoScheduledBgTilemapCopiesToVram
-	bl 0x6BA8 @BuildOamBuffer
-	pop {pc}
+The old OverworldBasic listing and byte replacement are retired together.
+Rollback source: a869c3526d7f76c54082bc71e236742564319e02.
+The unrelated examples below remain in bytereplacement.
 
 .org 0x59F20, 0xFF
 VeryTallGrassFix:
