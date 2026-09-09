@@ -343,8 +343,8 @@
 #define FLAG_0x14F               0x14F
 #define FLAG_0x150               0x150
 #define FLAG_0x151               0x151
-#define FLAG_0x152               0x152
-#define FLAG_0x153               0x153
+#define FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE         0x152
+#define FLAG_HIDE_ROUTE1_MART_CLERK_CUTSCENE            0x153
 
 // Item ball hide/show
 #define FLAG_HIDE_ROUTE2_ETHER                                  0x154

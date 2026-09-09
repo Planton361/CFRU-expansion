@@ -13,6 +13,7 @@
 .equ FLAG_BEAT_RIVAL_IN_OAKS_LAB, 0x0258
 .equ FLAG_HIDE_OAK_IN_HIS_LAB, 0x002B
 .equ FLAG_HIDE_OAK_IN_PALLET_TOWN, 0x002C
+.equ FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE, 0x0152
 .equ FLAG_DONT_TRANSITION_MUSIC, 0x4001
 .equ VAR_MAP_SCENE_PALLET_TOWN_OAK, 0x4050
 .equ VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB, 0x4055
@@ -40,6 +41,10 @@ EventScript_TalkToMom:
     checkflag FLAG_BEAT_RIVAL_IN_OAKS_LAB
     if TRUE _goto EventScript_TalkToMomHeal
 
+    @ M-007: this is the first source-owned point reached before the player
+    @ can leave home. Keep the temporary outdoor parcel Oak hidden until the
+    @ Route 1 clerk explicitly hands over Oak's Parcel.
+    setflag FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE
     msgbox gText_TalkToMomMagicTrick MSG_NORMAL
     closemessage
     waitdooranim

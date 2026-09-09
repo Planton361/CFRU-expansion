@@ -857,7 +857,9 @@ def RunTalkToMomOverlaySelfTest():
             if TryProcessConditionalCompilation(line, definesDict, conditionals):
                 continue
             if line.strip().lower().startswith('append_coord '):
-                coordLines.append(line.split())
+                row = line.split()
+                if row[1:3] == ["4", "0"]:
+                    coordLines.append(row)
 
     assert len(coordLines) == 1
     line = coordLines[0]
@@ -1022,6 +1024,182 @@ def RunTalkToMomOverlaySelfTest():
     assert "POK\\emon are looking great.\\lTake care now!" in momStringsSource
     assert "Go on, choose!" in momStringsSource
     print("Talk to Mom map-event and Mom-script checks passed")
+
+
+def RunShortenedOakParcelFlowOverlaySelfTest():
+    BPRE_ROUTE1_CLERK_GRAPHICS_ID = 0x44
+    BPRE_PROF_OAK_GRAPHICS_ID = 0x47
+    FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE = 0x152
+    FLAG_HIDE_ROUTE1_MART_CLERK_CUTSCENE = 0x153
+    VAR_MAP_SCENE_VIRIDIAN_CITY_OLD_MAN = 0x4051
+    VAR_MAP_SCENE_ROUTE22 = 0x4054
+    VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB = 0x4055
+    VAR_MAP_SCENE_VIRIDIAN_CITY_MART = 0x4057
+    VAR_MAP_SCENE_PALLET_TOWN_RIVALS_HOUSE = 0x4058
+    VAR_MAP_SCENE_POKEMON_CENTER_TEALA = 0x407C
+    definesDict = {}
+    conditionals = []
+    overlayRows = []
+    with open(MAP_OBJECT_OVERLAYS, 'r') as overlayFile:
+        for line in overlayFile:
+            if TryProcessFileInclusion(line, definesDict):
+                continue
+            if TryProcessConditionalCompilation(line, definesDict, conditionals):
+                continue
+            if line.strip() and not line.strip().startswith('#'):
+                overlayRows.append(line.split())
+
+    m007Rows = [row for row in overlayRows if any("M007" in field for field in row)]
+    assert m007Rows == [
+        ["append", "3", "19", "2", "3", "0x44", "13", "1", "3", "MOVEMENT_TYPE_FACE_LEFT", "0", "0", "0", "0", "EventScript_M007NoOp", "FLAG_HIDE_ROUTE1_MART_CLERK_CUTSCENE", "0"],
+        ["append_coord", "3", "19", "3", "0", "0", "1", "10", "2", "0", "0x4057", "0", "EventScript_M007Route1ClerkTrigger10"],
+        ["append_coord", "3", "19", "3", "0", "1", "1", "11", "2", "0", "0x4057", "0", "EventScript_M007Route1ClerkTrigger11"],
+        ["append_coord", "3", "19", "3", "0", "2", "1", "12", "2", "0", "0x4057", "0", "EventScript_M007Route1ClerkTrigger12"],
+        ["append_coord", "3", "19", "3", "0", "3", "1", "13", "2", "0", "0x4057", "0", "EventScript_M007Route1ClerkTrigger13"],
+        ["append", "3", "0", "3", "4", "0x47", "11", "8", "3", "MOVEMENT_TYPE_FACE_UP", "0", "0", "0", "0", "EventScript_M007NoOp", "FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE", "0"],
+        ["append_coord", "3", "0", "4", "3", "3", "5", "12", "0", "0", "0x4055", "5", "EventScript_M007PalletOakTrigger12"],
+        ["append_coord", "3", "0", "4", "3", "4", "5", "13", "0", "0", "0x4055", "5", "EventScript_M007PalletOakTrigger13"],
+    ]
+    assert not [row for row in overlayRows if row[0] in ("replace", "replace_script", "replace_graphics") and row[1:3] == ["3", "19"]]
+    assert not [row for row in m007Rows if row[1:3] == ["5", "3"]]
+
+    routePotionClerk = BuildEventObjectTemplate(
+        1, BPRE_ROUTE1_CLERK_GRAPHICS_ID, 6, 28, 3,
+        ResolveNumericOrDefine("MOVEMENT_TYPE_WANDER_UP_AND_DOWN", definesDict),
+        1, 1, 0, 0, 0x08123456, 0, 0)
+    ValidateEventObjectTemplate(ReadEventObjectTemplate(routePotionClerk), {
+        "localId": 1, "graphicsId": BPRE_ROUTE1_CLERK_GRAPHICS_ID,
+        "x": 6, "y": 28, "elevation": 3,
+        "movementType": ResolveNumericOrDefine("MOVEMENT_TYPE_WANDER_UP_AND_DOWN", definesDict),
+        "movementRangeX": 1, "movementRangeY": 1, "trainerType": 0,
+        "trainerRange": 0, "flagId": 0, "flagId2": 0,
+    }, "vanilla Route 1 Potion clerk")
+    routeBoy = BuildEventObjectTemplate(2, 1, 7, 27, 3, 8, 0, 0, 0, 0, 0x08123478, 0, 0)
+    routeObjects = routePotionClerk + routeBoy
+    routeClerk = BuildEventObjectTemplate(
+        3, BPRE_ROUTE1_CLERK_GRAPHICS_ID, 13, 1, 3,
+        ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_LEFT", definesDict),
+        0, 0, 0, 0, 0x08100000, FLAG_HIDE_ROUTE1_MART_CLERK_CUTSCENE, 0)
+    updatedRouteObjects = routeObjects + routeClerk
+    assert updatedRouteObjects[:len(routeObjects)] == routeObjects
+    ValidateEventObjectTemplate(ReadEventObjectTemplate(routeClerk), {
+        "localId": 3, "graphicsId": BPRE_ROUTE1_CLERK_GRAPHICS_ID,
+        "x": 13, "y": 1, "elevation": 3,
+        "movementType": ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_LEFT", definesDict),
+        "movementRangeX": 0, "movementRangeY": 0, "trainerType": 0,
+        "trainerRange": 0, "flagId": FLAG_HIDE_ROUTE1_MART_CLERK_CUTSCENE,
+        "flagId2": 0,
+    }, "M-007 Route 1 parcel clerk")
+
+    routeCoords = b''.join(BuildCoordEvent(x, 2, 0, VAR_MAP_SCENE_VIRIDIAN_CITY_MART, 0, 0x08100000 + i * 4)
+                            for i, x in enumerate((10, 11, 12, 13)))
+    assert len(routeCoords) == 4 * COORD_EVENT_SIZE
+    for i, x in enumerate((10, 11, 12, 13)):
+        ValidateCoordEvent(ReadCoordEvent(routeCoords[i * COORD_EVENT_SIZE:(i + 1) * COORD_EVENT_SIZE]), {
+            "x": x, "y": 2, "elevation": 0,
+            "trigger": VAR_MAP_SCENE_VIRIDIAN_CITY_MART, "index": 0,
+            "scriptPointer": 0x08100000 + i * 4,
+        }, "M-007 Route 1 CoordEvent")
+    routeEventsBefore = BuildMapEvents(2, 0, 0, 1, 0x08001000, 0x08002000, 0, 0x08004000)
+    routeEventsAfter = BuildMapEvents(3, 0, 4, 1, 0x08100000, 0x08002000, 0x08101000, 0x08004000)
+    assert routeEventsBefore[1] == routeEventsAfter[1] == 0
+    assert routeEventsBefore[3] == routeEventsAfter[3] == 1
+    assert routeEventsBefore[8:12] == routeEventsAfter[8:12]
+    assert routeEventsBefore[16:20] == routeEventsAfter[16:20]
+
+    palletObjects = b''.join(BuildEventObjectTemplate(i, i, i, i, 3, 8, 0, 0, 0, 0, 0x08110000 + i, 0, 0)
+                             for i in range(1, 4))
+    palletOak = BuildEventObjectTemplate(
+        4, BPRE_PROF_OAK_GRAPHICS_ID, 11, 8, 3,
+        ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_UP", definesDict),
+        0, 0, 0, 0, 0x08100000, FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE, 0)
+    updatedPalletObjects = palletObjects + palletOak
+    assert updatedPalletObjects[:len(palletObjects)] == palletObjects
+    ValidateEventObjectTemplate(ReadEventObjectTemplate(palletOak), {
+        "localId": 4, "graphicsId": BPRE_PROF_OAK_GRAPHICS_ID,
+        "x": 11, "y": 8, "elevation": 3,
+        "movementType": ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_UP", definesDict),
+        "movementRangeX": 0, "movementRangeY": 0, "trainerType": 0,
+        "trainerRange": 0, "flagId": FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE,
+        "flagId2": 0,
+    }, "M-007 Pallet parcel Oak")
+    palletOriginalCoords = b''.join(BuildCoordEvent(i, i, 0, 0x4000 + i, i, 0x08120000 + i)
+                                    for i in range(3))
+    palletCoords = palletOriginalCoords + BuildCoordEvent(
+        12, 0, 0, VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB, 5, 0x08130000) + BuildCoordEvent(
+        13, 0, 0, VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB, 5, 0x08130004)
+    assert palletCoords[:len(palletOriginalCoords)] == palletOriginalCoords
+    for i, x in enumerate((12, 13)):
+        ValidateCoordEvent(ReadCoordEvent(palletCoords[(3 + i) * COORD_EVENT_SIZE:(4 + i) * COORD_EVENT_SIZE]), {
+            "x": x, "y": 0, "elevation": 0,
+            "trigger": VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB, "index": 5,
+            "scriptPointer": 0x08130000 + i * 4,
+        }, "M-007 Pallet CoordEvent")
+    palletEventsBefore = BuildMapEvents(3, 3, 3, 5, 0x08011000, 0x08012000, 0x08013000, 0x08014000)
+    palletEventsAfter = BuildMapEvents(4, 3, 5, 5, 0x08110000, 0x08012000, 0x08130000, 0x08014000)
+    assert palletEventsBefore[1] == palletEventsAfter[1] == 3
+    assert palletEventsBefore[3] == palletEventsAfter[3] == 5
+    assert palletEventsBefore[8:12] == palletEventsAfter[8:12]
+    assert palletEventsBefore[16:20] == palletEventsAfter[16:20]
+
+    with open("include/constants/flags.h", 'r') as flagsFile:
+        flagsSource = flagsFile.read()
+    assert "#define FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE         0x152" in flagsSource
+    assert "#define FLAG_HIDE_ROUTE1_MART_CLERK_CUTSCENE            0x153" in flagsSource
+    assert "FLAG_0x152" not in flagsSource and "FLAG_0x153" not in flagsSource
+    assert flagsSource.count("0x152") == flagsSource.count("0x153") == 1
+
+    with open("assembly/overworld_scripts/shortened_oak_parcel_flow.s", 'r') as scriptFile:
+        scriptSource = scriptFile.read()
+    for sourceFragment in (
+        ".equ SPECIAL_SET_UNLOCKED_POKEDEX_FLAGS, 0x181",
+        ".equ face_down_fast, 0x04",
+        "setvar VAR_MAP_SCENE_VIRIDIAN_CITY_MART 1",
+        "obtainitem ITEM_OAKS_PARCEL 1",
+        "setflag FLAG_HIDE_ROUTE1_MART_CLERK_CUTSCENE",
+        "clearflag FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE",
+        "setflag FLAG_SYS_POKEDEX_GET",
+        "special SPECIAL_SET_UNLOCKED_POKEDEX_FLAGS",
+        "obtainitem ITEM_POKE_BALL 5",
+        "setvar VAR_MAP_SCENE_POKEMON_CENTER_TEALA 1",
+        "setvar VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB 6",
+        "setvar VAR_MAP_SCENE_VIRIDIAN_CITY_MART 2",
+        "setvar VAR_MAP_SCENE_VIRIDIAN_CITY_OLD_MAN 2",
+        "setvar VAR_MAP_SCENE_PALLET_TOWN_RIVALS_HOUSE 1",
+        "setvar VAR_MAP_SCENE_ROUTE22 1",
+        "setflag FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE",
+    ):
+        assert sourceFragment in scriptSource
+    assert "EnableNationalPokedex" not in scriptSource
+    assert scriptSource.index("setvar VAR_MAP_SCENE_VIRIDIAN_CITY_MART 1") < \
+        scriptSource.index("obtainitem ITEM_OAKS_PARCEL 1")
+    routeHandoffSource = scriptSource.split("EventScript_M007Route1ClerkHandoff:", 1)[1].split(
+        "EventScript_M007PalletOakTrigger12:", 1)[0]
+    assert routeHandoffSource.count("removeobject LOCALID_ROUTE1_MART_CLERK") == 1
+    palletHandoffSource = scriptSource.split("EventScript_M007PalletOakHandoff:", 1)[1].split(
+        "Movement_M007Route1ClerkApproach10:", 1)[0]
+    assert palletHandoffSource.index("setvar VAR_MAP_SCENE_VIRIDIAN_CITY_OLD_MAN 2") > \
+        palletHandoffSource.index("obtainitem ITEM_POKE_BALL 5")
+    assert "setvar VAR_TEMP_1 0" in scriptSource
+    assert "setvar VAR_TEMP_1 1" in scriptSource
+    routeApproach10Source = scriptSource.split("Movement_M007Route1ClerkApproach10:", 1)[1].split(
+        "Movement_M007Route1ClerkApproach11:", 1)[0]
+    assert routeApproach10Source.count("run_left") == 3
+    assert "face_down_fast" in routeApproach10Source
+    palletLeave12Source = scriptSource.split("Movement_M007PalletOakLeave12:", 1)[1].split(
+        "Movement_M007PalletOakLeave13:", 1)[0]
+    palletLeave13Source = scriptSource.split("Movement_M007PalletOakLeave13:", 1)[1]
+    assert palletLeave12Source.count("run_left") == 1
+    assert palletLeave13Source.count("run_left") == 2
+
+    with open("assembly/overworld_scripts/talk_to_mom.s", 'r') as momScriptFile:
+        momScriptSource = momScriptFile.read()
+    momFirstTimeSource = momScriptSource.split("EventScript_TalkToMom:", 1)[1].split(
+        "EventScript_TalkToMomHeal:", 1)[0]
+    assert "setflag FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE" in momFirstTimeSource
+    assert momFirstTimeSource.index("setflag FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE") < \
+        momFirstTimeSource.index("warpmuted MAP_GROUP_PALLET_TOWN")
+    print("Shortened Oak Parcel Flow map-event and script checks passed")
 
 
 def ParseReplacementExpectation(tokens: [str], definesDict: dict, hasNewGraphicsId: bool) -> dict:
@@ -2055,5 +2233,6 @@ if __name__ == '__main__':
         RunOaksLabPotionOverlaySelfTest()
         RunInstantPokeCenterHealingOverlaySelfTest()
         RunTalkToMomOverlaySelfTest()
+        RunShortenedOakParcelFlowOverlaySelfTest()
     else:
         main()
