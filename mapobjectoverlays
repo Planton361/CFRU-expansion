@@ -28,6 +28,12 @@ append 32 0 6 7 MAP_OBJ_GFX_GENTLEMAN 10 5 3 MOVEMENT_TYPE_FACE_DOWN 1 1 0 0 Eve
 ## source-backed ordinary Item Ball (BPRE graphics ID 0x005C) fail-closed.
 append 4 3 10 11 0x005C 12 4 0 MOVEMENT_TYPE_FACE_DOWN 1 1 0 0 EventScript_OaksLabPotion FLAG_HIDE_PALLET_TOWN_PROFESSOR_OAKS_LAB_POTION 0
 
+## M-006: BPRE Player House 1F source event counts are object=1, warp=4,
+## coord=0, bg=1. Append Cyan's exit-blocking CoordEvent and preserve the
+## existing object, warp, and BG tables/pointers exactly.
+## append_coord mapBank mapNum expectedObjects expectedWarps expectedCoords expectedBg x y elevation trigger index script
+append_coord 4 0 1 4 0 1 4 8 0 0x4050 0 EventScript_TalkToMomExitBlock
+
 ## replace mapBank mapNum expectedCount localId oldGraphicsId oldX oldY oldElevation oldMovementType oldRangeX oldRangeY oldTrainerType oldTrainerRange oldScriptPointer oldFlagId oldFlagId2 newGraphicsId newX newY newElevation newMovementType newRangeX newRangeY newTrainerType newTrainerRange newScript newFlagId newFlagId2
 ## Viridian Forest: replace the original non-trainer youngster at this tile with the NatDex nurse.
 ## These are FireRed event-object graphics IDs (youngster 0x12, nurse 0x40).
