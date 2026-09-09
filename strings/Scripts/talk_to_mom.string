@@ -9,3 +9,6 @@ MOM: [PLAYER]!\nYou should take a quick rest.
 
 #org @gText_TalkToMomHealAfter
 MOM: Oh, good! You and your\nPOK\emon are looking great.\lTake care now!
+
+#org @gText_M006OaksLabChooseStarter
+Go on, choose!

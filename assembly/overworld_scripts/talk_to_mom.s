@@ -8,8 +8,8 @@
 @ M-006: source-backed BPRE/pret/Cyan Player House 1F Mom handoff.
 @
 @ These values are BPRE script constants confirmed against pret's flags, vars,
-@ maps, songs, and specials tables. The existing Oak's Lab scene owns the
-@ starter sequence after the silent warp; this script does not recreate it.
+@ maps, songs, and specials tables. M-006 owns only the scene-1 Lab handoff;
+@ starter selection, Rival selection, and every later Lab scene stay vanilla.
 .equ FLAG_BEAT_RIVAL_IN_OAKS_LAB, 0x0258
 .equ FLAG_HIDE_OAK_IN_HIS_LAB, 0x002B
 .equ FLAG_HIDE_OAK_IN_PALLET_TOWN, 0x002C
@@ -20,13 +20,17 @@
 .equ SPECIAL_SPAWN_CAMERA_OBJECT, 0x114
 .equ SPECIAL_REMOVE_CAMERA_OBJECT, 0x115
 .equ SE_WARP_IN, 0x28
+.equ SE_WARP_OUT, 0x28
 .equ MUS_HEAL, 0x100
+.equ MUS_DUMMY, 0x000
 .equ MAP_GROUP_PALLET_TOWN, 4
 .equ MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB, 3
 .equ LOCALID_MOM, 1
 
 .global EventScript_TalkToMom
 .global EventScript_TalkToMomExitBlock
+.global EventScript_M006OaksLabOnWarp
+.global EventScript_M006OaksLabChooseStarter
 
 EventScript_TalkToMom:
     lock
@@ -49,11 +53,10 @@ EventScript_TalkToMom:
     setvar VAR_MAP_SCENE_PALLET_TOWN_OAK 1
     setflag FLAG_HIDE_OAK_IN_PALLET_TOWN
     setflag FLAG_DONT_TRANSITION_MUSIC
-    @ Vanilla BPRE Lab scene 1 only turns the player north, then its existing
-    @ PlayerEnter movement walks eight tiles up. (6, 12) therefore reaches
-    @ (6, 4) safely. Cyan's (9, 6) handoff depends on separate Cyan Lab
-    @ positioning changes, which M-006 intentionally does not own.
-    warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 6 12
+    @ This (9, 6) destination is intentionally coupled to the source-backed
+    @ scene-1 Lab OnWarp replacement below, which immediately places PLAYER
+    @ at (9, 0) before the custom six-tile entrance movement runs.
+    warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 9 6
     waitstate
     release
     end
@@ -80,6 +83,41 @@ EventScript_TalkToMomExitBlock:
     waitmovement PLAYER
     releaseall
     end
+
+@ M-006 replaces only the VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB == 1
+@ OnWarp entry. This is Cyan's required positioning half of the (9, 6)
+@ handoff; other Lab map-script states retain their BPRE pointers.
+EventScript_M006OaksLabOnWarp:
+    setobjectxy PLAYER 9 0
+    end
+
+@ Cyan's scene-1 fast path: retain Oak's core selection prompt, but skip the
+@ vanilla Oak entrance, eight-tile player walk, and Rival waiting dialogue.
+@ Set scene 2 afterward so the original starter-ball scripts take over.
+EventScript_M006OaksLabChooseStarter:
+    lockall
+    textcolor BLUE
+    playse SE_WARP_OUT
+    special SPECIAL_SPAWN_CAMERA_OBJECT
+    applymovement PLAYER Movement_M006OaksLabPlayerEnter
+    waitmovement 0
+    special SPECIAL_REMOVE_CAMERA_OBJECT
+    clearflag FLAG_DONT_TRANSITION_MUSIC
+    savebgm MUS_DUMMY
+    fadedefaultbgm
+    waitse
+    msgbox gText_M006OaksLabChooseStarter MSG_NORMAL
+    closemessage
+    setvar VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB 2
+    releaseall
+    end
+
+@ Cyan PalletTown_ProfessorOaksLab_Movement_PlayerEnter:
+@ delay_16, face_up, disable_anim, six slide_down, restore_anim, face_up.
+Movement_M006OaksLabPlayerEnter:
+    .byte pause_long, look_up, disable_anim
+    .byte slide_down, slide_down, slide_down, slide_down, slide_down, slide_down
+    .byte enable_anim, look_up, end_m
 
 Movement_TalkToMomPlayerSpin:
     .byte look_up, pause_vshort, look_left, pause_vshort

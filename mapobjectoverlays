@@ -34,6 +34,12 @@ append 4 3 10 11 0x005C 12 4 0 MOVEMENT_TYPE_FACE_DOWN 1 1 0 0 EventScript_OaksL
 ## append_coord mapBank mapNum expectedObjects expectedWarps expectedCoords expectedBg x y elevation trigger index script
 append_coord 4 0 1 4 0 1 4 8 0 0x4050 0 EventScript_TalkToMomExitBlock
 
+## M-006: replace only the source-backed scene-1 Oak's Lab OnWarp and
+## OnFrame scripts. MapScripts are transition=3, OnWarp=4, OnFrame=2;
+## OnWarp has scene 1 only, while OnFrame preserves its unrelated scene 7.
+## replace_scene_scripts mapBank mapNum transitionType onWarpType onFrameType sceneVar sceneValue onWarpEntries onFrameEntries preservedOnFrameVar preservedOnFrameValue onWarpScript onFrameScript
+replace_scene_scripts 4 3 3 4 2 0x4055 1 1 2 0x4055 7 EventScript_M006OaksLabOnWarp EventScript_M006OaksLabChooseStarter
+
 ## replace mapBank mapNum expectedCount localId oldGraphicsId oldX oldY oldElevation oldMovementType oldRangeX oldRangeY oldTrainerType oldTrainerRange oldScriptPointer oldFlagId oldFlagId2 newGraphicsId newX newY newElevation newMovementType newRangeX newRangeY newTrainerType newTrainerRange newScript newFlagId newFlagId2
 ## Viridian Forest: replace the original non-trainer youngster at this tile with the NatDex nurse.
 ## These are FireRed event-object graphics IDs (youngster 0x12, nurse 0x40).
