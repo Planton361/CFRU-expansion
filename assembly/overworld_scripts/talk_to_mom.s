@@ -18,6 +18,7 @@
 .equ VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB, 0x4055
 .equ SPECIAL_HEAL_PLAYER_PARTY, 0x000
 .equ MOVEMENT_TYPE_FACE_UP, 0x007
+.equ MOVEMENT_TYPE_FACE_DOWN, 0x008
 .equ SE_WARP_IN, 0x27
 .equ SE_WARP_OUT, 0x28
 .equ MUS_HEAL, 0x100
@@ -25,6 +26,7 @@
 .equ MAP_GROUP_PALLET_TOWN, 4
 .equ MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB, 3
 .equ LOCALID_MOM, 1
+.equ LOCALID_PROF_OAK, 4
 
 .global EventScript_TalkToMom
 .global EventScript_TalkToMomExitBlock
@@ -86,8 +88,12 @@ EventScript_TalkToMomExitBlock:
 
 @ M-006 replaces only the VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB == 1
 @ OnWarp entry. This is Cyan's required positioning half of the (9, 6)
-@ handoff; other Lab map-script states retain their BPRE pointers.
+@ handoff; other Lab map-script states retain their BPRE pointers. The
+@ preserved BPRE OnTransition first prepares Oak at the vanilla entrance
+@ position, so restore the source-map template state used by this fast path.
 EventScript_M006OaksLabOnWarp:
+    setobjectxy LOCALID_PROF_OAK 6 3
+    setobjectmovementtype LOCALID_PROF_OAK MOVEMENT_TYPE_FACE_DOWN
     setobjectxy PLAYER 9 0
     setobjectmovementtype PLAYER MOVEMENT_TYPE_FACE_UP
     end

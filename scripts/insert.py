@@ -882,14 +882,19 @@ def RunTalkToMomOverlaySelfTest():
         "0x4055", "7", "EventScript_M006OaksLabOnWarp", "EventScript_M006OaksLabChooseStarter",
     ]]
     # Cyan's (9, 6) Mom handoff is valid only when scene-1 OnWarp immediately
-    # moves PLAYER to (9, 0), and scene-1 OnFrame replaces the vanilla
-    # eight-walk-up PlayerEnter path with Cyan's six slide-down path.
+    # restores Oak's source-map template state at (6, 3), moves PLAYER to
+    # (9, 0), and scene-1 OnFrame replaces the vanilla eight-walk-up
+    # PlayerEnter path with Cyan's six slide-down path.
     momLabHandoff = (9, 6)
+    oakLabTemplatePosition = (6, 3)
+    vanillaOakEntrancePosition = (6, 11)
     cyanSceneOnePlayerPosition = (9, 0)
 
     vanillaLabPlayerEnterWalkUpSteps = 8
     cyanLabPlayerEnterSlideDownSteps = 6
     assert momLabHandoff == (9, 6)
+    assert oakLabTemplatePosition == (6, 3)
+    assert oakLabTemplatePosition != vanillaOakEntrancePosition
     assert cyanSceneOnePlayerPosition == (9, 0)
     assert vanillaLabPlayerEnterWalkUpSteps == 8
     assert cyanLabPlayerEnterSlideDownSteps == 6
@@ -970,6 +975,7 @@ def RunTalkToMomOverlaySelfTest():
         "clearflag FLAG_HIDE_OAK_IN_HIS_LAB", "setvar VAR_MAP_SCENE_PALLET_TOWN_OAK 1",
         "setflag FLAG_HIDE_OAK_IN_PALLET_TOWN", "setflag FLAG_DONT_TRANSITION_MUSIC",
         "warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 9 6",
+        "setobjectxy LOCALID_PROF_OAK 6 3", "setobjectmovementtype LOCALID_PROF_OAK MOVEMENT_TYPE_FACE_DOWN",
         "setobjectxy PLAYER 9 0", "setobjectmovementtype PLAYER MOVEMENT_TYPE_FACE_UP",
         "special CAMERA_START", "special CAMERA_END", "Movement_M006OaksLabPlayerEnter",
         "playse SE_WARP_OUT", "savebgm MUS_DUMMY",
@@ -980,6 +986,8 @@ def RunTalkToMomOverlaySelfTest():
     assert "warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 6 12" not in momScriptSource
     assert ".equ SE_WARP_IN, 0x27" in momScriptSource
     assert ".equ SE_WARP_OUT, 0x28" in momScriptSource
+    assert ".equ LOCALID_PROF_OAK, 4" in momScriptSource
+    assert ".equ MOVEMENT_TYPE_FACE_DOWN, 0x008" in momScriptSource
     assert "SPECIAL_SPAWN_CAMERA_OBJECT" not in momScriptSource
     assert "SPECIAL_REMOVE_CAMERA_OBJECT" not in momScriptSource
     assert "0x115" not in momScriptSource
@@ -987,6 +995,11 @@ def RunTalkToMomOverlaySelfTest():
     assert momScriptSource.count("special CAMERA_END") == 2
     onWarpSource = momScriptSource.split("EventScript_M006OaksLabOnWarp:", 1)[1].split(
         "EventScript_M006OaksLabChooseStarter:", 1)[0]
+    # The preserved BPRE OnTransition places Oak at (6, 11) for its removed
+    # escort scene. M-006 scene 1 must instead use Oak's normal map template.
+    assert "setobjectxy LOCALID_PROF_OAK 6 3" in onWarpSource
+    assert "setobjectmovementtype LOCALID_PROF_OAK MOVEMENT_TYPE_FACE_DOWN" in onWarpSource
+    assert "setobjectxy LOCALID_PROF_OAK 6 11" not in onWarpSource
     assert "setobjectxy PLAYER 9 0" in onWarpSource
     assert "setobjectmovementtype PLAYER MOVEMENT_TYPE_FACE_UP" in onWarpSource
     assert "set_visible" not in onWarpSource
@@ -996,6 +1009,7 @@ def RunTalkToMomOverlaySelfTest():
     assert "pause_long, look_up, disable_anim" in playerEnterSource
     assert "enable_anim, look_up, end_m" in playerEnterSource
     assert "walk_up" not in playerEnterSource
+    assert "applymovement PLAYER Movement_M006OaksLabPlayerEnter" in momScriptSource
     momWarpOutSource = momScriptSource.split("Movement_TalkToMomPlayerWarpOut:", 1)[1].split(
         "Movement_TalkToMomExitRight:", 1)[0]
     assert momWarpOutSource.count("slide_up") == 6
