@@ -956,6 +956,11 @@ def RunTalkToMomOverlaySelfTest():
         "MOVEMENT_TYPE_FACE_LEFT", "0", "0", "0", "0", "0", "0", "EventScript_TalkToMom",
     ]]
     assert not [row for row in eventScriptRows if row[:3] == ["npc", "4", "0"]]
+    # The camera lifecycle is source-owned by xse_defines: BPRE 0x113/0x114.
+    with open("xse_defines.s", 'r') as xseDefinesFile:
+        xseDefinesSource = xseDefinesFile.read()
+    assert ".equ CAMERA_START, 0x113" in xseDefinesSource
+    assert ".equ CAMERA_END, 0x114" in xseDefinesSource
     with open("assembly/overworld_scripts/talk_to_mom.s", 'r') as momScriptFile:
         momScriptSource = momScriptFile.read()
     for sourceFragment in (
@@ -965,19 +970,36 @@ def RunTalkToMomOverlaySelfTest():
         "clearflag FLAG_HIDE_OAK_IN_HIS_LAB", "setvar VAR_MAP_SCENE_PALLET_TOWN_OAK 1",
         "setflag FLAG_HIDE_OAK_IN_PALLET_TOWN", "setflag FLAG_DONT_TRANSITION_MUSIC",
         "warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 9 6",
-        "setobjectxy PLAYER 9 0", "Movement_M006OaksLabPlayerEnter",
+        "setobjectxy PLAYER 9 0", "setobjectmovementtype PLAYER MOVEMENT_TYPE_FACE_UP",
+        "special CAMERA_START", "special CAMERA_END", "Movement_M006OaksLabPlayerEnter",
         "playse SE_WARP_OUT", "savebgm MUS_DUMMY",
         "setvar VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB 2",
         "special SPECIAL_HEAL_PLAYER_PARTY", "Movement_TalkToMomExitRight",
     ):
         assert sourceFragment in momScriptSource
     assert "warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 6 12" not in momScriptSource
+    assert ".equ SE_WARP_IN, 0x27" in momScriptSource
+    assert ".equ SE_WARP_OUT, 0x28" in momScriptSource
+    assert "SPECIAL_SPAWN_CAMERA_OBJECT" not in momScriptSource
+    assert "SPECIAL_REMOVE_CAMERA_OBJECT" not in momScriptSource
+    assert "0x115" not in momScriptSource
+    assert momScriptSource.count("special CAMERA_START") == 2
+    assert momScriptSource.count("special CAMERA_END") == 2
+    onWarpSource = momScriptSource.split("EventScript_M006OaksLabOnWarp:", 1)[1].split(
+        "EventScript_M006OaksLabChooseStarter:", 1)[0]
+    assert "setobjectxy PLAYER 9 0" in onWarpSource
+    assert "setobjectmovementtype PLAYER MOVEMENT_TYPE_FACE_UP" in onWarpSource
+    assert "set_visible" not in onWarpSource
     playerEnterSource = momScriptSource.split("Movement_M006OaksLabPlayerEnter:", 1)[1].split(
         "Movement_TalkToMomPlayerSpin:", 1)[0]
     assert playerEnterSource.count("slide_down") == 6
     assert "pause_long, look_up, disable_anim" in playerEnterSource
     assert "enable_anim, look_up, end_m" in playerEnterSource
     assert "walk_up" not in playerEnterSource
+    momWarpOutSource = momScriptSource.split("Movement_TalkToMomPlayerWarpOut:", 1)[1].split(
+        "Movement_TalkToMomExitRight:", 1)[0]
+    assert momWarpOutSource.count("slide_up") == 6
+    assert "set_visible" not in momWarpOutSource
     with open("strings/Scripts/talk_to_mom.string", 'r') as momStringsFile:
         momStringsSource = momStringsFile.read()
     assert "Mom: Want to see a magic trick?" in momStringsSource

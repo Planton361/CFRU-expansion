@@ -17,9 +17,8 @@
 .equ VAR_MAP_SCENE_PALLET_TOWN_OAK, 0x4050
 .equ VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB, 0x4055
 .equ SPECIAL_HEAL_PLAYER_PARTY, 0x000
-.equ SPECIAL_SPAWN_CAMERA_OBJECT, 0x114
-.equ SPECIAL_REMOVE_CAMERA_OBJECT, 0x115
-.equ SE_WARP_IN, 0x28
+.equ MOVEMENT_TYPE_FACE_UP, 0x007
+.equ SE_WARP_IN, 0x27
 .equ SE_WARP_OUT, 0x28
 .equ MUS_HEAL, 0x100
 .equ MUS_DUMMY, 0x000
@@ -32,6 +31,7 @@
 .global EventScript_M006OaksLabOnWarp
 .global EventScript_M006OaksLabChooseStarter
 
+@ xse_defines.s owns BPRE CAMERA_START (0x113) and CAMERA_END (0x114).
 EventScript_TalkToMom:
     lock
     faceplayer
@@ -41,13 +41,13 @@ EventScript_TalkToMom:
     msgbox gText_TalkToMomMagicTrick MSG_NORMAL
     closemessage
     waitdooranim
-    special SPECIAL_SPAWN_CAMERA_OBJECT
+    special CAMERA_START
     applymovement PLAYER Movement_TalkToMomPlayerSpin
     waitmovement 0
     playse SE_WARP_IN
     applymovement PLAYER Movement_TalkToMomPlayerWarpOut
     waitmovement 0
-    special SPECIAL_REMOVE_CAMERA_OBJECT
+    special CAMERA_END
     setvar VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB 1
     clearflag FLAG_HIDE_OAK_IN_HIS_LAB
     setvar VAR_MAP_SCENE_PALLET_TOWN_OAK 1
@@ -89,6 +89,7 @@ EventScript_TalkToMomExitBlock:
 @ handoff; other Lab map-script states retain their BPRE pointers.
 EventScript_M006OaksLabOnWarp:
     setobjectxy PLAYER 9 0
+    setobjectmovementtype PLAYER MOVEMENT_TYPE_FACE_UP
     end
 
 @ Cyan's scene-1 fast path: retain Oak's core selection prompt, but skip the
@@ -98,10 +99,10 @@ EventScript_M006OaksLabChooseStarter:
     lockall
     textcolor BLUE
     playse SE_WARP_OUT
-    special SPECIAL_SPAWN_CAMERA_OBJECT
+    special CAMERA_START
     applymovement PLAYER Movement_M006OaksLabPlayerEnter
     waitmovement 0
-    special SPECIAL_REMOVE_CAMERA_OBJECT
+    special CAMERA_END
     clearflag FLAG_DONT_TRANSITION_MUSIC
     savebgm MUS_DUMMY
     fadedefaultbgm
@@ -125,7 +126,7 @@ Movement_TalkToMomPlayerSpin:
 
 Movement_TalkToMomPlayerWarpOut:
     .byte look_up, disable_anim
-    .byte slide_up, slide_up, slide_up, slide_up, slide_up, end_m
+    .byte slide_up, slide_up, slide_up, slide_up, slide_up, slide_up, end_m
 
 Movement_TalkToMomExitRight:
     .byte walk_right, end_m
