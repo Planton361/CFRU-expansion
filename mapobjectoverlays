@@ -40,6 +40,12 @@ append_coord 4 0 1 4 0 1 4 8 0 0x4050 0 EventScript_TalkToMomExitBlock
 ## replace_scene_scripts mapBank mapNum transitionType onWarpType onFrameType sceneVar sceneValue onWarpEntries onFrameEntries preservedOnFrameVar preservedOnFrameValue onWarpScript onFrameScript
 replace_scene_scripts 4 3 3 4 2 0x4055 1 1 2 0x4055 7 EventScript_M006OaksLabOnWarp EventScript_M006OaksLabChooseStarter
 
+## M-008: BPRE Cinnabar Island MapScripts are transition=3 and OnFrame=2.
+## Preserve the full three-entry OnFrame table except the exact scene-1 Bill
+## pointer, replacing it with the source-owned wait-in-PokeCenter path.
+## replace_conditional_map_script mapBank mapNum transitionType conditionalTableType tableType entryCount entry1Var entry1Value entry2Var entry2Value entry3Var entry3Value targetIndex script
+replace_conditional_map_script 3 8 3 2 2 3 0x408A 1 0x4071 1 0x4071 3 1 EventScript_M008BillWaitInPokeCenter
+
 ## M-007: source-backed BPRE Route 1 is objects=2, warps=0, coords=0, bg=1.
 ## Preserve its Potion clerk and append only the temporary parcel clerk plus
 ## Cyan's four approach CoordEvents. Each sequential row validates the prior

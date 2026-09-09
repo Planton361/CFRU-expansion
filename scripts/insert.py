@@ -477,6 +477,32 @@ def ReplaceSceneMapScriptPointers(rom: _io.BufferedReader, mapScriptsPointer: in
     return originalPointers, (onWarpPointerOffset, onFramePointerOffset)
 
 
+def ReplaceConditionalMapScriptPointer(rom: _io.BufferedReader, mapScriptsPointer: int,
+                                       expectedMapScriptTypes: tuple, conditionalTableType: int,
+                                       expectedConditions: list, targetConditionIndex: int,
+                                       replacementPointer: int) -> tuple:
+    mapScriptEntries = ReadMapScriptEntries(rom, mapScriptsPointer, "MapScripts")
+    if tuple(entry["type"] for entry in mapScriptEntries) != expectedMapScriptTypes:
+        raise ValueError("MapScripts types expected {}, found {}".format(
+            expectedMapScriptTypes, tuple(entry["type"] for entry in mapScriptEntries)))
+    entriesByType = {entry["type"]: entry for entry in mapScriptEntries}
+    if len(entriesByType) != len(mapScriptEntries):
+        raise ValueError("MapScripts has duplicate script types")
+    if conditionalTableType not in entriesByType:
+        raise ValueError("MapScripts has no requested conditional table type")
+    conditions = ReadConditionalMapScriptEntries(
+        rom, entriesByType[conditionalTableType]["scriptPointer"], "conditional MapScript table")
+    if [(entry["variable"], entry["value"]) for entry in conditions] != expectedConditions:
+        raise ValueError("conditional MapScript conditions do not match the source-backed template")
+    if targetConditionIndex < 0 or targetConditionIndex >= len(conditions):
+        raise ValueError("conditional MapScript target index is out of range")
+    if replacementPointer < 0x08000000:
+        raise ValueError("conditional MapScript replacement pointer is invalid")
+    target = conditions[targetConditionIndex]
+    WritePointer(rom, target["scriptPointerOffset"], replacementPointer)
+    return target["scriptPointer"], target["scriptPointerOffset"]
+
+
 def RunMapObjectOverlaySelfTest():
     expectedRows = [
         (1, 1, 14, 9, 'ITEM_TM09', 'FLAG_HIDE_MT_MOON_1F_TM09'),
@@ -1026,6 +1052,93 @@ def RunTalkToMomOverlaySelfTest():
     print("Talk to Mom map-event and Mom-script checks passed")
 
 
+def RunOptionalBillSeviiOverlaySelfTest():
+    VAR_MAP_SCENE_CINNABAR_ISLAND_2 = 0x408A
+    VAR_MAP_SCENE_CINNABAR_ISLAND = 0x4071
+    FLAG_HIDE_CINNABAR_POKECENTER_BILL = 0x0A2
+    expectedConditions = [
+        (VAR_MAP_SCENE_CINNABAR_ISLAND_2, 1),
+        (VAR_MAP_SCENE_CINNABAR_ISLAND, 1),
+        (VAR_MAP_SCENE_CINNABAR_ISLAND, 3),
+    ]
+    definesDict = {}
+    conditionals = []
+    overlayRows = []
+    with open(MAP_OBJECT_OVERLAYS, 'r') as overlayFile:
+        for line in overlayFile:
+            if TryProcessFileInclusion(line, definesDict):
+                continue
+            if TryProcessConditionalCompilation(line, definesDict, conditionals):
+                continue
+            if line.strip() and not line.strip().startswith('#'):
+                overlayRows.append(line.split())
+
+    m008Rows = [row for row in overlayRows if any("M008" in field for field in row)]
+    assert m008Rows == [[
+        "replace_conditional_map_script", "3", "8", "3", "2", "2", "3",
+        "0x408A", "1", "0x4071", "1", "0x4071", "3", "1",
+        "EventScript_M008BillWaitInPokeCenter",
+    ]]
+    assert not [row for row in m008Rows if row[1:3] == ["12", "5"]]
+
+    # Source-backed Cinnabar fixture: transition plus a three-entry OnFrame
+    # table. The scene-1 Bill pointer is the only byte range permitted to
+    # change; the transition pointer and entries 1 and 3 remain byte-identical.
+    fixture = _io.BytesIO(bytearray(0x300))
+    fixture.seek(0x40)
+    fixture.write(bytes([MAP_SCRIPT_ON_TRANSITION]) + (0x08000100).to_bytes(4, 'little'))
+    fixture.write(bytes([MAP_SCRIPT_ON_FRAME_TABLE]) + (0x08000080).to_bytes(4, 'little'))
+    fixture.write(b'\0')
+    fixture.seek(0x80)
+    for variable, value, pointer in (
+            (VAR_MAP_SCENE_CINNABAR_ISLAND_2, 1, 0x08000110),
+            (VAR_MAP_SCENE_CINNABAR_ISLAND, 1, 0x08000120),
+            (VAR_MAP_SCENE_CINNABAR_ISLAND, 3, 0x08000130)):
+        fixture.write(variable.to_bytes(2, 'little') + value.to_bytes(2, 'little') +
+                      pointer.to_bytes(4, 'little'))
+    fixture.write(b'\0\0')
+    beforeFixture = fixture.getvalue()
+    originalPointer, changedPointerOffset = ReplaceConditionalMapScriptPointer(
+        fixture, 0x08000040,
+        (MAP_SCRIPT_ON_TRANSITION, MAP_SCRIPT_ON_FRAME_TABLE), MAP_SCRIPT_ON_FRAME_TABLE,
+        expectedConditions, 1, 0x08000200)
+    afterFixture = fixture.getvalue()
+    assert originalPointer == 0x08000120
+    assert changedPointerOffset == 0x8C
+    assert beforeFixture[0x41:0x45] == afterFixture[0x41:0x45]
+    assert beforeFixture[0x46:0x4A] == afterFixture[0x46:0x4A]
+    assert beforeFixture[0x80:0x8C] == afterFixture[0x80:0x8C]
+    assert beforeFixture[0x90:0x9A] == afterFixture[0x90:0x9A]
+    assert afterFixture[0x8C:0x90] == (0x08000200).to_bytes(4, 'little')
+
+    cinnabarCenterRows = [row for row in overlayRows if row[1:3] == ["12", "5"]]
+    assert cinnabarCenterRows == [
+        ["append", "12", "5", "7", "8", "MAP_OBJ_GFX_GENTLEMAN", "10", "5", "3",
+         "MOVEMENT_TYPE_FACE_DOWN", "1", "1", "0", "0", "EventScript_PokeCenterNameRater", "0", "0"],
+        ["replace_script", "12", "5", "8", "0x40", "7", "2", "3", "MOVEMENT_TYPE_FACE_DOWN",
+         "1", "1", "0", "0", "0", "0", "EventScript_InstantPokeCenterNurse"],
+    ]
+
+    with open("assembly/overworld_scripts/optional_bill_sevii.s", 'r') as scriptFile:
+        scriptSource = scriptFile.read()
+    for sourceFragment in (
+        ".global EventScript_M008BillWaitInPokeCenter",
+        ".equ LOCALID_CINNABAR_BILL, 3",
+        ".equ VAR_MAP_SCENE_CINNABAR_ISLAND, 0x4071",
+        ".equ FLAG_HIDE_CINNABAR_POKECENTER_BILL, 0x00A2",
+        "lockall", "removeobject LOCALID_CINNABAR_BILL",
+        "setvar VAR_MAP_SCENE_CINNABAR_ISLAND 2",
+        "clearflag FLAG_HIDE_CINNABAR_POKECENTER_BILL", "releaseall", "end",
+    ):
+        assert sourceFragment in scriptSource
+    assert "SailToOneIsland" not in scriptSource
+    assert "MSGBOX_YESNO" not in scriptSource
+
+    with open(EVENT_SCRIPTS, 'r') as eventScriptsFile:
+        assert "M008" not in eventScriptsFile.read()
+    print("Optional Bill / Sevii map-script checks passed")
+
+
 def RunShortenedOakParcelFlowOverlaySelfTest():
     BPRE_ROUTE1_CLERK_GRAPHICS_ID = 0x44
     BPRE_PROF_OAK_GRAPHICS_ID = 0x47
@@ -1276,6 +1389,32 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                         expectedOnWarpConditions, expectedOnFrameConditions,
                         table[onWarpScriptSymbol] + 0x08000000,
                         table[onFrameScriptSymbol] + 0x08000000)
+                    continue
+                elif action == "replace_conditional_map_script":
+                    if len(parts) != 15:
+                        raise ValueError("replace_conditional_map_script requires 15 fields")
+                    _, mapBank, mapNum, expectedTransitionType, expectedConditionalTableType, conditionalTableType, \
+                        expectedEntryCount, entry1Var, entry1Value, entry2Var, entry2Value, entry3Var, entry3Value, \
+                        targetConditionIndex, scriptSymbol = parts
+                    if scriptSymbol not in table:
+                        raise ValueError("replace_conditional_map_script symbol missing")
+                    mapBank, mapNum, expectedTransitionType, expectedConditionalTableType, conditionalTableType, \
+                        expectedEntryCount, entry1Var, entry1Value, entry2Var, entry2Value, entry3Var, entry3Value, \
+                        targetConditionIndex = [ResolveNumericOrDefine(value, definesDict) for value in (
+                            mapBank, mapNum, expectedTransitionType, expectedConditionalTableType, conditionalTableType,
+                            expectedEntryCount, entry1Var, entry1Value, entry2Var, entry2Value, entry3Var, entry3Value,
+                            targetConditionIndex,
+                        )]
+                    expectedConditions = [(entry1Var, entry1Value), (entry2Var, entry2Value),
+                                          (entry3Var, entry3Value)]
+                    if expectedEntryCount != len(expectedConditions):
+                        raise ValueError("replace_conditional_map_script expected condition count does not match its template")
+                    mapHeader = ResolveMapHeader(rom, mapBanksHeader, mapBank, mapNum)
+                    mapScriptsPointer = ReadPointer(rom, mapHeader + MAP_HEADER_SCRIPTS_OFFSET)
+                    ReplaceConditionalMapScriptPointer(
+                        rom, mapScriptsPointer,
+                        (expectedTransitionType, expectedConditionalTableType), conditionalTableType,
+                        expectedConditions, targetConditionIndex, table[scriptSymbol] + 0x08000000)
                     continue
                 elif action == "append_coord":
                     if len(parts) != 13:
@@ -2233,6 +2372,7 @@ if __name__ == '__main__':
         RunOaksLabPotionOverlaySelfTest()
         RunInstantPokeCenterHealingOverlaySelfTest()
         RunTalkToMomOverlaySelfTest()
+        RunOptionalBillSeviiOverlaySelfTest()
         RunShortenedOakParcelFlowOverlaySelfTest()
     else:
         main()
