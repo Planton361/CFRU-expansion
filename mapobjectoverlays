@@ -40,6 +40,23 @@ append_coord 4 0 1 4 0 1 4 8 0 0x4050 0 EventScript_TalkToMomExitBlock
 ## replace_scene_scripts mapBank mapNum transitionType onWarpType onFrameType sceneVar sceneValue onWarpEntries onFrameEntries preservedOnFrameVar preservedOnFrameValue onWarpScript onFrameScript
 replace_scene_scripts 4 3 3 4 2 0x4055 1 1 2 0x4055 7 EventScript_M006OaksLabOnWarp EventScript_M006OaksLabChooseStarter
 
+## M-007: source-backed BPRE Route 1 is objects=2, warps=0, coords=0, bg=1.
+## Preserve its Potion clerk and append only the temporary parcel clerk plus
+## Cyan's four approach CoordEvents. Each sequential row validates the prior
+## append before preserving all original event data and pointers.
+append 3 19 2 3 0x44 13 1 3 MOVEMENT_TYPE_FACE_LEFT 0 0 0 0 EventScript_M007NoOp FLAG_HIDE_ROUTE1_MART_CLERK_CUTSCENE 0
+append_coord 3 19 3 0 0 1 10 2 0 0x4057 0 EventScript_M007Route1ClerkTrigger10
+append_coord 3 19 3 0 1 1 11 2 0 0x4057 0 EventScript_M007Route1ClerkTrigger11
+append_coord 3 19 3 0 2 1 12 2 0 0x4057 0 EventScript_M007Route1ClerkTrigger12
+append_coord 3 19 3 0 3 1 13 2 0 0x4057 0 EventScript_M007Route1ClerkTrigger13
+
+## M-007: source-backed BPRE Pallet Town is objects=3, warps=3, coords=3,
+## bg=5. Append only the hidden temporary parcel Oak and Cyan's two return
+## CoordEvents; the existing Pallet Oak and all original map events remain.
+append 3 0 3 4 0x47 11 8 3 MOVEMENT_TYPE_FACE_UP 0 0 0 0 EventScript_M007NoOp FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE 0
+append_coord 3 0 4 3 3 5 12 0 0 0x4055 5 EventScript_M007PalletOakTrigger12
+append_coord 3 0 4 3 4 5 13 0 0 0x4055 5 EventScript_M007PalletOakTrigger13
+
 ## replace mapBank mapNum expectedCount localId oldGraphicsId oldX oldY oldElevation oldMovementType oldRangeX oldRangeY oldTrainerType oldTrainerRange oldScriptPointer oldFlagId oldFlagId2 newGraphicsId newX newY newElevation newMovementType newRangeX newRangeY newTrainerType newTrainerRange newScript newFlagId newFlagId2
 ## Viridian Forest: replace the original non-trainer youngster at this tile with the NatDex nurse.
 ## These are FireRed event-object graphics IDs (youngster 0x12, nurse 0x40).
