@@ -52,8 +52,15 @@ SPECIAL_INSERTS_OUT = 'build/special_inserts.bin'
 FREE_BYTE_REPLACEMENTS = 'free_bytereplacements'
 MAP_BANKS_HEADER_POINTER = 0x5524C
 MAP_HEADER_EVENTS_OFFSET = 0x4
+MAP_HEADER_SCRIPTS_OFFSET = 0x8
 EVENT_OBJECT_TEMPLATE_SIZE = 0x18
+COORD_EVENT_SIZE = 0x10
 FIND_ITEM_SCRIPT_SIZE = 0xC
+MAP_SCRIPT_ENTRY_SIZE = 0x5
+MAP_SCRIPT_CONDITION_ENTRY_SIZE = 0x8
+MAP_SCRIPT_ON_FRAME_TABLE = 0x2
+MAP_SCRIPT_ON_TRANSITION = 0x3
+MAP_SCRIPT_ON_WARP_INTO_MAP_TABLE = 0x4
 
 
 def ExtractPointer(byteList: [bytes]):
@@ -350,6 +357,124 @@ def BuildMapEvents(eventObjectCount: int, warpCount: int, coordEventCount: int, 
     data += coordEventsPointer.to_bytes(4, 'little')
     data += bgEventsPointer.to_bytes(4, 'little')
     return bytes(data)
+
+
+def BuildCoordEvent(x: int, y: int, elevation: int, trigger: int, index: int, scriptPointer: int) -> bytes:
+    data = bytearray()
+    data += x.to_bytes(2, 'little')
+    data += y.to_bytes(2, 'little')
+    data += elevation.to_bytes(1, 'little')
+    data += b'\0'  # Struct padding before trigger.
+    data += trigger.to_bytes(2, 'little')
+    data += index.to_bytes(2, 'little')
+    data += b'\0\0'  # Struct padding before script pointer.
+    data += scriptPointer.to_bytes(4, 'little')
+    return bytes(data)
+
+
+def ReadCoordEvent(data: bytes) -> dict:
+    if len(data) != COORD_EVENT_SIZE:
+        raise ValueError("Coord event must be exactly {} bytes".format(COORD_EVENT_SIZE))
+    return {
+        "x": int.from_bytes(data[0:2], 'little'),
+        "y": int.from_bytes(data[2:4], 'little'),
+        "elevation": data[4],
+        "paddingBeforeTrigger": data[5],
+        "trigger": int.from_bytes(data[6:8], 'little'),
+        "index": int.from_bytes(data[8:10], 'little'),
+        "paddingBeforeScript": data[10:12],
+        "scriptPointer": int.from_bytes(data[12:16], 'little'),
+    }
+
+
+def ValidateCoordEvent(event: dict, expected: dict, label: str):
+    for field in ("x", "y", "elevation", "trigger", "index", "scriptPointer"):
+        if event[field] != expected[field]:
+            raise ValueError("{} {} expected {}, found {}".format(label, field, expected[field], event[field]))
+    if event["paddingBeforeTrigger"] != 0 or event["paddingBeforeScript"] != b'\0\0':
+        raise ValueError("{} has nonzero serialized padding".format(label))
+    if event["scriptPointer"] < 0x08000000:
+        raise ValueError("{} has an invalid script pointer".format(label))
+def ValidateRomPointer(rom: _io.BufferedReader, pointer: int, label: str) -> int:
+    if pointer < 0x08000000:
+        raise ValueError("{} has an invalid ROM pointer {:08X}".format(label, pointer))
+    rom.seek(0, 2)
+    offset = pointer - 0x08000000
+    if offset >= rom.tell():
+        raise ValueError("{} points outside the source ROM: {:08X}".format(label, pointer))
+    return offset
+def ReadMapScriptEntries(rom: _io.BufferedReader, mapScriptsPointer: int, label: str) -> list:
+    offset = ValidateRomPointer(rom, mapScriptsPointer, label)
+    entries = []
+    for _ in range(16):
+        rom.seek(offset)
+        scriptTypeRaw = rom.read(1)
+        if len(scriptTypeRaw) != 1:
+            raise ValueError("{} is truncated before its terminator".format(label))
+        scriptType = scriptTypeRaw[0]
+        if scriptType == 0:
+            return entries
+        scriptPointer = ReadPointer(rom, offset + 1)
+        ValidateRomPointer(rom, scriptPointer, "{} entry {}".format(label, len(entries)))
+        entries.append({
+            "type": scriptType,
+            "scriptPointer": scriptPointer,
+            "scriptPointerOffset": offset + 1,
+        })
+        offset += MAP_SCRIPT_ENTRY_SIZE
+    raise ValueError("{} has no terminator within 16 entries".format(label))
+def ReadConditionalMapScriptEntries(rom: _io.BufferedReader, tablePointer: int, label: str) -> list:
+    offset = ValidateRomPointer(rom, tablePointer, label)
+    entries = []
+    for _ in range(16):
+        rom.seek(offset)
+        variableRaw = rom.read(2)
+        if len(variableRaw) != 2:
+            raise ValueError("{} is truncated before its terminator".format(label))
+        variable = int.from_bytes(variableRaw, 'little')
+        if variable == 0:
+            return entries
+        valueRaw = rom.read(2)
+        scriptPointerRaw = rom.read(4)
+        if len(valueRaw) != 2 or len(scriptPointerRaw) != 4:
+            raise ValueError("{} has a truncated conditional entry".format(label))
+        scriptPointer = int.from_bytes(scriptPointerRaw, 'little')
+        ValidateRomPointer(rom, scriptPointer, "{} entry {}".format(label, len(entries)))
+        entries.append({
+            "variable": variable,
+            "value": int.from_bytes(valueRaw, 'little'),
+            "scriptPointer": scriptPointer,
+            "scriptPointerOffset": offset + 4,
+        })
+        offset += MAP_SCRIPT_CONDITION_ENTRY_SIZE
+    raise ValueError("{} has no terminator within 16 entries".format(label))
+def ReplaceSceneMapScriptPointers(rom: _io.BufferedReader, mapScriptsPointer: int,
+                                  expectedMapScriptTypes: tuple, expectedOnWarpConditions: list,
+                                  expectedOnFrameConditions: list, replacementOnWarpPointer: int,
+                                  replacementOnFramePointer: int) -> tuple:
+    mapScriptEntries = ReadMapScriptEntries(rom, mapScriptsPointer, "MapScripts")
+    if tuple(entry["type"] for entry in mapScriptEntries) != expectedMapScriptTypes:
+        raise ValueError("MapScripts types expected {}, found {}".format(
+            expectedMapScriptTypes, tuple(entry["type"] for entry in mapScriptEntries)))
+    entriesByType = {entry["type"]: entry for entry in mapScriptEntries}
+    if len(entriesByType) != len(mapScriptEntries):
+        raise ValueError("MapScripts has duplicate script types")
+    onWarpTable = ReadConditionalMapScriptEntries(
+        rom, entriesByType[MAP_SCRIPT_ON_WARP_INTO_MAP_TABLE]["scriptPointer"], "OnWarp condition table")
+    onFrameTable = ReadConditionalMapScriptEntries(
+        rom, entriesByType[MAP_SCRIPT_ON_FRAME_TABLE]["scriptPointer"], "OnFrame condition table")
+    if [(entry["variable"], entry["value"]) for entry in onWarpTable] != expectedOnWarpConditions:
+        raise ValueError("OnWarp conditions do not match the source-backed template")
+    if [(entry["variable"], entry["value"]) for entry in onFrameTable] != expectedOnFrameConditions:
+        raise ValueError("OnFrame conditions do not match the source-backed template")
+    if replacementOnWarpPointer < 0x08000000 or replacementOnFramePointer < 0x08000000:
+        raise ValueError("Replacement scene script pointer is invalid")
+    onWarpPointerOffset = onWarpTable[0]["scriptPointerOffset"]
+    onFramePointerOffset = onFrameTable[0]["scriptPointerOffset"]
+    originalPointers = (onWarpTable[0]["scriptPointer"], onFrameTable[0]["scriptPointer"])
+    WritePointer(rom, onWarpPointerOffset, replacementOnWarpPointer)
+    WritePointer(rom, onFramePointerOffset, replacementOnFramePointer)
+    return originalPointers, (onWarpPointerOffset, onFramePointerOffset)
 
 
 def RunMapObjectOverlaySelfTest():
@@ -719,6 +844,186 @@ def RunInstantPokeCenterHealingOverlaySelfTest():
     print("instant PokeCenter healing overlay checks passed")
 
 
+def RunTalkToMomOverlaySelfTest():
+    BPRE_MOM_GRAPHICS_ID = 0x58
+    VAR_MAP_SCENE_PALLET_TOWN_OAK = 0x4050
+    definesDict = {}
+    conditionals = []
+    coordLines = []
+    with open(MAP_OBJECT_OVERLAYS, 'r') as overlayFile:
+        for line in overlayFile:
+            if TryProcessFileInclusion(line, definesDict):
+                continue
+            if TryProcessConditionalCompilation(line, definesDict, conditionals):
+                continue
+            if line.strip().lower().startswith('append_coord '):
+                coordLines.append(line.split())
+
+    assert len(coordLines) == 1
+    line = coordLines[0]
+    assert len(line) == 13
+    _, mapBank, mapNum, expectedObjects, expectedWarps, expectedCoords, expectedBg, \
+        x, y, elevation, trigger, index, scriptSymbol = line
+    assert (ResolveNumericOrDefine(mapBank, definesDict), ResolveNumericOrDefine(mapNum, definesDict)) == (4, 0)
+    assert tuple(ResolveNumericOrDefine(value, definesDict) for value in (
+        expectedObjects, expectedWarps, expectedCoords, expectedBg)) == (1, 4, 0, 1)
+    assert (ResolveNumericOrDefine(x, definesDict), ResolveNumericOrDefine(y, definesDict),
+            ResolveNumericOrDefine(elevation, definesDict)) == (4, 8, 0)
+    assert ResolveNumericOrDefine(trigger, definesDict) == VAR_MAP_SCENE_PALLET_TOWN_OAK
+    assert ResolveNumericOrDefine(index, definesDict) == 0
+    assert scriptSymbol == "EventScript_TalkToMomExitBlock"
+    sceneScriptLines = []
+    with open(MAP_OBJECT_OVERLAYS, 'r') as overlayFile:
+        for overlayLine in overlayFile:
+            if overlayLine.strip().lower().startswith('replace_scene_scripts '):
+                sceneScriptLines.append(overlayLine.split())
+    assert sceneScriptLines == [[
+        "replace_scene_scripts", "4", "3", "3", "4", "2", "0x4055", "1", "1", "2",
+        "0x4055", "7", "EventScript_M006OaksLabOnWarp", "EventScript_M006OaksLabChooseStarter",
+    ]]
+    # Cyan's (9, 6) Mom handoff is valid only when scene-1 OnWarp immediately
+    # restores Oak's source-map template state at (6, 3), moves PLAYER to
+    # (9, 0), and scene-1 OnFrame replaces the vanilla eight-walk-up
+    # PlayerEnter path with Cyan's six slide-down path.
+    momLabHandoff = (9, 6)
+    oakLabTemplatePosition = (6, 3)
+    vanillaOakEntrancePosition = (6, 11)
+    cyanSceneOnePlayerPosition = (9, 0)
+
+    vanillaLabPlayerEnterWalkUpSteps = 8
+    cyanLabPlayerEnterSlideDownSteps = 6
+    assert momLabHandoff == (9, 6)
+    assert oakLabTemplatePosition == (6, 3)
+    assert oakLabTemplatePosition != vanillaOakEntrancePosition
+    assert cyanSceneOnePlayerPosition == (9, 0)
+    assert vanillaLabPlayerEnterWalkUpSteps == 8
+    assert cyanLabPlayerEnterSlideDownSteps == 6
+    # Source-backed MapScripts fixture: transition, OnWarp, OnFrame. Only the
+    # scene-1 pointer in each conditional table may change; the scene-7
+    # OnFrame pointer and every other byte must be retained.
+    fixture = _io.BytesIO(bytearray(0x300))
+    WritePointer(fixture, MAP_HEADER_SCRIPTS_OFFSET, 0x08000040)
+    fixture.seek(0x40)
+    fixture.write(bytes([MAP_SCRIPT_ON_TRANSITION]) + (0x08000100).to_bytes(4, 'little'))
+    fixture.write(bytes([MAP_SCRIPT_ON_WARP_INTO_MAP_TABLE]) + (0x08000060).to_bytes(4, 'little'))
+    fixture.write(bytes([MAP_SCRIPT_ON_FRAME_TABLE]) + (0x08000080).to_bytes(4, 'little'))
+    fixture.write(b'\0')
+    fixture.seek(0x60)
+    fixture.write((0x4055).to_bytes(2, 'little') + (1).to_bytes(2, 'little') +
+                  (0x08000110).to_bytes(4, 'little') + b'\0\0')
+    fixture.seek(0x80)
+    fixture.write((0x4055).to_bytes(2, 'little') + (1).to_bytes(2, 'little') +
+                  (0x08000120).to_bytes(4, 'little') + (0x4055).to_bytes(2, 'little') +
+                  (7).to_bytes(2, 'little') + (0x08000130).to_bytes(4, 'little') + b'\0\0')
+    beforeFixture = fixture.getvalue()
+    originalPointers, changedPointerOffsets = ReplaceSceneMapScriptPointers(
+        fixture, 0x08000040,
+        (MAP_SCRIPT_ON_TRANSITION, MAP_SCRIPT_ON_WARP_INTO_MAP_TABLE, MAP_SCRIPT_ON_FRAME_TABLE),
+        [(0x4055, 1)], [(0x4055, 1), (0x4055, 7)], 0x08000200, 0x08000220)
+    afterFixture = fixture.getvalue()
+    assert originalPointers == (0x08000110, 0x08000120)
+    assert changedPointerOffsets == (0x64, 0x84)
+    assert [offset for offset, (before, after) in enumerate(zip(beforeFixture, afterFixture)) if before != after] == \
+        [0x64, 0x65, 0x85]
+    assert afterFixture[0x8C:0x90] == (0x08000130).to_bytes(4, 'little')
+
+    originalMom = BuildEventObjectTemplate(
+        1, BPRE_MOM_GRAPHICS_ID, 8, 4, 3,
+        ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_LEFT", definesDict), 0, 0, 0, 0,
+        0x08123456, 0, 0)
+    assert len(originalMom) == EVENT_OBJECT_TEMPLATE_SIZE
+    ValidateEventObjectTemplate(ReadEventObjectTemplate(originalMom), {
+        "localId": 1, "graphicsId": BPRE_MOM_GRAPHICS_ID, "x": 8, "y": 4, "elevation": 3,
+        "movementType": ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_LEFT", definesDict),
+        "movementRangeX": 0, "movementRangeY": 0, "trainerType": 0, "trainerRange": 0,
+        "flagId": 0, "flagId2": 0,
+    }, "vanilla Player House Mom")
+
+    beforeEvents = BuildMapEvents(1, 4, 0, 1, 0x08001000, 0x08002000, 0x08003000, 0x08004000)
+    appendedCoord = BuildCoordEvent(4, 8, 0, VAR_MAP_SCENE_PALLET_TOWN_OAK, 0, 0x08100000)
+    assert len(appendedCoord) == COORD_EVENT_SIZE
+    ValidateCoordEvent(ReadCoordEvent(appendedCoord), {
+        "x": 4, "y": 8, "elevation": 0, "trigger": VAR_MAP_SCENE_PALLET_TOWN_OAK,
+        "index": 0, "scriptPointer": 0x08100000,
+    }, "M-006 Player House exit blocker")
+    afterEvents = BuildMapEvents(1, 4, 1, 1, 0x08001000, 0x08002000, 0x08100000, 0x08004000)
+    assert beforeEvents[0:2] == afterEvents[0:2] == bytes((1, 4))
+    assert beforeEvents[3] == afterEvents[3] == 1
+    assert beforeEvents[4:12] == afterEvents[4:12]
+    assert beforeEvents[16:20] == afterEvents[16:20]
+    assert beforeEvents[2] == 0 and afterEvents[2] == 1
+
+    with open(EVENT_SCRIPTS, 'r') as eventScriptsFile:
+        eventScriptRows = [row.split() for row in eventScriptsFile if row.strip()]
+    exactRows = [row for row in eventScriptRows if row[0].lower() == "npc_exact"]
+    assert exactRows == [[
+        "npc_exact", "4", "0", "0", "1", "1", "0x58", "8", "4", "3",
+        "MOVEMENT_TYPE_FACE_LEFT", "0", "0", "0", "0", "0", "0", "EventScript_TalkToMom",
+    ]]
+    assert not [row for row in eventScriptRows if row[:3] == ["npc", "4", "0"]]
+    # The camera lifecycle is source-owned by xse_defines: BPRE 0x113/0x114.
+    with open("xse_defines.s", 'r') as xseDefinesFile:
+        xseDefinesSource = xseDefinesFile.read()
+    assert ".equ CAMERA_START, 0x113" in xseDefinesSource
+    assert ".equ CAMERA_END, 0x114" in xseDefinesSource
+    with open("assembly/overworld_scripts/talk_to_mom.s", 'r') as momScriptFile:
+        momScriptSource = momScriptFile.read()
+    for sourceFragment in (
+        ".global EventScript_TalkToMom", ".global EventScript_TalkToMomExitBlock",
+        ".global EventScript_M006OaksLabOnWarp", ".global EventScript_M006OaksLabChooseStarter",
+        "checkflag FLAG_BEAT_RIVAL_IN_OAKS_LAB", "setvar VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB 1",
+        "clearflag FLAG_HIDE_OAK_IN_HIS_LAB", "setvar VAR_MAP_SCENE_PALLET_TOWN_OAK 1",
+        "setflag FLAG_HIDE_OAK_IN_PALLET_TOWN", "setflag FLAG_DONT_TRANSITION_MUSIC",
+        "warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 9 6",
+        "setobjectxy LOCALID_PROF_OAK 6 3", "setobjectmovementtype LOCALID_PROF_OAK MOVEMENT_TYPE_FACE_DOWN",
+        "setobjectxy PLAYER 9 0", "setobjectmovementtype PLAYER MOVEMENT_TYPE_FACE_UP",
+        "special CAMERA_START", "special CAMERA_END", "Movement_M006OaksLabPlayerEnter",
+        "playse SE_WARP_OUT", "savebgm MUS_DUMMY",
+        "setvar VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB 2",
+        "special SPECIAL_HEAL_PLAYER_PARTY", "Movement_TalkToMomExitRight",
+    ):
+        assert sourceFragment in momScriptSource
+    assert "warpmuted MAP_GROUP_PALLET_TOWN MAP_NUM_PALLET_TOWN_PROFESSOR_OAKS_LAB 0xFF 6 12" not in momScriptSource
+    assert ".equ SE_WARP_IN, 0x27" in momScriptSource
+    assert ".equ SE_WARP_OUT, 0x28" in momScriptSource
+    assert ".equ LOCALID_PROF_OAK, 4" in momScriptSource
+    assert ".equ MOVEMENT_TYPE_FACE_DOWN, 0x008" in momScriptSource
+    assert "SPECIAL_SPAWN_CAMERA_OBJECT" not in momScriptSource
+    assert "SPECIAL_REMOVE_CAMERA_OBJECT" not in momScriptSource
+    assert "0x115" not in momScriptSource
+    assert momScriptSource.count("special CAMERA_START") == 2
+    assert momScriptSource.count("special CAMERA_END") == 2
+    onWarpSource = momScriptSource.split("EventScript_M006OaksLabOnWarp:", 1)[1].split(
+        "EventScript_M006OaksLabChooseStarter:", 1)[0]
+    # The preserved BPRE OnTransition places Oak at (6, 11) for its removed
+    # escort scene. M-006 scene 1 must instead use Oak's normal map template.
+    assert "setobjectxy LOCALID_PROF_OAK 6 3" in onWarpSource
+    assert "setobjectmovementtype LOCALID_PROF_OAK MOVEMENT_TYPE_FACE_DOWN" in onWarpSource
+    assert "setobjectxy LOCALID_PROF_OAK 6 11" not in onWarpSource
+    assert "setobjectxy PLAYER 9 0" in onWarpSource
+    assert "setobjectmovementtype PLAYER MOVEMENT_TYPE_FACE_UP" in onWarpSource
+    assert "set_visible" not in onWarpSource
+    playerEnterSource = momScriptSource.split("Movement_M006OaksLabPlayerEnter:", 1)[1].split(
+        "Movement_TalkToMomPlayerSpin:", 1)[0]
+    assert playerEnterSource.count("slide_down") == 6
+    assert "pause_long, look_up, disable_anim" in playerEnterSource
+    assert "enable_anim, look_up, end_m" in playerEnterSource
+    assert "walk_up" not in playerEnterSource
+    assert "applymovement PLAYER Movement_M006OaksLabPlayerEnter" in momScriptSource
+    momWarpOutSource = momScriptSource.split("Movement_TalkToMomPlayerWarpOut:", 1)[1].split(
+        "Movement_TalkToMomExitRight:", 1)[0]
+    assert momWarpOutSource.count("slide_up") == 6
+    assert "set_visible" not in momWarpOutSource
+    with open("strings/Scripts/talk_to_mom.string", 'r') as momStringsFile:
+        momStringsSource = momStringsFile.read()
+    assert "Mom: Want to see a magic trick?" in momStringsSource
+    assert "Mom: Come here! Quick!" in momStringsSource
+    assert "MOM: [PLAYER]!\\nYou should take a quick rest." in momStringsSource
+    assert "POK\\emon are looking great.\\lTake care now!" in momStringsSource
+    assert "Go on, choose!" in momStringsSource
+    print("Talk to Mom map-event and Mom-script checks passed")
+
+
 def ParseReplacementExpectation(tokens: [str], definesDict: dict, hasNewGraphicsId: bool) -> dict:
     fieldNames = ["localId", "graphicsId"]
     if hasNewGraphicsId:
@@ -764,7 +1069,103 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
             try:
                 parts = line.split()
                 action = parts[0].lower()
-                if action == "append":
+                if action == "replace_scene_scripts":
+                    if len(parts) != 14:
+                        raise ValueError("replace_scene_scripts requires 14 fields")
+                    _, mapBank, mapNum, expectedTransitionType, expectedOnWarpType, expectedOnFrameType, \
+                        sceneVar, sceneValue, expectedOnWarpEntryCount, expectedOnFrameEntryCount, \
+                        preservedOnFrameVar, preservedOnFrameValue, onWarpScriptSymbol, onFrameScriptSymbol = parts
+                    if onWarpScriptSymbol not in table or onFrameScriptSymbol not in table:
+                        raise ValueError("replace_scene_scripts symbol missing")
+                    mapBank, mapNum, expectedTransitionType, expectedOnWarpType, expectedOnFrameType, sceneVar, \
+                        sceneValue, expectedOnWarpEntryCount, expectedOnFrameEntryCount, preservedOnFrameVar, \
+                        preservedOnFrameValue = [ResolveNumericOrDefine(value, definesDict) for value in (
+                            mapBank, mapNum, expectedTransitionType, expectedOnWarpType, expectedOnFrameType, sceneVar,
+                            sceneValue, expectedOnWarpEntryCount, expectedOnFrameEntryCount, preservedOnFrameVar,
+                            preservedOnFrameValue,
+                        )]
+                    expectedOnWarpConditions = [(sceneVar, sceneValue)]
+                    expectedOnFrameConditions = [(sceneVar, sceneValue),
+                                                 (preservedOnFrameVar, preservedOnFrameValue)]
+                    if len(expectedOnWarpConditions) != expectedOnWarpEntryCount or \
+                            len(expectedOnFrameConditions) != expectedOnFrameEntryCount:
+                        raise ValueError("replace_scene_scripts expected condition counts do not match its template")
+                    mapHeader = ResolveMapHeader(rom, mapBanksHeader, mapBank, mapNum)
+                    mapScriptsPointer = ReadPointer(rom, mapHeader + MAP_HEADER_SCRIPTS_OFFSET)
+                    ReplaceSceneMapScriptPointers(
+                        rom, mapScriptsPointer,
+                        (expectedTransitionType, expectedOnWarpType, expectedOnFrameType),
+                        expectedOnWarpConditions, expectedOnFrameConditions,
+                        table[onWarpScriptSymbol] + 0x08000000,
+                        table[onFrameScriptSymbol] + 0x08000000)
+                    continue
+                elif action == "append_coord":
+                    if len(parts) != 13:
+                        raise ValueError("append_coord requires 13 fields")
+                    _, mapBank, mapNum, expectedObjectCount, expectedWarpCount, expectedCoordCount, expectedBgCount, \
+                        x, y, elevation, trigger, index, scriptSymbol = parts
+                    if scriptSymbol not in table:
+                        raise ValueError("Symbol missing: {}".format(scriptSymbol))
+                    mapBank, mapNum, expectedObjectCount, expectedWarpCount, expectedCoordCount, expectedBgCount, \
+                        x, y, elevation, trigger, index = [ResolveNumericOrDefine(value, definesDict) for value in (
+                            mapBank, mapNum, expectedObjectCount, expectedWarpCount, expectedCoordCount, expectedBgCount,
+                            x, y, elevation, trigger, index,
+                        )]
+
+                    mapHeader = ResolveMapHeader(rom, mapBanksHeader, mapBank, mapNum)
+                    eventHeader = ReadPointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET) - 0x08000000
+                    rom.seek(eventHeader)
+                    eventObjectCount = rom.read(1)[0]
+                    warpCount = rom.read(1)[0]
+                    coordEventCount = rom.read(1)[0]
+                    bgEventCount = rom.read(1)[0]
+                    eventObjectsPointer = ReadPointer(rom, eventHeader + 0x4)
+                    warpsPointer = ReadPointer(rom, eventHeader + 0x8)
+                    coordEventsPointer = ReadPointer(rom, eventHeader + 0xC)
+                    bgEventsPointer = ReadPointer(rom, eventHeader + 0x10)
+                    actualCounts = (eventObjectCount, warpCount, coordEventCount, bgEventCount)
+                    expectedCounts = (expectedObjectCount, expectedWarpCount, expectedCoordCount, expectedBgCount)
+                    if actualCounts != expectedCounts:
+                        raise ValueError("append_coord expected event counts {}, found {}".format(
+                            expectedCounts, actualCounts))
+
+                    if coordEventCount:
+                        rom.seek(coordEventsPointer - 0x08000000)
+                        coordData = rom.read(coordEventCount * COORD_EVENT_SIZE)
+                        if len(coordData) != coordEventCount * COORD_EVENT_SIZE:
+                            raise ValueError("Could not read the complete original CoordEvent table")
+                    else:
+                        coordData = b''
+                    appendedCoord = BuildCoordEvent(
+                        x, y, elevation, trigger, index, table[scriptSymbol] + 0x08000000)
+                    ValidateCoordEvent(ReadCoordEvent(appendedCoord), {
+                        "x": x, "y": y, "elevation": elevation, "trigger": trigger,
+                        "index": index, "scriptPointer": table[scriptSymbol] + 0x08000000,
+                    }, "appended CoordEvent")
+                    coordData += appendedCoord
+
+                    insertOffset = AlignOffset(insertOffset)
+                    newCoordEventsOffset = insertOffset
+                    rom.seek(newCoordEventsOffset)
+                    rom.write(coordData)
+                    insertOffset += len(coordData)
+
+                    insertOffset = AlignOffset(insertOffset)
+                    newMapEventsOffset = insertOffset
+                    newMapEvents = BuildMapEvents(
+                        eventObjectCount, warpCount, coordEventCount + 1, bgEventCount,
+                        eventObjectsPointer, warpsPointer, newCoordEventsOffset + 0x08000000, bgEventsPointer)
+                    if newMapEvents[0] != eventObjectCount or newMapEvents[1] != warpCount or \
+                            newMapEvents[2] != coordEventCount + 1 or newMapEvents[3] != bgEventCount or \
+                            newMapEvents[4:12] != eventObjectsPointer.to_bytes(4, 'little') + warpsPointer.to_bytes(4, 'little') or \
+                            newMapEvents[16:20] != bgEventsPointer.to_bytes(4, 'little'):
+                        raise ValueError("append_coord changed a preserved MapEvents count or pointer")
+                    rom.seek(newMapEventsOffset)
+                    rom.write(newMapEvents)
+                    insertOffset += 0x14
+                    WritePointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET, newMapEventsOffset + 0x08000000)
+                    continue
+                elif action == "append":
                     if len(parts) != 17:
                         raise ValueError("append requires 17 fields")
                     _, mapBank, mapNum, expectedCount, localId, graphicsId, x, y, elevation, movementType, \
@@ -1441,13 +1842,58 @@ def main():
                         continue
 
                     try:
+                        parts = line.split()
+                        if parts[0].lower() == "npc_exact":
+                            if len(parts) != 18:
+                                raise ValueError("npc_exact requires 18 fields")
+                            _, mapBank, mapNum, objectIndex, expectedObjectCount, localId, graphicsId, x, y, \
+                                elevation, movementType, movementRangeX, movementRangeY, trainerType, trainerRange, \
+                                flagId, flagId2, symbol = parts
+                            mapBank, mapNum, objectIndex, expectedObjectCount, localId, graphicsId, x, y, elevation, \
+                                movementType, movementRangeX, movementRangeY, trainerType, trainerRange, flagId, flagId2 = \
+                                [ResolveNumericOrDefine(value, definesDict) for value in (
+                                    mapBank, mapNum, objectIndex, expectedObjectCount, localId, graphicsId, x, y,
+                                    elevation, movementType, movementRangeX, movementRangeY, trainerType, trainerRange,
+                                    flagId, flagId2,
+                                )]
+                            if symbol not in table:
+                                raise ValueError("Symbol missing: {}".format(symbol))
+                            dictId = (mapBank << 8) | mapNum
+                            if dictId not in mapHeaders:
+                                mapHeader = ResolveMapHeader(rom, mapBanksHeader, mapBank, mapNum)
+                                mapHeaders[dictId] = mapHeader
+                            else:
+                                mapHeader = mapHeaders[dictId]
+                            eventHeader = ReadPointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET) - 0x08000000
+                            rom.seek(eventHeader)
+                            eventObjectCount = rom.read(1)[0]
+                            if eventObjectCount != expectedObjectCount:
+                                raise ValueError("npc_exact expected {} objects, found {}".format(
+                                    expectedObjectCount, eventObjectCount))
+                            if objectIndex >= eventObjectCount:
+                                raise ValueError("npc_exact object index {} exceeds {} objects".format(
+                                    objectIndex, eventObjectCount))
+                            eventObjectsPointer = ReadPointer(rom, eventHeader + 0x4)
+                            rom.seek(eventObjectsPointer - 0x08000000 + objectIndex * EVENT_OBJECT_TEMPLATE_SIZE)
+                            template = ReadEventObjectTemplate(rom.read(EVENT_OBJECT_TEMPLATE_SIZE))
+                            ValidateEventObjectTemplate(template, {
+                                "localId": localId, "graphicsId": graphicsId, "x": x, "y": y,
+                                "elevation": elevation, "movementType": movementType,
+                                "movementRangeX": movementRangeX, "movementRangeY": movementRangeY,
+                                "trainerType": trainerType, "trainerRange": trainerRange,
+                                "flagId": flagId, "flagId2": flagId2,
+                            }, "npc_exact target")
+                            Repoint(rom, table[symbol], eventObjectsPointer - 0x08000000 +
+                                    objectIndex * EVENT_OBJECT_TEMPLATE_SIZE + 0x10)
+                            continue
+
                         eventId = -1  # Reset just in case of error
-                        if len(line.split()) == 4 or len(line.split()) == 5:
-                            if len(line.split()) == 5:
-                                eventType, mapBank, mapNum, eventId, symbol = line.split()
+                        if len(parts) == 4 or len(parts) == 5:
+                            if len(parts) == 5:
+                                eventType, mapBank, mapNum, eventId, symbol = parts
                                 eventId = int(eventId)
                             else:  # 4
-                                eventType, mapBank, mapNum, symbol = line.split()
+                                eventType, mapBank, mapNum, symbol = parts
 
                             eventType = eventType.lower()
                             mapBank = int(mapBank)
@@ -1544,8 +1990,10 @@ def main():
                                     continue
 
                             Repoint(rom, code, offset)
-                    except OSError:
+                    except (OSError, ValueError) as e:
                         print("There was an error inserting the event script on line {}: {}".format(i, line.strip()))
+                        print(e)
+                        sys.exit(1)
 
         endInsertOffset = InsertMapObjectOverlays(rom, table, endInsertOffset)
 
@@ -1606,5 +2054,6 @@ if __name__ == '__main__':
         RunViridianForestNurseOverlaySelfTest()
         RunOaksLabPotionOverlaySelfTest()
         RunInstantPokeCenterHealingOverlaySelfTest()
+        RunTalkToMomOverlaySelfTest()
     else:
         main()

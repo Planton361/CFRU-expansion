@@ -1,0 +1,14 @@
+#org @gText_TalkToMomMagicTrick
+Mom: Want to see a magic trick?
+
+#org @gText_TalkToMomComeHere
+Mom: Come here! Quick!
+
+#org @gText_TalkToMomHealBefore
+MOM: [PLAYER]!\nYou should take a quick rest.
+
+#org @gText_TalkToMomHealAfter
+MOM: Oh, good! You and your\nPOK\emon are looking great.\lTake care now!
+
+#org @gText_M006OaksLabChooseStarter
+Go on, choose!
