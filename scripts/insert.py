@@ -1835,6 +1835,8 @@ def TryProcessConditionalCompilation(line: str, definesDict: dict, conditionals:
 
 
 def main():
+    from check_hidden_item_sparkle import check_source_contract
+    check_source_contract()
     startTime = datetime.now()
 
     try:
@@ -2127,6 +2129,8 @@ def main():
                     try:
                         code = table[symbol]
                     except KeyError:
+                        if symbol == "M009_OverworldBasic":
+                            raise ValueError("M-009 frame replacement symbol missing; refusing partial insertion")
                         print('Symbol missing:', symbol)
                         continue
 
