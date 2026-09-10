@@ -165,3 +165,6 @@ Grass grew to cover the\nbattlefield!\p
 
 #org @gText_ZerotoHeroActivate
 [SCRIPTING_BANK] underwent a heroic\ntranformation!
+
+#org @gText_HospitalityHealedAlly
+[TARGET] had its HP restored!

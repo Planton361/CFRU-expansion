@@ -296,3 +296,6 @@
 #define ABILITY_WINDPOWER ABILITY_BERSERK
 #define ABILITY_WINDRIDER ABILITY_ANGERPOINT
 #define ABILITY_ZEROTOHERO ABILITY_TORRENT
+
+// M-011: effective Hospitality on canonical Sinistcha forms; Healer elsewhere.
+#define ABILITY_HOSPITALITY ABILITY_HEALER

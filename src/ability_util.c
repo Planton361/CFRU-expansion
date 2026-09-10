@@ -1,5 +1,6 @@
 #include "defines.h"
 #include "defines_battle.h"
+#include "../include/new/hospitality.h"
 #include "../include/string_util.h"
 #include "../include/constants/abilities.h"
 #include "../include/constants/pokedex.h"
@@ -10,6 +11,9 @@
 #include "../include/new/battle_util.h"
 #include "../include/new/move_tables.h"
 #include "../include/new/util.h"
+
+extern const u8 gText_AbilityName_Hospitality[];
+extern const u8 gText_AbilityDescription_Hospitality[];
 
 extern const u8 gAbilityNames[][ABILITY_NAME_LENGTH + 1];
 extern const u8* gAbilityDescriptions[];
@@ -134,6 +138,10 @@ const u8* GetAbilityNameOverride(const u8 ability, const u16 species) //Bypasses
 
 	switch (ability)
 	{
+		case ABILITY_HEALER:
+			if (SpeciesHasHospitality(species))
+				return gText_AbilityName_Hospitality;
+			break;
 		case ABILITY_CLOUDNINE:
 			switch (dexNum)
 			{
@@ -567,6 +575,10 @@ const u8* GetAbilityDescriptionOverride(const u8 ability, const u16 species) //B
 {
 	switch (ability)
 	{
+		case ABILITY_HEALER:
+			if (SpeciesHasHospitality(species))
+				return gText_AbilityDescription_Hospitality;
+			break;
 		case ABILITY_STORMDRAIN:
 			if (SpeciesHasEvaporate(species))
 				return gText_AbilityDescription_Evaporate;

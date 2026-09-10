@@ -685,3 +685,7 @@ Boost Atk if hits by Wind Moves.
 
 #org @gText_AbilityDescription_ZerotoHero
 Change Hero form when switch out.
+
+
+#org @gText_AbilityDescription_Hospitality
+Heals an ally on entering battle.

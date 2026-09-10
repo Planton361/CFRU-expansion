@@ -1,5 +1,6 @@
 #include "defines.h"
 #include "defines_battle.h"
+#include "../include/new/hospitality.h"
 #include "../include/battle_transition.h"
 #include "../include/battle_setup.h"
 #include "../include/event_data.h"
@@ -66,6 +67,7 @@ enum BattleBeginStates
 	BTSTART_RAINBOW_BATTLE,
 	BTSTART_NEUTRALIZING_GAS,
 	BTSTART_SWITCH_IN_ABILITIES,
+	BTSTART_HOSPITALITY,
 	BTSTART_SWITCH_IN_ITEMS,
 	BTSTART_AIR_BALLOON,
 	BTSTART_TOTEM_POKEMON,
@@ -598,6 +600,18 @@ void BattleBeginFirstTurn(void)
 				}
 
 				*bank = 0; //Reset Bank for next loop
+				++*state;
+				break;
+
+			case BTSTART_HOSPITALITY:
+				// Hospitality has lower entry priority than ordinary abilities.
+				while (*bank < gBattlersCount)
+				{
+					u8 hospitalityBank = gBanksByTurnOrder[(*bank)++];
+					if (TryActivateHospitality(hospitalityBank))
+						return;
+				}
+				*bank = 0;
 				++*state;
 				break;
 

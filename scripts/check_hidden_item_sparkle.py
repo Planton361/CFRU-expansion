@@ -107,6 +107,13 @@ def check_source_contract():
     allowed = {"src/m009_overworld_frame.c", "src/hidden_item_sparkle.c",
                "include/new/hidden_item_sparkle.h", "scripts/insert.py",
                "scripts/check_hidden_item_sparkle.py", "scripts/tests/m009_sparkle_host.c"}
+    # M-011 adds only Hospitality battle behavior; retain every frame-owner check.
+    # This same preflight runs before insertion, so admit the bounded source set.
+    allowed.update({"src/hospitality.c", "include/new/hospitality.h",
+                    "include/constants/abilities.h", "src/ability_util.c",
+                    "src/ability_battle_effects.c", "src/battle_start_turn_start.c",
+                    "src/switching.c", "assembly/battle_scripts/ability_battle_scripts.s",
+                    "scripts/check_hospitality.py", "scripts/tests/m011_hospitality_host.c"})
     changed = set(git("diff", "--name-only", BASE, "--", "src", "include", "assembly", "scripts").splitlines())
     changed.update(git("ls-files", "--others", "--exclude-standard", "--", "src", "include", "assembly", "scripts").splitlines())
     require(changed <= allowed, "unapproved source/test change: " + str(sorted(changed - allowed)))

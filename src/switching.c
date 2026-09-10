@@ -1,5 +1,6 @@
 #include "defines.h"
 #include "defines_battle.h"
+#include "../include/new/hospitality.h"
 #include "../include/random.h"
 #include "../include/party_menu.h"
 #include "../include/constants/songs.h"
@@ -52,6 +53,7 @@ enum SwitchInStates
 	SwitchIn_PrimalReversion,
 	SwitchIn_Truant,
 	SwitchIn_Abilities,
+	SwitchIn_Hospitality,
 	SwitchIn_Items,
 	SwitchIn_AirBalloon,
 	SwitchIn_TotemPokemon,
@@ -904,6 +906,12 @@ void atk52_switchineffects(void)
 
 			++gNewBS->switchInEffectsState;
 		__attribute__ ((fallthrough));
+
+		case SwitchIn_Hospitality:
+			++gNewBS->switchInEffectsState;
+			if (TryActivateHospitality(gActiveBattler))
+				return;
+			__attribute__ ((fallthrough));
 
 		case SwitchIn_Items:
 			if (ItemBattleEffects(ItemEffects_SwitchIn, gActiveBattler, TRUE, FALSE))

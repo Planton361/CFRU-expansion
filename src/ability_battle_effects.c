@@ -1,5 +1,6 @@
 #include "defines.h"
 #include "defines_battle.h"
+#include "../include/new/hospitality.h"
 #include "../include/battle_anim.h"
 #include "../include/battle_string_ids.h"
 #include "../include/field_weather.h"
@@ -1535,7 +1536,8 @@ u8 AbilityBattleEffects(u8 caseID, u8 bank, u8 ability, u8 special, u16 moveArg)
 					break;
 
 				case ABILITY_HEALER:
-					if (IS_DOUBLE_BATTLE
+					if (!SpeciesHasHospitality(SPECIES(bank))
+					&& IS_DOUBLE_BATTLE
 					&& BATTLER_ALIVE(PARTNER(bank))
 					&& gBattleMons[PARTNER(bank)].status1
 					&& Random() % 100 < 30)
