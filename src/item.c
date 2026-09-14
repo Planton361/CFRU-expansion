@@ -1060,7 +1060,30 @@ void Task_ReturnToItemListAfterItemPurchase(u8 taskId)
 	{
 		PlaySE(SE_SELECT);
 		u16 purchasedItem = tItemId;
-		u8 quantity = tItemCount;
+		u16 quantity = tItemCount;
+
+		#ifdef MULTIPLE_PREMIER_BALLS_AT_ONCE
+		// NatDex: one Premier Ball per ten balls in this transaction.
+		// Ball purchases never fall through to custom non-ball rewards.
+		if (GetPocketByItemId(purchasedItem) == POCKET_POKE_BALLS)
+		{
+			u16 nPremier = quantity / 10;
+			// Use the same capacity contract as AddBagItem, including stack limits.
+			while (nPremier > 0 && !CheckBagHasSpace(ITEM_PREMIER_BALL, nPremier))
+				--nPremier;
+			if (nPremier > 0 && AddBagItem(ITEM_PREMIER_BALL, nPremier))
+			{
+				ConvertIntToDecimalStringN(gStringVar1, nPremier, STR_CONV_MODE_LEFT_ALIGN, 3);
+				StringCopy(gStringVar2, ItemId_GetName(ITEM_PREMIER_BALL));
+				BuyMenuDisplayMessage(taskId,
+					nPremier == 1 ? gText_ThrowInOnePremierBall : gText_ThrowInPremierBalls,
+					BuyMenuReturnToItemList);
+			}
+			else
+				BuyMenuReturnToItemList(taskId);
+			return;
+		}
+		#endif
 
 		#ifdef ENABLE_MULTIPLE_PURCHASE_REWARDS
 		// Loop through custom reward table
@@ -1087,25 +1110,6 @@ void Task_ReturnToItemListAfterItemPurchase(u8 taskId)
 					BuyMenuDisplayMessage(taskId, gText_ReceivedBonusItem, BuyMenuReturnToItemList);
 					return;
 				}
-			}
-		}
-		#endif
-
-		#ifdef MULTIPLE_PREMIER_BALLS_AT_ONCE
-		// Handle Premier Ball reward separately
-		if (GetPocketByItemId(purchasedItem) == POCKET_POKE_BALLS)
-		{
-			u8 nPremier = quantity / 10;
-			if (nPremier > 0 && AddBagItem(ITEM_PREMIER_BALL, nPremier))
-			{
-				ConvertIntToDecimalStringN(gStringVar1, nPremier, STR_CONV_MODE_LEFT_ALIGN, 2);
-				StringCopy(gStringVar2, ItemId_GetName(ITEM_PREMIER_BALL));
-
-				if (nPremier == 1)
-					BuyMenuDisplayMessage(taskId, gText_ThrowInOnePremierBall, BuyMenuReturnToItemList);
-				else
-					BuyMenuDisplayMessage(taskId, gText_ThrowInPremierBalls, BuyMenuReturnToItemList);
-				return;
 			}
 		}
 		#endif
