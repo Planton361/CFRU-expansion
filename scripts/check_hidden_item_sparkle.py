@@ -112,12 +112,15 @@ def check_source_contract():
     require(item.replace(body(item, callback), "") == old_item.replace(body(old_item, callback), ""),
             "item changes outside the M-013 purchase callback")
     allowed = {"src/m009_overworld_frame.c", "src/hidden_item_sparkle.c", "src/item.c",
+               "src/Tables/level_up_learnsets.c", "scripts/check_restored_learnsets.py",
                "scripts/check_premier_bonus.py", "scripts/tests/m013_premier_host.c",
                "include/new/hidden_item_sparkle.h", "scripts/insert.py",
                "scripts/check_hidden_item_sparkle.py", "scripts/tests/m009_sparkle_host.c"}
     changed = set(git("diff", "--name-only", BASE, "--", "src", "include", "assembly", "scripts").splitlines())
     changed.update(git("ls-files", "--others", "--exclude-standard", "--", "src", "include", "assembly", "scripts").splitlines())
     require(changed <= allowed, "unapproved source/test change: " + str(sorted(changed - allowed)))
+    from check_restored_learnsets import check_source_contract as check_learnsets
+    check_learnsets()
 
     frame = uncomment(read("src/m009_overworld_frame.c"))
     calls = body(frame, "M009_OverworldBasic")
