@@ -1060,14 +1060,14 @@ void Task_ReturnToItemListAfterItemPurchase(u8 taskId)
 	{
 		PlaySE(SE_SELECT);
 		u16 purchasedItem = tItemId;
-		u16 quantity = tItemCount;
+		u8 quantity = tItemCount; // Preserve the existing non-ball reward contract.
 
 		#ifdef MULTIPLE_PREMIER_BALLS_AT_ONCE
 		// NatDex: one Premier Ball per ten balls in this transaction.
 		// Ball purchases never fall through to custom non-ball rewards.
 		if (GetPocketByItemId(purchasedItem) == POCKET_POKE_BALLS)
 		{
-			u16 nPremier = quantity / 10;
+			u16 nPremier = (u16)tItemCount / 10;
 			// Use the same capacity contract as AddBagItem, including stack limits.
 			while (nPremier > 0 && !CheckBagHasSpace(ITEM_PREMIER_BALL, nPremier))
 				--nPremier;

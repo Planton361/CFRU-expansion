@@ -99,6 +99,18 @@ int main(void)
         gTasks[0].func(0);
         assert(awardedItem == r->rewardItem && awardedQty == r->rewardQty * 2);
         assert(message == gText_ReceivedBonusItem);
+        /* Large non-ball purchases retain the pinned callback's u8 semantics;
+         * only the Premier calculation is widened by this milestone. */
+        for (unsigned q = 0; q < ARRAY_COUNT(quantities); ++q)
+        {
+            u8 legacyQty = (u8)quantities[q];
+            u8 expected = legacyQty >= r->requiredAmount
+                ? (u8)((legacyQty / r->requiredAmount) * r->rewardQty) : 0;
+            Setup(r->purchasedItem, quantities[q], 1000, A_BUTTON);
+            gTasks[0].func(0);
+            assert(awardedQty == expected);
+            if (expected) assert(awardedItem == r->rewardItem);
+        }
     }
     puts("M-013 real callback: thresholds, every capacity 0..100, A/B, 16-bit quantities,");
     printf("%u ball cases, single reward, failure/no-input and all non-ball controls PASS\n", cases);
