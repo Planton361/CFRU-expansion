@@ -104,7 +104,15 @@ def check_source_contract():
     require(main_body.startswith(inserted_guard),
             "ownership check runs after ROM access")
 
-    allowed = {"src/m009_overworld_frame.c", "src/hidden_item_sparkle.c",
+    # M-013 is an independent, bounded successor. Keep its item.c changes
+    # confined to the existing purchase callback; all frame guards remain.
+    item = read("src/item.c")
+    old_item = git("show", BASE + ":src/item.c")
+    callback = "Task_ReturnToItemListAfterItemPurchase"
+    require(item.replace(body(item, callback), "") == old_item.replace(body(old_item, callback), ""),
+            "item changes outside the M-013 purchase callback")
+    allowed = {"src/m009_overworld_frame.c", "src/hidden_item_sparkle.c", "src/item.c",
+               "scripts/check_premier_bonus.py", "scripts/tests/m013_premier_host.c",
                "include/new/hidden_item_sparkle.h", "scripts/insert.py",
                "scripts/check_hidden_item_sparkle.py", "scripts/tests/m009_sparkle_host.c"}
     changed = set(git("diff", "--name-only", BASE, "--", "src", "include", "assembly", "scripts").splitlines())
