@@ -56,6 +56,9 @@ def body(source, name):
 
 
 def check_source_contract():
+    # Exact data-only extension; fail before the insertion entry accesses input.
+    from check_coherent_learnsets import check_source_contract as check_learnsets
+    check_learnsets()
     linker = read("BPRE.ld")
     require(linker == git("show", BASE + ":BPRE.ld"), "linker bindings changed")
     bindings = {name: int(value, 16) for name, value in
@@ -114,7 +117,8 @@ def check_source_contract():
     allowed = {"src/m009_overworld_frame.c", "src/hidden_item_sparkle.c", "src/item.c",
                "scripts/check_premier_bonus.py", "scripts/tests/m013_premier_host.c",
                "include/new/hidden_item_sparkle.h", "scripts/insert.py",
-               "scripts/check_hidden_item_sparkle.py", "scripts/tests/m009_sparkle_host.c"}
+               "scripts/check_hidden_item_sparkle.py", "scripts/tests/m009_sparkle_host.c",
+               "src/Tables/level_up_learnsets.c", "scripts/check_coherent_learnsets.py"}
     changed = set(git("diff", "--name-only", BASE, "--", "src", "include", "assembly", "scripts").splitlines())
     changed.update(git("ls-files", "--others", "--exclude-standard", "--", "src", "include", "assembly", "scripts").splitlines())
     require(changed <= allowed, "unapproved source/test change: " + str(sorted(changed - allowed)))
