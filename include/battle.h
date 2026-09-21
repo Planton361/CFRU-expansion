@@ -1119,6 +1119,10 @@ struct NewBattleStruct
 		u16 standardDisplayedSpecies[MAX_BATTLERS_COUNT];
 		/* Sticky conservative dynamic-type uncertainty, reset with battle. */
 		u8 standardTypeUncertain[MAX_BATTLERS_COUNT];
+		/* Ironmon-only independent policy stream and public revealed-move counts. */
+		bool8 ironmonPolicySeeded[MAX_BATTLERS_COUNT];
+		u32 ironmonPolicyRng[MAX_BATTLERS_COUNT];
+		u16 ironmonMoveUseCounts[MAX_BATTLERS_COUNT][MAX_MON_MOVES];
 	} ai;
 
 	struct Pokemon** foePartyBackup; //Pointer to dynamically allocated memory

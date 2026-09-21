@@ -82,6 +82,14 @@ unfavorable offensive and favorable defensive stages. Robust KO additionally
 requires own survival/action certainty and minimum damage >= maximum current HP.
 Only robust KO gets `net_faints=1`; a possible/high-roll KO never does.
 
+When a player-side Badge Defense/SpDef modifier is possible from public battle
+context, the bounded mechanics input carries an explicit possible-defense flag.
+`Defense()` first constructs the full legal high stat from base, IV/EV and
+nature, then applies `floor(stat * 11 / 10)`, and only then applies the stat
+stage. It never scales only the base stat and never reads Badge ownership. The
+same path is used by physical and special projections, setup thresholds and
+known own-trainer defensive facts.
+
 Thus ordinary unknown-item battles receive useful damage ranking, but do not
 claim robust KO through a potentially unrevealed Focus Band/Sash or immunity.
 Opponent speed/order is not guessed from submitted moves or hidden stats.
@@ -99,8 +107,10 @@ uncertainty because the opponent's unobserved move is unknown. Capped drops are
 unproductive. Sand Attack and Smokescreen still share the policy's effect family.
 
 Speed uses exact own Speed and public displayed-species/level/stage bounds over
-all legal IV/EV/nature values. Badge-boost uncertainty widens the upper bound.
-Public paralysis divisors and Trick Room order inversion are explicit. A credit
+all legal IV/EV/nature values. Badge ownership is not a public flag: when the
+configured battle context permits a player-side boost, the fair interval covers
+both unboosted and possible 1.1x values. The configured public paralysis divisor
+and Trick Room order inversion are explicit. A credit
 requires a strict definitely-behind to definitely-ahead flip across the entire
 interval after one application, plus a supported ordinary-priority follow-up.
 Already faster, overlapping intervals and ties receive zero. Both abilities must
@@ -209,13 +219,16 @@ Round-2 delta: 4 battle-local EWRAM bytes for sticky type uncertainty; zero IWRA
 or save/persistent bytes. Total Standard state is 0xE4 original bytes plus the
 8-byte displayed-species snapshot and these 4 bytes (0xF0 total), checked by
 compile-time assertions. ARM asserts
-BattlePokemon=0x58, BattleMove=0x0C and BattleStruct=0x200. No Trainer/Pokemon,
+BattlePokemon=0x58, BattleMove=0x0C and BattleStruct=0x200. The host layout
+harness may print BattleStruct=0x208 because of host pointer/alignment width;
+that value is HOST HARNESS SIZE ONLY, never the target ARM ABI. No Trainer/Pokemon,
 DPE, ROM table/repoint or randomizer layout changes. Battle allocation/zeroing
 still resets Standard memory/RNG.
 
-Scratch: mechanics input grows from 26 to 32 bytes for exact OWN target stats in
-the revealed-threat model; envelope remains 16. Before/after evaluators use two
-32-byte inputs, two 52-byte candidates and one envelope, plus scalar locals;
+Scratch: the mechanics input is 34 bytes: the prior exact OWN target-stat
+projection plus the explicit possible Badge Defense/SpDef flag and alignment;
+the envelope remains 16. Before/after evaluators use two
+34-byte inputs, two 52-byte candidates and one envelope, plus scalar locals;
 the damage evaluator has a 32-byte critical-bound copy. Candidate and observation
 layouts stay 52/472 bytes. The replacement path has bounded local
 observation/result/memory objects (472/192/33 bytes); it does not recurse or add

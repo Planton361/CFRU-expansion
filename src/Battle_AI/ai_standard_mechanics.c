@@ -18,10 +18,25 @@ uint32_t StandardMechanicsSpeed(uint16_t base, uint8_t level, uint8_t stage, uin
 /* build_pokemon.c CALC_STAT: IV 0..31, EV/4 0..63, nature 90..110%. */
 static uint32_t Defense(const struct StandardMechanicsInput* s, uint8_t high)
 {
-	if (s->known_defense) return StandardMechanicsStage(s->known_defense, s->defense_stage);
-	uint32_t value = ((2 * s->base_defense + (high ? 94 : 0)) * s->target_level / 100 + 5);
-	value = value * (high ? 110 : 90) / 100;
+	uint32_t value;
+	if (s->known_defense)
+		value = s->known_defense;
+	else
+	{
+		value = ((2 * s->base_defense + (high ? 94 : 0)) * s->target_level / 100 + 5);
+		value = value * (high ? 110 : 90) / 100;
+	}
+	/* CFRU applies Badge Defense/SpDef to the fully constructed stat, before
+	 * stage effects. Ownership is never observed; the adapter only sets this
+	 * for a public context in which the boost is possible. */
+	if (s->possible_defense_badge)
+		value = value * 11 / 10;
 	return StandardMechanicsStage(value, s->defense_stage);
+}
+
+uint32_t StandardMechanicsDefenseMaximum(const struct StandardMechanicsInput* input)
+{
+	return Defense(input, 1);
 }
 
 /* damage_calc.c CalculateBaseDamage, neutral ordinary single-hit subset.

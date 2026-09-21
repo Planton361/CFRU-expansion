@@ -9,6 +9,7 @@
 #include "../include/new/ai_util.h"
 #include "../include/new/ai_master.h"
 #include "../include/new/ai_standard.h"
+#include "../include/new/ai_ironmon.h"
 #include "../include/new/ai_switching.h"
 #include "../include/new/battle_controller_opponent.h"
 #include "../include/new/battle_start_turn_start.h"
@@ -35,6 +36,22 @@ void OpponentHandleChooseMove(void)
 {
 	u8 chosenMovePos;
 	struct ChooseMoveStruct* moveInfo = (struct ChooseMoveStruct*)(&gBattleBufferA[gActiveBattler][4]);
+
+	if (IronmonAI_IsSupportedBattle())
+	{
+		u8 target;
+		BattleAI_SetupAIData(0xF);
+		chosenMovePos = IronmonAI_ChooseMoveOrAction();
+		target = gBattleMoves[moveInfo->moves[chosenMovePos]].target;
+		gBankTarget = target & (MOVE_TARGET_USER | MOVE_TARGET_USER_OR_PARTNER)
+			? gActiveBattler : FOE(gActiveBattler);
+		gBattleStruct->chosenMovePositions[gActiveBattler] = chosenMovePos;
+		gBattleStruct->moveTarget[gActiveBattler] = gBankTarget;
+		gChosenMovesByBanks[gActiveBattler] = moveInfo->moves[chosenMovePos];
+		EmitMoveChosen(1, chosenMovePos, gBankTarget, 0, 0, 0, FALSE, 0);
+		OpponentBufferExecCompleted();
+		return;
+	}
 
 	if (StandardAI_IsSupportedBattle())
 	{
@@ -323,6 +340,18 @@ void OpponentHandleTrainerSlide(void)
 void OpponentHandleChoosePokemon(void)
 {
 	u8 chosenMonId;
+
+	if (IronmonAI_IsSupportedBattle())
+	{
+		chosenMonId = gBattleStruct->switchoutIndex[SIDE(gActiveBattler)];
+		if (chosenMonId >= PARTY_SIZE)
+			chosenMonId = IronmonAI_ChooseReplacement();
+		gBattleStruct->switchoutIndex[SIDE(gActiveBattler)] = PARTY_SIZE;
+		gBattleStruct->monToSwitchIntoId[gActiveBattler] = chosenMonId;
+		EmitChosenMonReturnValue(1, chosenMonId, 0);
+		OpponentBufferExecCompleted();
+		return;
+	}
 
 	if (StandardAI_IsSupportedBattle())
 	{

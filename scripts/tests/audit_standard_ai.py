@@ -37,6 +37,7 @@ ADAPTER_FORBIDDEN = (
     "GetAIChosenMove", "gBattleStruct->moveTarget", "gBattleBufferA",
     "GetRecordedItemEffect", "GetRecordedAbility",
     "GetMonEntryHazardDamage", "WillFaintFromEntryHazards", "TypeDamageModificationPartyMon",
+    "FlagGet(FLAG_BADGE",
 )
 
 FORBIDDEN_OPPONENT_FIELDS = (
@@ -55,7 +56,7 @@ EXCLUDED_BATTLE_FLAGS = (
 )
 
 REVIEWED_HELPERS = {
-    "EmitTwoReturnValues", "GetMonAbility", "GetMonItemEffect", "IsInverseBattle",
+    "EmitTwoReturnValues", "GetMonAbility", "GetMonItemEffect", "FlagGet", "IsInverseBattle",
     "LoadPartyRange", "IsFrontierTrainerId", "IsRaidBattle", "GetTrainerAIProfile",
     "ItemId_GetHoldEffect", "CheckGrounding",
     "StandardMechanicsDamage", "StandardMechanicsAccuracy", "StandardMechanicsQualifySwitches",
@@ -72,6 +73,7 @@ def fail(message: str) -> None:
 def main() -> int:
     pure = "\n".join(path.read_text(encoding="utf-8") for path in PURE_FILES)
     adapter = ADAPTER.read_text(encoding="utf-8")
+    mechanics = (ROOT / "src/Battle_AI/ai_standard_mechanics.c").read_text(encoding="utf-8")
     code = re.sub(r"/\*.*?\*/|//[^\n]*", "", adapter, flags=re.S)
     dispatch = DISPATCH.read_text(encoding="utf-8")
 
@@ -81,6 +83,12 @@ def main() -> int:
     for token in ADAPTER_FORBIDDEN:
         if token in code:
             fail(f"adapter contains forbidden token/helper {token!r}")
+    if "input.base_defense = MathMin(255" in adapter:
+        fail("possible Badge defense is being approximated by scaling base_defense")
+    if "possible_defense_badge" not in adapter or "possible_defense_badge" not in mechanics:
+        fail("full-stat possible Badge defense path is missing")
+    if "value = value * 11 / 10" not in mechanics:
+        fail("possible Badge defense is not applied at the full-stat mechanics layer")
     # The sole permitted HP read is a public-display projection. Remove only
     # this exact small body, then audit all other opponent fields normally.
     public_hp = re.search(r"static u8 StandardAI_PublicHpPixels\(u8 foe\)\n\{[^}]+\}", adapter)
@@ -146,7 +154,9 @@ def main() -> int:
     if "gNewBS->ai.standardDisplayedSpecies[bank] = species;" not in presentation:
         fail("public display identity producer is missing")
     history_source = (ROOT / "src/battle_util.c").read_text(encoding="utf-8")
-    if "if (gHitMarker & HITMARKER_ATTACKSTRING_PRINTED)\n\t\tStandardAI_ObservePublicMove(move);" not in history_source:
+    if not re.search(
+            r"if \(gHitMarker & HITMARKER_ATTACKSTRING_PRINTED\)\s*\{\s*"
+            r"StandardAI_ObservePublicMove\(move\);", history_source):
         fail("type uncertainty producer must require a printed public move")
     if "StandardAI_ObservePublicAbility(bank, ability);" not in history_source:
         fail("public ability type uncertainty producer missing")

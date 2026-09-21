@@ -34,16 +34,25 @@ def check_arm_objects(compiler):
         dependencies = symbols(["-u", helper])
         assert dependencies <= linker_symbols, sorted(dependencies - linker_symbols)
         objects = []
-        for name in ("ai_standard_policy", "ai_standard_mechanics", "ai_standard"):
+        for name in ("ai_standard_policy", "ai_standard_mechanics", "ai_standard",
+                     "ai_ironmon_policy", "ai_ironmon"):
             source = f"src/Battle_AI/{name}.c"
             obj = str(Path(directory) / (name + ".o"))
             print("ARM object command:", "arm-none-eabi-gcc", *flags, "-c", source, "-o", f"<temporary>/{name}.o", flush=True)
-            run([compiler, *flags, "-c", source, "-o", obj])
+            run([compiler, *flags, "-fstack-usage", "-c", source, "-o", obj])
             undefined = symbols(["-u", obj])
             print(name + " undefined:", ", ".join(sorted(undefined)), flush=True)
             runtime = {s for s in undefined if s.startswith("__")}
             assert runtime <= bound | linker_symbols, sorted(runtime - bound - linker_symbols)
             print(name + " bound runtime:", ", ".join(sorted(runtime)) or "none")
+            stack = Path(directory) / (name + ".su")
+            if stack.is_file():
+                rows = [row for row in stack.read_text().splitlines() if row.strip()]
+                maximum = max(int(row.split("\t")[1]) for row in rows)
+                print(f"{name} stack-usage maximum static estimate: {maximum} bytes; functions={len(rows)}")
+            size_output = subprocess.check_output(
+                [prefix + "size", obj], cwd=ROOT, text=True).splitlines()
+            print(name + " object size:", size_output[-1].strip())
             objects.append(obj)
         # A relocatable direct-ld closure proves the existing source wrappers
         # resolve the emitted runtime names; engine relocations remain expected.
@@ -76,9 +85,20 @@ def main() -> int:
             "-Wno-unknown-attributes", "-Iinclude",
             "scripts/tests/standard_ai_adapter_host.c",
             "src/Battle_AI/ai_standard_policy.c",
-            "src/Battle_AI/ai_standard_mechanics.c", "-o", str(adapter_binary),
+            "src/Battle_AI/ai_standard_mechanics.c",
+            "src/Battle_AI/ai_ironmon_policy.c", "-o", str(adapter_binary),
         ])
         subprocess.run([str(adapter_binary)], cwd=ROOT, check=True)
+
+        history_binary = Path(directory) / "ironmon_history_clear_host"
+        run([
+            "cc", "-std=gnu99", "-w", "-Wno-unknown-attributes", "-Iinclude",
+            "-ffunction-sections", "-fdata-sections",
+            "scripts/tests/ironmon_history_clear_host.c", "src/battle_util.c",
+            "-Wl,-dead_strip", "-o", str(history_binary),
+        ])
+        subprocess.run([str(history_binary)], cwd=ROOT, check=True)
+        print("Ironmon real ClearBattlerMoveHistory lifecycle: usedMoves/counts cleared PASS")
 
         layout_binary = Path(directory) / "standard_ai_layout_host"
         run([

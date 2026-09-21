@@ -7,6 +7,7 @@
 
 #include "../include/new/ai_master.h"
 #include "../include/new/ai_standard.h"
+#include "../include/new/ai_ironmon.h"
 #include "../include/new/ability_tables.h"
 #include "../include/new/battle_start_turn_start.h"
 #include "../include/new/battle_util.h"
@@ -214,7 +215,10 @@ void RecordLastUsedMoveByAttacker(u16 move)
 {
 	u32 i;
 	if (gHitMarker & HITMARKER_ATTACKSTRING_PRINTED)
+	{
 		StandardAI_ObservePublicMove(move);
+		IronmonAI_ObservePublicMove(gBankAttacker, move);
+	}
 
 	for (i = 0; i < MAX_MON_MOVES; i++)
 	{
@@ -232,6 +236,7 @@ void RecordLastUsedMoveByAttacker(u16 move)
 void ClearBattlerMoveHistory(u8 bank)
 {
 	u32 i;
+	IronmonAI_ClearPublicMoveCounts(bank);
 
 	for (i = 0; i < MAX_MON_MOVES; i++)
 		BATTLE_HISTORY->usedMoves[bank][i] = MOVE_NONE;
