@@ -32,6 +32,7 @@
 #include "../include/new/mega.h"
 #include "../include/new/multi.h"
 #include "../include/new/pokemon_storage_system.h"
+#include "../include/new/settings.h"
 #include "../include/new/util2.h"
 #include "../include/text.h"
 #include "../include/overworld.h"
@@ -60,7 +61,6 @@ void OptionMenu_PickSwitchCancel(void);
 static u16 DifficultyRawToMenuSelection(u16 raw);
 static u16 DifficultyMenuSelectionToRaw(u16 selection);
 static u16 TrainerLevelScalingRawToMenuSelection(u16 raw);
-static u16 TrainerAIProfileRawToMenuSelection(u16 raw);
 static u16 HardLevelCapRawToMenuSelection(u16 raw);
 static void MarkThirdPageOptionDirty(u16 selection);
 static void ApplyHardLevelCapMode(u16 raw);
@@ -208,6 +208,8 @@ extern const u8 gText_Expert[];
 extern const u8 gText_AutoOption[];
 extern const u8 gText_VanillaOption[];
 extern const u8 gText_SmartOption[];
+extern const u8 gText_StandardOption[];
+extern const u8 gText_IronmonSmartOption[];
 
 static const u8 *const sTextSpeedOptions[] =
 {
@@ -279,7 +281,7 @@ static const u8 *const sTrainerLevelScalingOptions[] =
     gText_Hard,
     gText_Expert,
 };
-static const u8 *const sTrainerAIProfileOptions[] =
+static const u8 *const sTrainerAIProfileOptions[TRAINER_AI_PROFILE_MENU_OPTION_COUNT] =
 {
     gText_AutoOption,
     gText_VanillaOption,
@@ -288,6 +290,8 @@ static const u8 *const sTrainerAIProfileOptions[] =
     gText_Hard,
     gText_Expert,
     gText_SmartOption,
+    gText_StandardOption,
+    gText_IronmonSmartOption,
 };
 static const u8 *const sHardLevelCapOptions[] =
 {
@@ -303,7 +307,7 @@ static const u8 *const sOffOnOptions[] =
 
 static const u16 sOptionMenuItemCounts[MENUITEM_COUNT] = {3, 2, 2, 2, 3, 10, 0};
 static const u16 sOptionMenuItemCounts_SecondPage[MENUITEM_PAGE2_COUNT] = {3, 2, 2, 4, 5, 0};
-static const u16 sOptionMenuItemCounts_ThirdPage[MENUITEM_PAGE3_COUNT] = {6, 7, 3, 2, 2, 0};
+static const u16 sOptionMenuItemCounts_ThirdPage[MENUITEM_PAGE3_COUNT] = {6, TRAINER_AI_PROFILE_MENU_OPTION_COUNT, 3, 2, 2, 0};
 
 static u16 DifficultyRawToMenuSelection(u16 raw)
 {
@@ -342,14 +346,6 @@ static u16 DifficultyMenuSelectionToRaw(u16 selection)
 static u16 TrainerLevelScalingRawToMenuSelection(u16 raw)
 {
     if (raw <= TRAINER_LEVEL_SCALING_EXPERT + 1)
-        return raw;
-
-    return 0;
-}
-
-static u16 TrainerAIProfileRawToMenuSelection(u16 raw)
-{
-    if (raw <= TRAINER_AI_PROFILE_SMART_AI + 1)
         return raw;
 
     return 0;
@@ -555,10 +551,11 @@ void CloseAndSaveOptionMenu(u8 taskId)
         VarSet(VAR_TRAINER_LEVEL_SCALING_MODE, sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_LEVEL_SCALING]);
     else
         VarSet(VAR_TRAINER_LEVEL_SCALING_MODE, sOptionMenuPtr->trainerLevelScalingModeOriginalRaw);
-    if (sOptionMenuPtr->trainerAIProfileDirty)
-        VarSet(VAR_TRAINER_AI_PROFILE, sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_AI_PROFILE]);
-    else
-        VarSet(VAR_TRAINER_AI_PROFILE, sOptionMenuPtr->trainerAIProfileOriginalRaw);
+    VarSet(VAR_TRAINER_AI_PROFILE,
+        TrainerAIProfileRawAfterOptions(
+            sOptionMenuPtr->trainerAIProfileOriginalRaw,
+            sOptionMenuPtr->option_thirdPage[MENUITEM_TRAINER_AI_PROFILE],
+            sOptionMenuPtr->trainerAIProfileDirty));
     if (sOptionMenuPtr->hardLevelCapModeDirty)
     {
         VarSet(VAR_HARD_LEVEL_CAP_MODE, sOptionMenuPtr->option_thirdPage[MENUITEM_HARD_LEVEL_CAP]);
