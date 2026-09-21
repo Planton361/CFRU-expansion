@@ -431,8 +431,45 @@ static void HazardsAndReplacement(void)
 	puts("production hazards/replacement: exact entry costs, entry KO, forced/singleton RNG PASS");
 }
 
+static void ArithmeticBounds(void)
+{
+	struct StandardMechanicsInput s={0}, invalid;
+	struct StandardPolicyCandidate c={0};
+	struct StandardDamageEnvelope e;
+	unsigned i;
+	s.power=150; s.attack=2048; s.level=s.target_level=100;
+	s.attack_stage=12; s.defense_stage=6; s.known_defense=1;
+	s.base_hp=255; s.hp_pixels=48; s.stab=1;
+	s.accuracy=s.accuracy_stage=s.evasion_stage=0;
+	s.supported_damage=s.certified_modifiers=1;
+	s.effectiveness[0]=s.effectiveness[1]=s.effectiveness[2]=20;
+	StandardMechanicsDamage(&s,&c,&e);
+	assert(e.estimate==65535 && e.minimum==65535 && !c.unknown_potentially_productive);
+	for(i=0;i<10;++i)
+	{
+		invalid=s;
+		switch(i) {
+		case 0: invalid.power=151; break;
+		case 1: invalid.attack=2049; break;
+		case 2: invalid.level=101; break;
+		case 3: invalid.target_level=101; break;
+		case 4: invalid.attack_stage=13; break;
+		case 5: invalid.defense_stage=13; break;
+		case 6: invalid.base_defense=256; break;
+		case 7: invalid.base_hp=256; break;
+		case 8: invalid.effectiveness[2]=21; break;
+		case 9: invalid.accuracy=101; break;
+		}
+		StandardMechanicsDamage(&invalid,&c,&e);
+		assert(c.unknown_potentially_productive && !c.expected_damage && !c.robust_safe_ko);
+		assert(!e.minimum && e.maximum==65535 && e.uncertain);
+	}
+	puts("mechanics arithmetic bounds: maximum product + 10 fail-closed boundaries PASS");
+}
+
 int main(void)
 {
 	Behavior(); Twins(); EnvelopeOracle(); Dispatch(); HazardsAndReplacement(); MarginalBehavior();
+	ArithmeticBounds();
 	return 0;
 }

@@ -3,6 +3,8 @@
 
 from pathlib import Path
 import argparse
+import ast
+import re
 import subprocess
 import tempfile
 
@@ -12,6 +14,45 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def run(command):
     subprocess.run(command, cwd=ROOT, check=True)
+
+
+def check_arm_objects(compiler):
+    # Parse the literal, never import build.py (which has build side effects).
+    tree = ast.parse((ROOT / "scripts/build.py").read_text())
+    flags = next(ast.literal_eval(node.value) for node in tree.body
+                 if isinstance(node, ast.Assign)
+                 and any(isinstance(t, ast.Name) and t.id == "CFLAGS" for t in node.targets))
+    prefix = compiler.removesuffix("gcc")
+    linker_symbols = set(re.findall(r"^(\w+)\s*=", (ROOT / "BPRE.ld").read_text(), re.M))
+    def symbols(arguments):
+        return {line.split()[-1] for line in subprocess.check_output(
+            [prefix + "nm", *arguments], cwd=ROOT, text=True).splitlines() if line.strip()}
+    with tempfile.TemporaryDirectory(prefix="standard-arm-objects-") as directory:
+        helper = str(Path(directory) / "existing_helpers.o")
+        run([prefix + "as", "-mthumb", "-I", "assembly", "assembly/thumb_compiler_helper.s", "-o", helper])
+        bound = symbols(["--defined-only", "-g", helper])
+        dependencies = symbols(["-u", helper])
+        assert dependencies <= linker_symbols, sorted(dependencies - linker_symbols)
+        objects = []
+        for name in ("ai_standard_policy", "ai_standard_mechanics", "ai_standard"):
+            source = f"src/Battle_AI/{name}.c"
+            obj = str(Path(directory) / (name + ".o"))
+            print("ARM object command:", "arm-none-eabi-gcc", *flags, "-c", source, "-o", f"<temporary>/{name}.o", flush=True)
+            run([compiler, *flags, "-c", source, "-o", obj])
+            undefined = symbols(["-u", obj])
+            print(name + " undefined:", ", ".join(sorted(undefined)), flush=True)
+            runtime = {s for s in undefined if s.startswith("__")}
+            assert runtime <= bound | linker_symbols, sorted(runtime - bound - linker_symbols)
+            print(name + " bound runtime:", ", ".join(sorted(runtime)) or "none")
+            objects.append(obj)
+        # A relocatable direct-ld closure proves the existing source wrappers
+        # resolve the emitted runtime names; engine relocations remain expected.
+        combined = str(Path(directory) / "standard_runtime_closure.o")
+        run([prefix + "ld", "-r", *objects, helper, "-o", combined])
+        remaining = symbols(["-u", combined])
+        assert {s for s in remaining if s.startswith("__")} <= linker_symbols
+        print("ARM direct-ld runtime closure PASS; remaining engine/BPRE symbols:", ", ".join(sorted(remaining)))
+    print("ARM unsupported compiler runtime helpers: NONE; temporary objects deleted")
 
 
 def main() -> int:
@@ -62,6 +103,8 @@ def main() -> int:
                  "-march=armv4t", "-Wall", "-Wextra", "-fsyntax-only", source])
             print("ARM syntax PASS:", source)
         print(f"ARM syntax revision: {revision}; dirty={dirty}; {len(sources)} C files")
+        check_arm_objects(args.arm_cc)
+        print(f"ARM object revision: {revision}; dirty={dirty}")
     return 0
 
 

@@ -456,6 +456,38 @@ static void TestHiddenInformationTwinsAndReveal(void)
 	assert(secondResult.selected_id == 1);
 }
 
+static void TestBoundedSaturationOracle(void)
+{
+	static const int32_t costs[] = {0, 1, 440, 2147483207, 2147483646, 2147483647};
+	struct StandardPolicyObservation o = {0};
+	struct StandardPolicyMemory m = {0};
+	struct StandardPolicyResult r;
+	unsigned a,b,c,count=0;
+	int faint, hp, own, future;
+	uint32_t seed=123;
+	o.count=1; o.candidates[0]=Move(0);
+	for(faint=-1;faint<=1;++faint) for(hp=0;hp<=256;hp+=128)
+	for(own=-256;own<=256;own+=256) for(future=-40;future<=40;future+=40)
+	for(a=0;a<6;++a) for(b=0;b<6;++b) for(c=0;c<6;++c)
+	{
+		int64_t exact=200*faint+100*(hp-own)/256+future;
+		exact-=costs[a]; exact-=costs[b]; exact-=costs[c];
+		if(exact < (-2147483647LL-1)) exact=(-2147483647LL-1);
+		if(exact > 2147483647) exact=2147483647;
+		o.candidates[0].net_faints=faint;
+		o.candidates[0].opponent_hp_fraction_lost=hp;
+		o.candidates[0].own_hp_fraction_lost=own;
+		o.candidates[0].immediate_future_gain=future;
+		o.candidates[0].entry_cost=costs[a];
+		o.candidates[0].repeat_cost=costs[b];
+		o.candidates[0].uncertainty_cost=costs[c];
+		assert(StandardPolicyChoose(&o,&m,&seed,&r)==0);
+		assert(r.diagnostics[0].utility_total==exact && r.near_best_count==1);
+		assert(r.policy_rng_draws==0 && seed==123); ++count;
+	}
+	assert(count==17496);
+}
+
 int main(void)
 {
 	TestKoDominanceAndUtility();
@@ -465,5 +497,6 @@ int main(void)
 	TestMechanicsWitnesses();
 	TestAcceptedHostVectorParity();
 	TestHiddenInformationTwinsAndReveal();
+	TestBoundedSaturationOracle();
 	return 0;
 }

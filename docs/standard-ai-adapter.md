@@ -225,3 +225,37 @@ by syntax checks and remains part of later target build/runtime measurement.
 Full build is conditional on the complete already-approved source toolchain.
 The repair environment has devkitARM GCC 16.1.0 but lacks `wav2agb`/`mid2agb`;
 no tools are installed or downloaded. No ROM/emulator operation is authorized.
+
+## ARM object/runtime-helper gate
+
+The ARM runner also parses the literal production CFLAGS from `scripts/build.py`
+(without importing/executing that build script), compiles the three Standard
+production objects in a temporary directory, and inspects `arm-none-eabi-nm -u`.
+It assembles the existing `thumb_compiler_helper.s`, verifies its dependencies
+against `BPRE.ld`, and performs a direct `ld -r` runtime-symbol closure check.
+Temporary objects are deleted; none are retained or submitted. This is not a
+full engine link or runtime test.
+
+The reviewed head emitted unbound `__aeabi_lmul` and `__aeabi_uldivmod`. The narrow
+repair removes production 64-bit arithmetic. Damage explicitly bounds level to
+1..100, power to 1..150, raw attack to 0..2048, stages to 0..12, base HP/Defense
+to 0..255, accuracy to 0..100 and type factors to at most 20. Outside that domain
+it returns UNKNOWN with no invented damage/KO. These bounds include the accepted
+subset. At staged attack 8192 the initial product is at most 51,609,600; after
+division, STAB and three 2x factors, the largest roll numerator is 1,238,632,800.
+Every intermediate fits uint32 and the original division order is preserved.
+
+Validated policy HP numerator is -25600..51200; signed 32-bit division preserves
+toward-zero semantics. The non-cost prefix is -340..440. Nonnegative costs can
+only lower it, so sequential lower-saturating subtraction is mathematically
+equivalent to clamping the final exact utility sum. The epsilon threshold also
+avoids underflow at INT32_MIN without changing mathematical near-best membership.
+A host-only 64-bit oracle checks 17,496 boundary/cost combinations, in addition
+to the existing policy vectors and damage oracle. No RNG sequence changes.
+
+Remaining emitted runtime names are only existing 32-bit wrappers:
+`__aeabi_uidivmod` in policy, `__aeabi_idiv`/`__aeabi_uidiv` in mechanics and adapter.
+These resolve through the existing assembly to BPRE's `__umodsi3`, `__divsi3`,
+and `__udivsi3`; memcpy/memset also use existing wrappers/BPRE bindings. No
+libgcc, runtime dependency, linker binding, ABI/layout or battle-memory change
+is introduced by this arithmetic repair. Final readiness remains CONTROL's decision.

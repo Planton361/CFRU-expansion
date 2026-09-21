@@ -12,20 +12,14 @@ enum
 	STANDARD_INVALID_CANDIDATE = -3,
 };
 
-static int32_t ClampInt32(int64_t value)
+/* Utility's non-cost prefix is bounded to [-340,440]. All costs are
+ * nonnegative, so once subtraction reaches INT32_MIN no later operation can
+ * raise it. Sequential lower saturation equals clamping the final exact sum. */
+static int32_t SubtractCost(int32_t value, int32_t cost)
 {
-	if (value < STANDARD_INT32_MIN)
+	if (value < STANDARD_INT32_MIN + cost)
 		return STANDARD_INT32_MIN;
-	if (value > STANDARD_INT32_MAX)
-		return STANDARD_INT32_MAX;
-	return (int32_t)value;
-}
-
-static int32_t TowardZero(int64_t numerator, int32_t denominator)
-{
-	int64_t magnitude = numerator < 0 ? -numerator : numerator;
-	int32_t result = (int32_t)(magnitude / denominator);
-	return numerator < 0 ? -result : result;
+	return value - cost;
 }
 
 static uint8_t IsStatChangeFamily(uint8_t family)
@@ -186,13 +180,16 @@ static int IsUtilityValid(const struct StandardPolicyCandidate* candidate)
 static int32_t Utility(const struct StandardPolicyCandidate* candidate,
 	struct StandardPolicyDiagnostic* diagnostic)
 {
-	int64_t hp_delta = (int64_t)candidate->opponent_hp_fraction_lost
+	int32_t hp_delta = (int32_t)candidate->opponent_hp_fraction_lost
 		- candidate->own_hp_fraction_lost;
-	int64_t net_faints_term = 200LL * candidate->net_faints;
-	int32_t hp_delta_term = TowardZero(100LL * hp_delta, STANDARD_POLICY_HP_SCALE);
-	int64_t raw = net_faints_term + hp_delta_term + candidate->immediate_future_gain
-		- candidate->entry_cost - candidate->repeat_cost - candidate->uncertainty_cost;
-	int32_t total = ClampInt32(raw);
+	int32_t net_faints_term = 200 * candidate->net_faints;
+	/* Validated HP delta [-256,512], numerator [-25600,51200]. C99 signed
+	 * division truncates toward zero, exactly as the accepted host utility. */
+	int32_t hp_delta_term = 100 * hp_delta / STANDARD_POLICY_HP_SCALE;
+	int32_t total = net_faints_term + hp_delta_term + candidate->immediate_future_gain;
+	total = SubtractCost(total, candidate->entry_cost);
+	total = SubtractCost(total, candidate->repeat_cost);
+	total = SubtractCost(total, candidate->uncertainty_cost);
 
 	diagnostic->hp_delta_term = hp_delta_term;
 	diagnostic->net_faints_term = (int32_t)net_faints_term;
@@ -244,6 +241,7 @@ int StandardPolicyChoose(const struct StandardPolicyObservation* observation,
 	uint8_t selectedIndex = 0xFF;
 	uint8_t i;
 	int32_t bestScore = STANDARD_INT32_MIN;
+	int32_t nearFloor;
 
 	if (observation == 0 || memory == 0 || policy_rng_state == 0 || result == 0
 		|| observation->count == 0 || observation->count > STANDARD_POLICY_MAX_CANDIDATES
@@ -359,9 +357,12 @@ int StandardPolicyChoose(const struct StandardPolicyObservation* observation,
 		if (admitted[i] && scores[i] > bestScore)
 			bestScore = scores[i];
 	}
+	/* Mathematical best-epsilon can fall below int32 after final saturation. */
+	nearFloor = bestScore < STANDARD_INT32_MIN + STANDARD_POLICY_EPSILON
+		? STANDARD_INT32_MIN : bestScore - STANDARD_POLICY_EPSILON;
 	for (i = 0; i < observation->count; ++i)
 	{
-		if (admitted[i] && scores[i] >= bestScore - STANDARD_POLICY_EPSILON)
+		if (admitted[i] && scores[i] >= nearFloor)
 			nearIndices[nearCount++] = i;
 	}
 	/* The host policy sorts stable action IDs before calculating near-best. */
@@ -388,7 +389,7 @@ int StandardPolicyChoose(const struct StandardPolicyObservation* observation,
 	result->near_best_count = nearCount;
 	for (i = 0; i < observation->count; ++i)
 	{
-		result->diagnostics[i].near_best = admitted[i] && scores[i] >= bestScore - STANDARD_POLICY_EPSILON;
+		result->diagnostics[i].near_best = admitted[i] && scores[i] >= nearFloor;
 		result->diagnostics[i].selected = i == selectedIndex;
 		result->diagnostics[i].standard_eligible = admitted[i];
 	}

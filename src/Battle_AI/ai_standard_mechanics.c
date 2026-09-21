@@ -28,7 +28,11 @@ static uint32_t Defense(const struct StandardMechanicsInput* s, uint8_t high)
  * Keep the engine's integer division order; never call its global/RNG graph. */
 static uint32_t Damage(const struct StandardMechanicsInput* s, uint32_t defense, uint8_t roll)
 {
-	uint64_t d = ((2 * s->level / 5 + 2) * (uint64_t)s->power
+	/* Validated below: level<=100, power<=150, raw attack<=2048, stage<=12.
+	 * Maximum initial product = 42*150*8192 = 51,609,600. At defense=1,
+	 * after /50+2, STAB and three 2x factors, the largest roll numerator
+	 * is 1,238,632,800. Every intermediate fits uint32 without reordering. */
+	uint32_t d = ((2 * s->level / 5 + 2) * (uint32_t)s->power
 		* StandardMechanicsStage(s->attack, s->attack_stage) / Max(1, defense)) / 50 + 2;
 	unsigned i;
 	if (s->own_burn) d /= 2;
@@ -55,7 +59,12 @@ void StandardMechanicsDamage(const struct StandardMechanicsInput* s,
 		c->productive = 0;
 		return;
 	}
-	if (!s->supported_damage || !s->power || !s->level || !s->target_level)
+	if (!s->supported_damage || !s->power || s->power > 150
+		|| !s->level || s->level > 100 || !s->target_level || s->target_level > 100
+		|| s->attack > 2048 || s->base_defense > 255 || s->base_hp > 255
+		|| s->attack_stage > 12 || s->defense_stage > 12
+		|| s->accuracy > 100 || s->accuracy_stage > 12 || s->evasion_stage > 12
+		|| s->effectiveness[0] > 20 || s->effectiveness[1] > 20 || s->effectiveness[2] > 20)
 	{
 		e->uncertain = 1;
 		e->maximum = 65535;
