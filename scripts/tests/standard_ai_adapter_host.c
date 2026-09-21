@@ -652,6 +652,12 @@ static void StandardProductionBadgeRobustKO(void)
 	puts("Standard possible Badge defense cannot create a false robust KO PASS");
 }
 
+static struct IronmonPolicyCandidate* FindIronmonMove(
+	struct IronmonPolicyObservation* o, u16 move);
+static struct IronmonPolicyBranch* FindIronmonBranch(
+	struct IronmonPolicyCandidate* c, u16 response);
+static void RevealIronmonResponse(u16 move);
+
 static u32 BadgeDefenseEngineOracle(u16 base, u8 level, u8 stage)
 {
 	u32 full = ((2 * base + 94) * level / 100 + 5) * 110 / 100;
@@ -702,7 +708,10 @@ static void StandardProductionBadgeDefenseOracle(void)
 
 static void IronmonProductionBadgeSetupBoundary(void)
 {
-	struct StandardSetupFollowup absentFollowup, possibleFollowup;
+	struct StandardSetupFollowup absentFollowup;
+	struct IronmonPolicyObservation observation;
+	struct IronmonPolicyCandidate *candidate;
+	struct IronmonPolicyBranch *branch;
 	bool8 found = FALSE;
 	u16 attack;
 	Reset(); profile = TRAINER_AI_PROFILE_IRONMON_SMART; IronmonCertify();
@@ -713,21 +722,26 @@ static void IronmonProductionBadgeSetupBoundary(void)
 	gBattleMons[1].pp[0] = gBattleMons[1].pp[1] = 10;
 	for (attack = 30; attack <= 500; ++attack)
 	{
-		bool8 absent, possible;
 		gBattleMons[1].attack = attack;
 		gTrainerBattleOpponent_A = 0x400;
-		absent = StandardAI_FindSetupFollowup(1, 0, STANDARD_EFFECT_ATTACK_UP, 8, &absentFollowup)
+		if (StandardAI_FindSetupFollowup(1, 0, STANDARD_EFFECT_ATTACK_UP, 8, &absentFollowup)
 			&& absentFollowup.before_fraction * 2 < 256
 			&& absentFollowup.before_fraction * 3 >= 256
-			&& absentFollowup.after_fraction * 2 >= 256;
-		gTrainerBattleOpponent_A = 0;
-		possible = StandardAI_FindSetupFollowup(1, 0, STANDARD_EFFECT_ATTACK_UP, 8, &possibleFollowup)
-			&& possibleFollowup.before_fraction * 2 < 256
-			&& possibleFollowup.before_fraction * 3 >= 256
-			&& possibleFollowup.after_fraction * 2 >= 256;
-		if (absent && !possible) { found = TRUE; break; }
+			&& absentFollowup.after_fraction * 2 >= 256)
+		{
+			found = TRUE;
+			break;
+		}
 	}
 	assert(found);
+	/* The same actual Ironmon branch must fail conservative when the possible
+	 * hidden Badge defense closes the threshold. */
+	gTrainerBattleOpponent_A = 0;
+	RevealIronmonResponse(MOVE_POUND);
+	IronmonAI_BuildObservation(1, TRUE, &observation);
+	candidate = FindIronmonMove(&observation, MOVE_SWORDSDANCE);
+	branch = candidate == NULL ? NULL : FindIronmonBranch(candidate, MOVE_POUND);
+	assert(branch != NULL && branch->future_gain_undiscounted == 0);
 	puts("Ironmon setup threshold rejects uncertain possible Badge defense PASS");
 }
 
