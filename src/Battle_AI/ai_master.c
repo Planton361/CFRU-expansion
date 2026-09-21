@@ -9,6 +9,7 @@
 #include "../../include/new/ai_advanced.h"
 #include "../../include/new/ai_master.h"
 #include "../../include/new/ai_scripts.h"
+#include "../../include/new/ai_standard.h"
 #include "../../include/new/ai_switching.h"
 #include "../../include/new/ai_util.h"
 #include "../../include/new/battle_controller_opponent.h"
@@ -85,6 +86,13 @@ void BattleAI_HandleItemUseBeforeAISetup(void)
 	u32 i;
 	u8* data = (u8*)BATTLE_HISTORY;
 
+	if (StandardAI_IsSupportedBattle())
+	{
+		/* Standard has no item candidate and must not enter the legacy item path. */
+		BattleAI_SetupAIData(0);
+		return;
+	}
+
 	for (i = 0; i < sizeof(struct BattleHistory); i++)
 		data[i] = 0;
 
@@ -135,6 +143,12 @@ void BattleAI_SetupAIData(u8 defaultScoreMoves)
 
 	gBattleResources->AIScriptsStack->size = 0;
 	gBankAttacker = gActiveBattler;
+	if (StandardAI_IsSupportedBattle())
+	{
+		StandardAI_SetupAIData();
+		AI_THINKING_STRUCT->aiFlags = 0;
+		return;
+	}
 
 	// Decide a random target battlerId in doubles.
 	if (IS_DOUBLE_BATTLE)
@@ -255,6 +269,9 @@ static bool8 TrainerAIProfileHasExpertPrediction(enum TrainerAIProfile trainerAI
 #define NUM_COPY_STATS STAT_SPDEF
 u8 BattleAI_ChooseMoveOrAction(void)
 {
+	if (StandardAI_IsSupportedBattle())
+		return StandardAI_ChooseMoveOrAction();
+
 	u16 savedCurrentMove = gCurrentMove;
 	u8 ret;
 	struct AIScript aiScriptData = {0};
@@ -943,6 +960,12 @@ static void BattleAI_DoAIProcessing(struct AIScript* aiScriptData)
 
 void AI_TrySwitchOrUseItem(void)
 {
+	if (StandardAI_IsSupportedBattle())
+	{
+		StandardAI_TrySwitchOrUseItem();
+		return;
+	}
+
 	struct Pokemon* party;
 	u8 battlerIn1, battlerIn2;
 	u8 firstId, lastId;

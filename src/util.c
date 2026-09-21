@@ -166,6 +166,8 @@ enum TrainerAIProfile GetTrainerAIProfile(void)
 			return TRAINER_AI_PROFILE_EXPERT;
 		case TRAINER_AI_PROFILE_SMART_AI + 1:
 			return TRAINER_AI_PROFILE_SMART_AI;
+		case TRAINER_AI_PROFILE_STANDARD + 1:
+			return TRAINER_AI_PROFILE_STANDARD;
 		case 0:
 		default:
 			return GetLegacyTrainerAIProfile();
@@ -186,6 +188,7 @@ bool8 IsSmartTrainerAIEnabled(void)
 		case TRAINER_AI_PROFILE_NORMAL + 1:
 		case TRAINER_AI_PROFILE_HARD + 1:
 		case TRAINER_AI_PROFILE_EXPERT + 1:
+		case TRAINER_AI_PROFILE_STANDARD + 1:
 			return FALSE;
 		case 0:
 		default:
