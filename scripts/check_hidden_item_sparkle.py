@@ -131,7 +131,11 @@ def check_source_contract():
                "scripts/tests/standard_ai_policy_host.c",
                "include/new/ai_standard_mechanics.h", "src/Battle_AI/ai_standard_mechanics.c",
                "scripts/tests/standard_ai_adapter_host.c", "src/battle_controller_opponent.c",
-               "src/battle_anims.c", "src/battle_util.c"}
+               "src/battle_anims.c", "src/battle_util.c",
+               # Independent CFRU Ironmon Smart fair-adapter milestone.
+               "include/new/ai_ironmon.h", "include/new/ai_ironmon_policy.h",
+               "src/Battle_AI/ai_ironmon.c", "src/Battle_AI/ai_ironmon_policy.c",
+               "scripts/tests/audit_ironmon_ai.py", "scripts/tests/run_ironmon_ai_tests.py"}
     changed = set(git("diff", "--name-only", BASE, "--", "src", "include", "assembly", "scripts").splitlines())
     changed.update(git("ls-files", "--others", "--exclude-standard", "--", "src", "include", "assembly", "scripts").splitlines())
     require(changed <= allowed, "unapproved source/test change: " + str(sorted(changed - allowed)))

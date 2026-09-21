@@ -16,6 +16,9 @@ static const u32 testBitTable[] = {1, 2, 4, 8};
 #define gBaseStats testBaseStats
 #define gBitTable testBitTable
 #include "../../src/Battle_AI/ai_standard.c"
+#undef EWRAM_DATA
+#define EWRAM_DATA
+#include "../../src/Battle_AI/ai_ironmon.c"
 
 struct BattlePokemon gBattleMons[4];
 struct DisableStruct gDisableStructs[4];
@@ -32,7 +35,7 @@ struct BattleResources* gBattleResources = &resources;
 u8 gActiveBattler = 1, gBankAttacker = 1, gBankTarget = 0;
 u16 gBattlerPartyIndexes[4], gLastUsedMoves[4], gLockedMoves[4], gChosenMovesByBanks[4];
 u16 gSideStatuses[2], gBattleWeather;
-u32 gStatuses3[4], gBattleTypeFlags = BATTLE_TYPE_TRAINER;
+u32 gStatuses3[4], gBattleTypeFlags = BATTLE_TYPE_TRAINER, gHitMarker;
 u32 gRngValue, gRng2Value;
 u8 gChosenActionByBank[4];
 static enum TrainerAIProfile profile = TRAINER_AI_PROFILE_STANDARD;
@@ -79,6 +82,7 @@ static void Reset(void)
 	battle.battlerPreventingSwitchout = 0xFF;
 	gBattleTypeFlags = BATTLE_TYPE_TRAINER;
 	gBattleWeather = 0;
+	gHitMarker = 0;
 	for (i=0; i<2; ++i)
 	{
 		gBattleMons[i].species = SPECIES_RATTATA;
@@ -467,9 +471,153 @@ static void ArithmeticBounds(void)
 	puts("mechanics arithmetic bounds: maximum product + 10 fail-closed boundaries PASS");
 }
 
+static void IronmonPublicCounts(void)
+{
+	unsigned i;
+	Reset(); profile=TRAINER_AI_PROFILE_IRONMON_SMART;
+	gBattleMons[0].moves[0]=MOVE_STRENGTH;
+	IronmonAI_ObservePublicMove(0,MOVE_STRENGTH);
+	assert(newBattle.ai.ironmonMoveUseCounts[0][0]==0); /* hidden slot/no string */
+	gHitMarker=HITMARKER_ATTACKSTRING_PRINTED;
+	IronmonAI_ObservePublicMove(0,MOVE_TACKLE);
+	assert(newBattle.ai.ironmonMoveUseCounts[0][0]==1);
+	history.usedMoves[0][0]=MOVE_TACKLE; /* battle_util records it after observers */
+	IronmonAI_ObservePublicMove(0,MOVE_TACKLE);
+	assert(newBattle.ai.ironmonMoveUseCounts[0][0]==2);
+	history.usedMoves[0][1]=MOVE_WATERGUN;
+	IronmonAI_ObservePublicMove(0,MOVE_WATERGUN);
+	assert(newBattle.ai.ironmonMoveUseCounts[0][1]==1);
+	newBattle.ai.ironmonMoveUseCounts[0][0]=0xFFFF;
+	IronmonAI_ObservePublicMove(0,MOVE_TACKLE);
+	assert(newBattle.ai.ironmonMoveUseCounts[0][0]==0xFFFF);
+	IronmonAI_ClearPublicMoveCounts(0);
+	for(i=0;i<MAX_MON_MOVES;++i) assert(!newBattle.ai.ironmonMoveUseCounts[0][i]);
+	puts("Ironmon public history: first/repeat/distinct/saturation/clear PASS");
+}
+
+static void IronmonProductionTwins(void)
+{
+	struct IronmonPolicyObservation a,b;
+	struct StandardPolicyMemory memory;
+	struct IronmonPolicyResult ra,rb;
+	unsigned mode,field,k,count=0;
+	for(mode=0;mode<8;++mode) for(field=0;field<8;++field) for(k=1;k<=16;++k)
+	{
+		u32 sa=12345,sb=12345;
+		Reset(); profile=TRAINER_AI_PROFILE_IRONMON_SMART;
+		if(mode&1) { history.usedMoves[0][0]=MOVE_STRENGTH; newBattle.ai.ironmonMoveUseCounts[0][0]=mode; }
+		if(mode&2) Certify();
+		if(mode&4) { gBattleMons[1].hp=60; gBattleMons[1].moves[1]=MOVE_RECOVER; }
+		IronmonAI_BuildObservation(1,TRUE,&a); StandardAI_LoadMemory(1,&memory);
+		assert(IronmonPolicyChoose(&a,&memory,&sa,&ra)==0);
+		switch(field)
+		{
+		case 0: gBattleMons[0].moves[0]=k; gPlayerParty[0].moves[0]=k; break;
+		case 1: gBattleMons[0].item=k*37; gPlayerParty[0].item=k*37; break;
+		case 2: gBattleMons[0].ability=k; gPlayerParty[0].hiddenAbility=k&1; break;
+		case 3: memset(&gPlayerParty[1],k,sizeof(gPlayerParty[1])*5); gBattleMons[0].species=k; break;
+		case 4:
+			gBattleMons[0].attack=k; gBattleMons[0].defense=k*10;
+			gBattleMons[0].spAttack=k; gBattleMons[0].spDefense=k*10; gBattleMons[0].speed=k;
+			gPlayerParty[0].personality=k;
+			gPlayerParty[0].hpIV=k&31; gPlayerParty[0].attackIV=(k+1)&31;
+			gPlayerParty[0].defenseIV=(k+2)&31; gPlayerParty[0].speedIV=(k+3)&31;
+			gPlayerParty[0].spAttackIV=(k+4)&31; gPlayerParty[0].spDefenseIV=(k+5)&31;
+			gPlayerParty[0].hpEv=k*3; gPlayerParty[0].atkEv=k*5;
+			gPlayerParty[0].defEv=k*7; gPlayerParty[0].spdEv=k*9;
+			gPlayerParty[0].spAtkEv=k*11; gPlayerParty[0].spDefEv=k*13;
+			gBattleMons[0].hp*=2; gBattleMons[0].maxHP*=2; break;
+		case 5: gChosenActionByBank[0]=k; gChosenMovesByBanks[0]=k; battle.moveTarget[0]=k; battle.monToSwitchIntoId[0]=k; break;
+		case 6: gRngValue=k; gRng2Value=k*999; newBattle.ai.randSeed=k; break;
+		case 7:
+			gBattleMons[0].species=k; gBattleMons[0].type1=k%NUMBER_OF_MON_TYPES;
+			gBattleMons[0].type2=(k+4)%NUMBER_OF_MON_TYPES; gBattleMons[0].type3=(k+7)%NUMBER_OF_MON_TYPES; break;
+		}
+		IronmonAI_BuildObservation(1,TRUE,&b);
+		assert(IronmonPolicyChoose(&b,&memory,&sb,&rb)==0);
+		assert(memcmp(&a,&b,sizeof(a))==0);
+		assert(memcmp(&ra,&rb,sizeof(ra))==0 && sa==sb);
+		++count;
+	}
+	printf("Ironmon production twins: %u pairs (128 each hidden move/item/ability/bench/stats, submitted action, future RNG, hidden identity), 0 mismatches\n",count);
+}
+
+static void IronmonProductionResponseAndDispatch(void)
+{
+	struct IronmonPolicyObservation o, beforeReveal;
+	Reset(); profile=TRAINER_AI_PROFILE_IRONMON_SMART;
+	assert(IronmonAI_IsSupportedBattle());
+	history.usedMoves[0][0]=MOVE_STRENGTH; /* recorded without a printed attack */
+	IronmonAI_BuildObservation(1,TRUE,&o);
+	assert(o.response_count==1 && o.responses[0].id==IRONMON_POLICY_UNKNOWN_RESPONSE
+		&& o.responses[0].weight==1);
+	beforeReveal=o;
+	history.usedMoves[0][0]=MOVE_STRENGTH; newBattle.ai.ironmonMoveUseCounts[0][0]=3;
+	IronmonAI_BuildObservation(1,TRUE,&o);
+	assert(memcmp(&beforeReveal,&o,sizeof(o))!=0); /* legitimate public reveal */
+	assert(o.response_count==2 && o.responses[0].id==MOVE_STRENGTH
+		&& o.responses[0].weight==12 && o.responses[1].weight==4);
+	history.usedMoves[0][1]=MOVE_TACKLE; newBattle.ai.ironmonMoveUseCounts[0][1]=1;
+	IronmonAI_BuildObservation(1,TRUE,&o);
+	assert(o.response_count==3 && o.responses[0].id==MOVE_TACKLE
+		&& o.responses[0].weight==6 && o.responses[1].id==MOVE_STRENGTH
+		&& o.responses[1].weight==12 && o.responses[2].weight==6);
+	history.usedMoves[0][2]=MOVE_WATERGUN; newBattle.ai.ironmonMoveUseCounts[0][2]=1;
+	history.usedMoves[0][3]=MOVE_EMBER; newBattle.ai.ironmonMoveUseCounts[0][3]=4;
+	IronmonAI_BuildObservation(1,TRUE,&o);
+	assert(o.response_count==4); /* All revealed: add-one weights, no UNKNOWN. */
+	assert(o.responses[0].id==MOVE_TACKLE && o.responses[0].weight==2);
+	assert(o.responses[1].id==MOVE_EMBER && o.responses[1].weight==5);
+	assert(o.responses[2].id==MOVE_WATERGUN && o.responses[2].weight==2);
+	assert(o.responses[3].id==MOVE_STRENGTH && o.responses[3].weight==4);
+	profile=TRAINER_AI_PROFILE_STANDARD; assert(!IronmonAI_IsSupportedBattle());
+	puts("Ironmon production response weights 100%/75%+25% and profile isolation PASS");
+}
+
+static void IronmonForcedReplacementTiming(void)
+{
+	struct IronmonPolicyObservation o;
+	unsigned i, branch, sawVoluntaryIncoming=0, sawForced=0;
+	Reset(); profile=TRAINER_AI_PROFILE_IRONMON_SMART; Certify();
+	gEnemyParty[1].level=50; gEnemyParty[1].defense=100;
+	gEnemyParty[1].spDefense=100; gEnemyParty[1].speed=100;
+	history.usedMoves[0][0]=MOVE_STRENGTH;
+	newBattle.ai.ironmonMoveUseCounts[0][0]=1;
+	IronmonAI_BuildObservation(1,TRUE,&o);
+	for(i=0;i<o.count;++i)
+		if(o.candidates[i].floor.kind==STANDARD_POLICY_SWITCH
+			&& o.candidates[i].floor.legal)
+			for(branch=0;branch<o.candidates[i].response_count;++branch)
+				if(o.candidates[i].responses[branch].response_id==MOVE_STRENGTH
+					&& o.candidates[i].responses[branch].own_hp_fraction_lost
+						> o.candidates[i].floor.own_hp_fraction_lost)
+					sawVoluntaryIncoming=1;
+	assert(sawVoluntaryIncoming);
+	gBattleMons[1].hp=0;
+	assert(IronmonAI_ChooseReplacement()==1);
+	for(i=0;i<sIronmonObservation.count;++i)
+		if(sIronmonObservation.candidates[i].floor.kind==STANDARD_POLICY_SWITCH
+			&& sIronmonObservation.candidates[i].floor.legal)
+		{
+			struct IronmonPolicyCandidate* c=&sIronmonObservation.candidates[i];
+			assert(c->floor.forced);
+			for(branch=0;branch<c->response_count;++branch)
+			{
+				assert(c->responses[branch].net_faints==c->floor.net_faints);
+				assert(c->responses[branch].own_hp_fraction_lost
+					==c->floor.own_hp_fraction_lost);
+				assert(c->responses[branch].entry_cost==c->floor.entry_cost);
+			}
+			sawForced=1;
+		}
+	assert(sawForced);
+	puts("Ironmon entry timing: voluntary takes response; forced replacement does not PASS");
+}
+
 int main(void)
 {
 	Behavior(); Twins(); EnvelopeOracle(); Dispatch(); HazardsAndReplacement(); MarginalBehavior();
-	ArithmeticBounds();
+	ArithmeticBounds(); IronmonPublicCounts(); IronmonProductionTwins(); IronmonProductionResponseAndDispatch();
+	IronmonForcedReplacementTiming();
 	return 0;
 }

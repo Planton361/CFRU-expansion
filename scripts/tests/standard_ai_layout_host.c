@@ -5,6 +5,7 @@
 #include "../../include/battle.h"
 #include "../../include/new/ai_standard_policy.h"
 #include "../../include/new/ai_standard_mechanics.h"
+#include "../../include/new/ai_ironmon_policy.h"
 
 _Static_assert(offsetof(struct NewBattleStruct, ai.standardMemoryStageAfter)
 	+ sizeof(((struct NewBattleStruct*)0)->ai.standardMemoryStageAfter)
@@ -18,6 +19,14 @@ _Static_assert(offsetof(struct NewBattleStruct, ai.standardTypeUncertain)
 	+ sizeof(((struct NewBattleStruct*)0)->ai.standardTypeUncertain)
 	- offsetof(struct NewBattleStruct, ai.standardPolicySeeded) == 240,
 	"total Standard battle-local state must be 240 bytes");
+_Static_assert(offsetof(struct NewBattleStruct, ai.ironmonPolicySeeded)
+	== offsetof(struct NewBattleStruct, ai.standardTypeUncertain)
+	+ sizeof(((struct NewBattleStruct*)0)->ai.standardTypeUncertain),
+	"Ironmon state must append without changing Standard layout");
+_Static_assert(offsetof(struct NewBattleStruct, ai.ironmonMoveUseCounts)
+	+ sizeof(((struct NewBattleStruct*)0)->ai.ironmonMoveUseCounts)
+	- offsetof(struct NewBattleStruct, ai.ironmonPolicySeeded) == 52,
+	"Ironmon battle-local allocation must remain 52 bytes");
 _Static_assert(sizeof(struct StandardPolicyCandidate) == 52, "UNKNOWN flag uses existing padding");
 _Static_assert(sizeof(struct BattlePokemon) == 0x58, "BattlePokemon ABI");
 _Static_assert(sizeof(struct BattleMove) == 0xC, "BattleMove ABI");
@@ -36,5 +45,9 @@ int main(void)
 		sizeof(struct StandardPolicyResult));
 	printf("StandardMechanicsInput=%zu DamageEnvelope=%zu; round-2 battle-local EWRAM delta=4; total Standard state=240; save delta=0\n",
 		sizeof(struct StandardMechanicsInput), sizeof(struct StandardDamageEnvelope));
+	printf("IronmonCandidate=%zu IronmonObservation=%zu IronmonResult=%zu IronmonResponse=%zu IronmonBranch=%zu; Ironmon ai fields=52; NewBattleStruct aligned delta=56; save delta=0\n",
+		sizeof(struct IronmonPolicyCandidate), sizeof(struct IronmonPolicyObservation),
+		sizeof(struct IronmonPolicyResult), sizeof(struct IronmonPolicyResponse),
+		sizeof(struct IronmonPolicyBranch));
 	return 0;
 }

@@ -25,11 +25,11 @@
 #define STANDARD_AI_DEFAULT_SEED 0x51A1F512
 #define STANDARD_AI_INT32_MAX 2147483647
 
-static void StandardAI_LoadMemory(u8 bank, struct StandardPolicyMemory* memory);
+void StandardAI_LoadMemory(u8 bank, struct StandardPolicyMemory* memory);
 static void StandardAI_SaveMemory(u8 bank, const struct StandardPolicyMemory* memory);
 static void StandardAI_FinalizeLastAction(u8 bank);
-static void StandardAI_StageLastAction(u8 bank, const struct StandardPolicyCandidate* candidate);
-static void StandardAI_BuildObservation(u8 bank, bool8 includeSwitches,
+void StandardAI_StageLastAction(u8 bank, const struct StandardPolicyCandidate* candidate);
+void StandardAI_BuildObservation(u8 bank, bool8 includeSwitches,
 	struct StandardPolicyObservation* observation);
 
 /* Only the displayed HP ratio crosses this boundary, never max HP or exact
@@ -51,7 +51,7 @@ static ability_t StandardAI_RevealedAbility(u8 bank)
 	return BATTLE_HISTORY->abilities[bank];
 }
 
-static u8 StandardAI_TypeMultiplier(u8 attackType, u8 defenseType)
+u8 StandardAI_PublicTypeMultiplier(u8 attackType, u8 defenseType)
 {
 	u8 value;
 	if (attackType >= NUMBER_OF_MON_TYPES || defenseType >= NUMBER_OF_MON_TYPES)
@@ -90,7 +90,7 @@ void StandardAI_ObservePublicAbility(u8 bank, u8 ability)
 		gNewBS->ai.standardTypeUncertain[bank] = TRUE;
 }
 
-static bool8 StandardAI_PublicTypes(u8 foe, u8 types[3])
+bool8 StandardAI_GetPublicTypes(u8 foe, u8 types[3])
 {
 	u16 species = gNewBS->ai.standardDisplayedSpecies[foe];
 	u8 bank, slot;
@@ -142,9 +142,9 @@ static u8 StandardAI_KnownTypeImmunity(u16 move, u8 bankDef)
 		return TRUE;
 	if (knownAbility == ABILITY_SAPSIPPER && type == TYPE_GRASS)
 		return TRUE;
-	if (!StandardAI_PublicTypes(bankDef, types)) return FALSE;
-	return StandardAI_TypeMultiplier(type, types[0]) == 0
-		|| StandardAI_TypeMultiplier(type, types[1]) == 0;
+	if (!StandardAI_GetPublicTypes(bankDef, types)) return FALSE;
+	return StandardAI_PublicTypeMultiplier(type, types[0]) == 0
+		|| StandardAI_PublicTypeMultiplier(type, types[1]) == 0;
 }
 
 static u8 StandardAI_StageForFamily(u8 family)
@@ -295,7 +295,7 @@ static u8 StandardAI_IsForcedMove(u8 bank, u16 move)
 /* Explicit constant-power, single-hit subset: no recoil, self-KO, variable
  * power, charging, contact-dependent power, or item removal. Secondary effects
  * receive no speculative positive utility; the direct damage is supported. */
-static bool8 StandardAI_SupportedDamage(u16 move)
+bool8 StandardAI_IsSupportedDamage(u16 move)
 {
 	switch (move)
 	{
@@ -322,7 +322,7 @@ static void StandardAI_ProjectDamage(u8 bank, u8 foe, u16 move,
 	u8 split = SPLIT(move);
 	u8 type = gBattleMoves[move].type;
 	u8 types[3] = {NUMBER_OF_MON_TYPES, NUMBER_OF_MON_TYPES, NUMBER_OF_MON_TYPES};
-	bool8 publicTypes = StandardAI_PublicTypes(foe, types);
+	bool8 publicTypes = StandardAI_GetPublicTypes(foe, types);
 	u8 i;
 	if (species >= NUM_SPECIES) species = SPECIES_NONE;
 	Memset(&input, 0, sizeof(input));
@@ -343,11 +343,11 @@ static void StandardAI_ProjectDamage(u8 bank, u8 foe, u16 move,
 	input.own_burn = split == SPLIT_PHYSICAL && (gBattleMons[bank].status1 & STATUS_BURN);
 	input.known_immunity = candidate->known_no_effect;
 	input.supported_damage = species != SPECIES_NONE && species < NUM_SPECIES
-		&& publicTypes && StandardAI_SupportedDamage(move);
+		&& publicTypes && StandardAI_IsSupportedDamage(move);
 	for (i = 0; i < 3; ++i)
 		input.effectiveness[i] = types[i] >= NUMBER_OF_MON_TYPES
 			|| (i > 0 && types[i] == types[0]) || (i > 1 && types[i] == types[1])
-			? 10 : StandardAI_TypeMultiplier(type, types[i]);
+			? 10 : StandardAI_PublicTypeMultiplier(type, types[i]);
 	/* The initial CERTIFIED envelope deliberately requires public suppression
 	 * of both abilities and held items. Hidden Sash/Band/Sturdy/absorbers are
 	 * never assumed absent. Other contexts still receive a nominal estimate
@@ -423,7 +423,7 @@ static u8 StandardAI_FollowupValue(u8 bank, u8 foe, u8 family, u8 afterStage)
 		struct StandardPolicyCandidate old = {0}, next = {0};
 		struct StandardDamageEnvelope envelope;
 		s32 gain;
-		if (!StandardAI_SupportedDamage(move) || !StandardAI_MoveLegal(bank, slot, move, FALSE)) continue;
+		if (!StandardAI_IsSupportedDamage(move) || !StandardAI_MoveLegal(bank, slot, move, FALSE)) continue;
 		/* Speed value is meaningful only for an ordinary-priority follow-up. */
 		if (family == STANDARD_EFFECT_SPEED_DOWN || family == STANDARD_EFFECT_SPEED_UP)
 		{
@@ -500,7 +500,7 @@ static u8 StandardAI_DefensiveValue(u8 bank, u8 foe, u8 family, u8 afterStage)
 {
 	u16 species = gNewBS->ai.standardDisplayedSpecies[foe];
 	u8 slot, best = 0, types[3];
-	if (!StandardAI_PublicTypes(foe, types)) return 0;
+	if (!StandardAI_GetPublicTypes(foe, types)) return 0;
 	if (gBattleWeather || gNewBS->TerrainTimer || gSideStatuses[SIDE(bank)]
 		|| gBattleMons[bank].status2
 		|| (!(gStatuses3[bank] & STATUS3_ABILITY_SUPPRESS) && gBattleMons[bank].ability != ABILITY_NONE)
@@ -513,7 +513,7 @@ static u8 StandardAI_DefensiveValue(u8 bank, u8 foe, u8 family, u8 afterStage)
 		struct StandardPolicyCandidate old = {0}, next = {0};
 		struct StandardDamageEnvelope envelope;
 		s32 gain;
-		if (!StandardAI_SupportedDamage(move)) continue;
+		if (!StandardAI_IsSupportedDamage(move)) continue;
 		split = SPLIT(move); type = gBattleMoves[move].type;
 		if (split == SPLIT_PHYSICAL)
 		{
@@ -545,7 +545,7 @@ static u8 StandardAI_DefensiveValue(u8 bank, u8 foe, u8 family, u8 afterStage)
 		for (i = 0; i < 3; ++i)
 		{
 			before.effectiveness[i] = (i && ownTypes[i] == ownTypes[0]) || (i == 2 && ownTypes[i] == ownTypes[1])
-				? 10 : StandardAI_TypeMultiplier(type, ownTypes[i]);
+				? 10 : StandardAI_PublicTypeMultiplier(type, ownTypes[i]);
 			if (!before.effectiveness[i]) before.known_immunity = TRUE;
 		}
 		before.supported_damage = TRUE;
@@ -583,7 +583,7 @@ static void StandardAI_StatusMarginal(u8 bank, u8 foe, u8 effect, struct Standar
 	c->public_major_status = TRUE;
 	c->redundant_status = (gBattleMons[foe].status1 & STATUS_ANY) != 0;
 	if (c->redundant_status) return;
-	if (!StandardAI_PublicTypes(foe, types)) return;
+	if (!StandardAI_GetPublicTypes(foe, types)) return;
 	if (((effect == EFFECT_POISON || effect == EFFECT_TOXIC) && ability == ABILITY_IMMUNITY)
 		|| (effect == EFFECT_WILL_O_WISP && ability == ABILITY_WATERVEIL)
 		|| (effect == EFFECT_PARALYZE && ability == ABILITY_LIMBER)
@@ -754,8 +754,8 @@ static void StandardAI_FillSwitchCandidate(u8 bank, u8 partyIndex, struct Pokemo
 		for (hazard = 0; hazard < 2; ++hazard)
 		{
 			u8 type = hazard == 0 ? TYPE_ROCK : TYPE_STEEL;
-			u32 factor = 40 * StandardAI_TypeMultiplier(type, type1) / 10;
-			if (type1 != type2) factor = factor * StandardAI_TypeMultiplier(type, type2) / 10;
+			u32 factor = 40 * StandardAI_PublicTypeMultiplier(type, type1) / 10;
+			if (type1 != type2) factor = factor * StandardAI_PublicTypeMultiplier(type, type2) / 10;
 			if (hazard == 0 ? gSideTimers[side].srAmount : gSideTimers[side].steelsurge)
 				entryDamage += MathMax(1, mon->maxHP * factor / 320);
 		}
@@ -778,7 +778,7 @@ static void StandardAI_FillSwitchCandidate(u8 bank, u8 partyIndex, struct Pokemo
 	/* A live bench slot alone is not a productive escape. Certify at least
 	 * one usable, supported attack against the same public active target. */
 	for (i = 0; i < MAX_MON_MOVES; ++i)
-		if (mon->pp[i] && StandardAI_SupportedDamage(mon->moves[i])
+		if (mon->pp[i] && StandardAI_IsSupportedDamage(mon->moves[i])
 			&& !StandardAI_KnownTypeImmunity(mon->moves[i], FOE(bank)))
 			candidate->productive = candidate->legal;
 	candidate->switch_legal = forced ? candidate->legal : StandardAI_CanSwitchOut(bank) && candidate->legal;
@@ -793,7 +793,7 @@ static void StandardAI_FillSwitchCandidate(u8 bank, u8 partyIndex, struct Pokemo
 		candidate->productive = FALSE;
 }
 
-static void StandardAI_LoadMemory(u8 bank, struct StandardPolicyMemory* memory)
+void StandardAI_LoadMemory(u8 bank, struct StandardPolicyMemory* memory)
 {
 	u8 i;
 
@@ -862,7 +862,7 @@ static void StandardAI_FinalizeLastAction(u8 bank)
 	gNewBS->ai.standardLastValid[bank] = FALSE;
 }
 
-static void StandardAI_StageLastAction(u8 bank, const struct StandardPolicyCandidate* candidate)
+void StandardAI_StageLastAction(u8 bank, const struct StandardPolicyCandidate* candidate)
 {
 	u8 family = StandardPolicyNormalizeEffectFamily(candidate->effect_family);
 	u8 stageId = StandardAI_StageForFamily(family);
@@ -885,7 +885,7 @@ static void StandardAI_StageLastAction(u8 bank, const struct StandardPolicyCandi
 		? gBattleMons[FOE(bank)].status1 : 0;
 }
 
-static void StandardAI_BuildObservation(u8 bank, bool8 includeSwitches,
+void StandardAI_BuildObservation(u8 bank, bool8 includeSwitches,
 	struct StandardPolicyObservation* observation)
 {
 	u8 foe = FOE(bank);

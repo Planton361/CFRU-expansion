@@ -146,7 +146,9 @@ def main() -> int:
     if "gNewBS->ai.standardDisplayedSpecies[bank] = species;" not in presentation:
         fail("public display identity producer is missing")
     history_source = (ROOT / "src/battle_util.c").read_text(encoding="utf-8")
-    if "if (gHitMarker & HITMARKER_ATTACKSTRING_PRINTED)\n\t\tStandardAI_ObservePublicMove(move);" not in history_source:
+    if not re.search(
+            r"if \(gHitMarker & HITMARKER_ATTACKSTRING_PRINTED\)\s*\{\s*"
+            r"StandardAI_ObservePublicMove\(move\);", history_source):
         fail("type uncertainty producer must require a printed public move")
     if "StandardAI_ObservePublicAbility(bank, ability);" not in history_source:
         fail("public ability type uncertainty producer missing")

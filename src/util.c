@@ -168,6 +168,8 @@ enum TrainerAIProfile GetTrainerAIProfile(void)
 			return TRAINER_AI_PROFILE_SMART_AI;
 		case TRAINER_AI_PROFILE_STANDARD + 1:
 			return TRAINER_AI_PROFILE_STANDARD;
+		case TRAINER_AI_PROFILE_IRONMON_SMART + 1:
+			return TRAINER_AI_PROFILE_IRONMON_SMART;
 		case 0:
 		default:
 			return GetLegacyTrainerAIProfile();
@@ -189,6 +191,7 @@ bool8 IsSmartTrainerAIEnabled(void)
 		case TRAINER_AI_PROFILE_HARD + 1:
 		case TRAINER_AI_PROFILE_EXPERT + 1:
 		case TRAINER_AI_PROFILE_STANDARD + 1:
+		case TRAINER_AI_PROFILE_IRONMON_SMART + 1:
 			return FALSE;
 		case 0:
 		default:

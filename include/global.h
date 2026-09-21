@@ -201,6 +201,8 @@ enum TrainerAIProfile
 	TRAINER_AI_PROFILE_SMART_AI,
 	/* Appended for source-only compatibility; the existing raw values stay put. */
 	TRAINER_AI_PROFILE_STANDARD,
+	/* Distinct internal fair tactical profile; no existing raw value changes. */
+	TRAINER_AI_PROFILE_IRONMON_SMART,
 };
 
 enum
