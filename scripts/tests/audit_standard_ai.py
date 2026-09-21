@@ -55,7 +55,7 @@ EXCLUDED_BATTLE_FLAGS = (
 )
 
 REVIEWED_HELPERS = {
-    "EmitTwoReturnValues", "GetMonAbility", "GetMonItemEffect", "IsInverseBattle",
+    "EmitTwoReturnValues", "GetMonAbility", "GetMonItemEffect", "FlagGet", "IsInverseBattle",
     "LoadPartyRange", "IsFrontierTrainerId", "IsRaidBattle", "GetTrainerAIProfile",
     "ItemId_GetHoldEffect", "CheckGrounding",
     "StandardMechanicsDamage", "StandardMechanicsAccuracy", "StandardMechanicsQualifySwitches",

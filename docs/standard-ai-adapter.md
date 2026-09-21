@@ -99,8 +99,9 @@ uncertainty because the opponent's unobserved move is unknown. Capped drops are
 unproductive. Sand Attack and Smokescreen still share the policy's effect family.
 
 Speed uses exact own Speed and public displayed-species/level/stage bounds over
-all legal IV/EV/nature values. Badge-boost uncertainty widens the upper bound.
-Public paralysis divisors and Trick Room order inversion are explicit. A credit
+all legal IV/EV/nature values. The CFRU's public badge flags and battle-mode
+gates are applied exactly; an active player-side boost widens the upper bound.
+The configured public paralysis divisor and Trick Room order inversion are explicit. A credit
 requires a strict definitely-behind to definitely-ahead flip across the entire
 interval after one application, plus a supported ordinary-priority follow-up.
 Already faster, overlapping intervals and ties receive zero. Both abilities must

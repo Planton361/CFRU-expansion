@@ -25,6 +25,40 @@
 #define STANDARD_AI_DEFAULT_SEED 0x51A1F512
 #define STANDARD_AI_INT32_MAX 2147483647
 
+/* Badge stat boosts are public save/battle state. Keep the exact engine
+ * gating here so Ironmon widens only the affected public interval. */
+bool8 StandardAI_PublicBadgeBoost(u8 bank, u8 kind)
+{
+	(void)bank; (void)kind;
+#ifdef BADGE_BOOSTS
+	if (SIDE(bank) != B_SIDE_PLAYER || !(gBattleTypeFlags & BATTLE_TYPE_TRAINER))
+		return FALSE;
+	if (kind == STANDARD_AI_BADGE_SPEED)
+	{
+		if (gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_TRAINER_TOWER
+			| BATTLE_TYPE_FRONTIER | BATTLE_TYPE_EREADER_TRAINER)
+			|| gTrainerBattleOpponent_A == 0x400)
+			return FALSE;
+		return FlagGet(FLAG_BADGE03_GET);
+	}
+	if (gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_TRAINER_TOWER
+		| BATTLE_TYPE_FRONTIER | BATTLE_TYPE_EREADER_TRAINER)
+		|| gTrainerBattleOpponent_A == TRAINER_SECRET_BASE)
+		return FALSE;
+	switch (kind)
+	{
+	case STANDARD_AI_BADGE_ATTACK: return FlagGet(FLAG_BADGE01_GET);
+	case STANDARD_AI_BADGE_DEFENSE: return FlagGet(FLAG_BADGE05_GET);
+	case STANDARD_AI_BADGE_SPECIAL_ATTACK:
+	case STANDARD_AI_BADGE_SPECIAL_DEFENSE: return FlagGet(FLAG_BADGE07_GET);
+	default: return FALSE;
+	}
+
+#else
+	return FALSE;
+#endif
+}
+
 void StandardAI_LoadMemory(u8 bank, struct StandardPolicyMemory* memory);
 static void StandardAI_SaveMemory(u8 bank, const struct StandardPolicyMemory* memory);
 static void StandardAI_FinalizeLastAction(u8 bank);
@@ -394,6 +428,12 @@ void StandardAI_DeriveDamageWithCertificate(u8 bank, u8 foe, u16 move,
 	struct StandardMechanicsInput input;
 	struct StandardDamageEnvelope envelope;
 	StandardAI_ProjectDamage(bank, foe, move, candidate, &input);
+	if (StandardAI_PublicBadgeBoost(bank, SPLIT(move) == SPLIT_PHYSICAL
+		? STANDARD_AI_BADGE_ATTACK : STANDARD_AI_BADGE_SPECIAL_ATTACK))
+		input.attack = MathMin(2048, input.attack * 11 / 10);
+	if (StandardAI_PublicBadgeBoost(foe, SPLIT(move) == SPLIT_PHYSICAL
+		? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE))
+		input.base_defense = MathMin(255, (input.base_defense * 11 + 9) / 10);
 	/* Ironmon supplies an independently narrow public modifier certificate.
 	 * Reuse the exact Standard projection/mechanics arithmetic, changing only
 	 * the certificate bit that controls complete-envelope and robust-KO claims. */
@@ -496,6 +536,12 @@ bool8 StandardAI_FindSetupFollowup(u8 bank, u8 foe, u8 family, u8 afterStage,
 		else continue;
 		old.known_no_effect = StandardAI_KnownTypeImmunity(move, foe);
 		StandardAI_ProjectDamage(bank, foe, move, &old, &before);
+		if (StandardAI_PublicBadgeBoost(bank, SPLIT(move) == SPLIT_PHYSICAL
+			? STANDARD_AI_BADGE_ATTACK : STANDARD_AI_BADGE_SPECIAL_ATTACK))
+			before.attack = MathMin(2048, before.attack * 11 / 10);
+		if (StandardAI_PublicBadgeBoost(foe, SPLIT(move) == SPLIT_PHYSICAL
+			? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE))
+			before.base_defense = MathMin(255, (before.base_defense * 11 + 9) / 10);
 		after = before;
 		if (family == STANDARD_EFFECT_ATTACK_UP || family == STANDARD_EFFECT_SPECIAL_ATTACK_UP)
 			after.attack_stage = afterStage;

@@ -39,6 +39,7 @@ u32 gStatuses3[4], gBattleTypeFlags = BATTLE_TYPE_TRAINER, gHitMarker;
 u32 gRngValue, gRng2Value;
 u8 gChosenActionByBank[4];
 static enum TrainerAIProfile profile = TRAINER_AI_PROFILE_STANDARD;
+static bool8 testBadge03;
 
 /* The real source tables, including their nonstandard 0/1 neutral/immunity
  * encoding. No hand-authored substitute move/type table can hide drift. */
@@ -60,6 +61,7 @@ u8 CheckGrounding(u8 bank) { assert(bank == 1); return GROUNDED; }
 bool8 IsRaidBattle(void) { return FALSE; }
 bool8 IsInverseBattle(void) { return FALSE; }
 bool8 IsFrontierTrainerId(u16 trainer) { (void)trainer; return FALSE; }
+bool8 FlagGet(u16 id) { return id == FLAG_BADGE03_GET && testBadge03; }
 enum TrainerAIProfile GetTrainerAIProfile(void) { return profile; }
 void EmitTwoReturnValues(u8 buffer, u8 action, u16 value)
 { (void)buffer; (void)action; (void)value; }
@@ -73,6 +75,7 @@ static void Reset(void)
 	memset(&newBattle, 0, sizeof(newBattle));
 	memset(&battle, 0, sizeof(battle));
 	memset(&history, 0, sizeof(history));
+	testBadge03 = FALSE;
 	memset(gDisableStructs, 0, sizeof(gDisableStructs));
 	memset(gStatuses3, 0, sizeof(gStatuses3));
 	memset(gSideStatuses, 0, sizeof(gSideStatuses));
@@ -765,7 +768,14 @@ static void IronmonProductionOrderCertificates(void)
 	gBattleMons[1].speed = 1;
 	IronmonAI_ProjectIncoming(1, MOVE_POUND, NULL, 0, 0xFFFF, &in);
 	assert(in.order_known && in.opponent_first);
+	/* Public badge speed is modeled by the same battle gate as SpeedCalc: the
+	 * upper interval widens, so a previously clear comparison becomes UNKNOWN
+	 * instead of certifying an order that the boost could reverse. */
+	testBadge03 = TRUE; gBattleMons[1].speed = 140;
+	IronmonAI_ProjectIncoming(1, MOVE_POUND, NULL, 0, 0xFFFF, &in);
+	assert(!in.order_known);
 	/* Stable Trick Room reverses the certified comparisons. */
+	testBadge03 = FALSE;
 	newBattle.TrickRoomTimer = 3; gBattleMons[1].speed = 1;
 	IronmonAI_ProjectIncoming(1, MOVE_POUND, NULL, 0, 0xFFFF, &in);
 	assert(in.order_known && !in.opponent_first);

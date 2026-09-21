@@ -26,6 +26,15 @@ bool8 StandardAI_GetPublicTypes(u8 bank, u8 types[3]);
 u8 StandardAI_PublicTypeMultiplier(u8 attackType, u8 defenseType);
 bool8 StandardAI_IsSupportedDamage(u16 move);
 u32 StandardAI_GetSwitchEntryDamage(u8 bank, const struct Pokemon* mon);
+enum StandardAIBadgeBoostKind
+{
+	STANDARD_AI_BADGE_SPEED = 0,
+	STANDARD_AI_BADGE_ATTACK,
+	STANDARD_AI_BADGE_DEFENSE,
+	STANDARD_AI_BADGE_SPECIAL_ATTACK,
+	STANDARD_AI_BADGE_SPECIAL_DEFENSE,
+};
+bool8 StandardAI_PublicBadgeBoost(u8 bank, u8 kind);
 void StandardAI_DeriveDamageWithCertificate(u8 bank, u8 foe, u16 move,
 	struct StandardPolicyCandidate* candidate, bool8 certified);
 

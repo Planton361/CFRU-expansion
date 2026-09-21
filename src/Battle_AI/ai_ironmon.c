@@ -20,6 +20,11 @@
  */
 #define IRONMON_AI_PENDING_NONE 0xFF
 #define IRONMON_AI_DEFAULT_SEED 0x1A0B5157
+#ifdef OLD_PARALYSIS_SPD_DROP
+#define IRONMON_PARALYSIS_DIVISOR 4
+#else
+#define IRONMON_PARALYSIS_DIVISOR 2
+#endif
 
 /* The bounded 9x8 observation is too large for the battle callback stack.
  * One non-reentrant ordinary-singles decision uses this EWRAM scratch. */
@@ -156,7 +161,7 @@ static void IronmonAI_Order(u8 bank, u8 foe, s8 ownPriority, u16 response,
 	struct IronmonIncoming* incoming)
 {
 	u16 species = gNewBS->ai.standardDisplayedSpecies[foe];
-	u32 ownSpeed, low, high;
+	u32 ownSpeed, ownHigh, low, high;
 	s8 responsePriority = gBattleMoves[response].priority;
 	if (!incoming->modifiers_certified) return;
 	if (!IronmonAI_PublicModifierCertificate(foe, bank, TRUE, SPECIES_NONE)) return;
@@ -170,21 +175,34 @@ static void IronmonAI_Order(u8 bank, u8 foe, s8 ownPriority, u16 response,
 		return;
 	ownSpeed = StandardMechanicsStage(gBattleMons[bank].speed,
 		gBattleMons[bank].statStages[STAT_STAGE_SPEED - 1]);
+	ownHigh = ownSpeed;
 	low = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
 		gBattleMons[foe].level, gBattleMons[foe].statStages[STAT_STAGE_SPEED - 1], FALSE);
 	high = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
 		gBattleMons[foe].level, gBattleMons[foe].statStages[STAT_STAGE_SPEED - 1], TRUE);
-	if (gBattleMons[bank].status1 & STATUS_PARALYSIS) ownSpeed /= 2;
-	if (gBattleMons[foe].status1 & STATUS_PARALYSIS) { low /= 2; high /= 2; }
+	if (StandardAI_PublicBadgeBoost(bank, STANDARD_AI_BADGE_SPEED))
+		ownHigh = ownHigh * 11 / 10;
+	if (StandardAI_PublicBadgeBoost(foe, STANDARD_AI_BADGE_SPEED))
+		high = high * 11 / 10;
+	if (gBattleMons[bank].status1 & STATUS_PARALYSIS)
+	{
+		ownSpeed /= IRONMON_PARALYSIS_DIVISOR;
+		ownHigh /= IRONMON_PARALYSIS_DIVISOR;
+	}
+	if (gBattleMons[foe].status1 & STATUS_PARALYSIS)
+	{
+		low /= IRONMON_PARALYSIS_DIVISOR;
+		high /= IRONMON_PARALYSIS_DIVISOR;
+	}
 	if (gNewBS->TrickRoomTimer > 1)
 	{
-		if (ownSpeed < low) { incoming->order_known = TRUE; incoming->opponent_first = FALSE; }
+		if (ownHigh < low) { incoming->order_known = TRUE; incoming->opponent_first = FALSE; }
 		else if (ownSpeed > high) { incoming->order_known = TRUE; incoming->opponent_first = TRUE; }
 	}
 	else if (!gNewBS->TrickRoomTimer)
 	{
 		if (ownSpeed > high) { incoming->order_known = TRUE; incoming->opponent_first = FALSE; }
-		else if (ownSpeed < low) { incoming->order_known = TRUE; incoming->opponent_first = TRUE; }
+		else if (ownHigh < low) { incoming->order_known = TRUE; incoming->opponent_first = TRUE; }
 	}
 }
 
@@ -240,6 +258,12 @@ static void IronmonAI_ProjectIncoming(u8 bank, u16 response, const struct Pokemo
 	input.attack = StandardMechanicsSpeed(
 		split == SPLIT_PHYSICAL ? gBaseStats[species].baseAttack : gBaseStats[species].baseSpAttack,
 		gBattleMons[foe].level, 6, TRUE);
+	if (StandardAI_PublicBadgeBoost(foe, split == SPLIT_PHYSICAL
+		? STANDARD_AI_BADGE_ATTACK : STANDARD_AI_BADGE_SPECIAL_ATTACK))
+		input.attack = MathMin(2048, input.attack * 11 / 10);
+	if (StandardAI_PublicBadgeBoost(bank, split == SPLIT_PHYSICAL
+		? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE))
+		defense = MathMin(2048, (defense * 11 + 9) / 10);
 	input.known_defense = defense; input.known_hp = hp; input.known_max_hp = maxHP;
 	input.level = gBattleMons[foe].level; input.target_level = level;
 	input.attack_stage = gBattleMons[foe].statStages[(split == SPLIT_PHYSICAL ? STAT_STAGE_ATK : STAT_STAGE_SPATK) - 1];
@@ -284,18 +308,28 @@ static u8 IronmonAI_TwoStepSpeedThreshold(u8 bank,
 		? candidate->stat_stage_after - delta : STAT_STAGE_MIN;
 	own = StandardMechanicsStage(gBattleMons[bank].speed,
 		gBattleMons[bank].statStages[STAT_STAGE_SPEED - 1]);
-	afterOneLow = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
-		gBattleMons[foe].level, candidate->stat_stage_after, FALSE);
-	afterOneHigh = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
-		gBattleMons[foe].level, candidate->stat_stage_after, TRUE);
-	afterTwoLow = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
-		gBattleMons[foe].level, afterTwo, FALSE);
-	afterTwoHigh = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
-		gBattleMons[foe].level, afterTwo, TRUE);
-	if (gNewBS->TrickRoomTimer > 2)
-		return !(own < afterOneLow) && own < afterTwoLow;
-	if (gNewBS->TrickRoomTimer) return FALSE;
-	return !(own > afterOneHigh) && own > afterTwoHigh;
+	{
+		u32 ownHigh = own;
+		if (StandardAI_PublicBadgeBoost(bank, STANDARD_AI_BADGE_SPEED))
+			ownHigh = ownHigh * 11 / 10;
+		afterOneLow = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
+			gBattleMons[foe].level, candidate->stat_stage_after, FALSE);
+		afterOneHigh = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
+			gBattleMons[foe].level, candidate->stat_stage_after, TRUE);
+		afterTwoLow = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
+			gBattleMons[foe].level, afterTwo, FALSE);
+		afterTwoHigh = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
+			gBattleMons[foe].level, afterTwo, TRUE);
+		if (StandardAI_PublicBadgeBoost(foe, STANDARD_AI_BADGE_SPEED))
+		{
+			afterOneHigh = afterOneHigh * 11 / 10;
+			afterTwoHigh = afterTwoHigh * 11 / 10;
+		}
+		if (gNewBS->TrickRoomTimer > 2)
+			return !(own < afterOneLow) && ownHigh < afterTwoLow;
+		if (gNewBS->TrickRoomTimer) return FALSE;
+		return !(ownHigh > afterOneHigh) && own > afterTwoHigh;
+	}
 }
 
 static u8 IronmonAI_Classify(u8 bank, struct IronmonPolicyCandidate* candidate)
@@ -495,6 +529,7 @@ static void IronmonAI_FillBranches(u8 bank, struct IronmonPolicyObservation* obs
 			u16 heal = IronmonAI_RecoveryAmount(bank, actionMove, postHp);
 			u16 healedHp = IronmonAI_Min(maxHP, postHp + heal);
 			ownLoss = ((s32)startHp - healedHp) * 256 / (s32)MathMax(1, maxHP);
+			postHp = healedHp;
 		}
 		else
 		{
