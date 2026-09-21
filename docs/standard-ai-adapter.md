@@ -209,7 +209,9 @@ Round-2 delta: 4 battle-local EWRAM bytes for sticky type uncertainty; zero IWRA
 or save/persistent bytes. Total Standard state is 0xE4 original bytes plus the
 8-byte displayed-species snapshot and these 4 bytes (0xF0 total), checked by
 compile-time assertions. ARM asserts
-BattlePokemon=0x58, BattleMove=0x0C and BattleStruct=0x200. No Trainer/Pokemon,
+BattlePokemon=0x58, BattleMove=0x0C and BattleStruct=0x200. The host layout
+harness may print BattleStruct=0x208 because of host pointer/alignment width;
+that value is HOST HARNESS SIZE ONLY, never the target ARM ABI. No Trainer/Pokemon,
 DPE, ROM table/repoint or randomizer layout changes. Battle allocation/zeroing
 still resets Standard memory/RNG.
 

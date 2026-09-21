@@ -64,7 +64,7 @@ projected from public state or exact own-trainer facts.
 | Two-use Speed threshold | Supported only when the actual second stage certifies the order change and two response exposures are survived. |
 | Setup 3HKO to 2HKO | Supported only from a matching Standard-supported follow-up and a response-specific survival/order certificate. |
 | Poison/Toxic/burn residual | Supported through effect-specific Standard residual facts; no generic status bonus. |
-| Recovery | Exact own HP gain is counted once. A separate future credit requires a supported revealed response survival improvement; lethal-before-heal and UNKNOWN give none. |
+| Recovery | Exact own HP gain is counted once. A pre-heal lethal/post-heal surviving response is a supported survival race; post-heal lethal and UNKNOWN give no survival credit. |
 | Entry hazards / immunity entry | Supported from exact own party, source-owned hazard math, exact own types/ability, and revealed attacks. Voluntary entry takes the current response; forced replacement does not. |
 | Leech Seed and Yawn/pending sleep | `UNKNOWN` in production v1: CFRU timing/blocker state is not narrowed enough at this fair boundary for positive tactical utility. Duplicate public states remain rejected where the common floor represents them. |
 | Field, Protect, and strategic pivot timing | `UNKNOWN` in production v1; no generic class bonus. Supported direct damage remains available independently. |
@@ -85,6 +85,26 @@ Production derives a response emergency only when all revealed slots are known,
 every defensible stay is certified lethal, and that particular entry survives
 every response. With aggregate UNKNOWN present, this extra emergency proof is
 unavailable and the ordinary candidate-level threshold path remains.
+
+## Production sequencing repair
+
+The adapter applies certified engine order before copying an outgoing result.
+An opponent-first lethal branch records the own faint and has zero outgoing
+damage/future; a trainer-first non-terminal action retains its result before a
+response KO; and a trainer-first robust terminal KO suppresses the response
+entirely. Recovery is evaluated at the HP present at each point in that
+sequence, including the post-hit cap for an opponent-first response. Voluntary
+replacement evaluates entry hazards before the revealed current-turn response;
+forced post-faint replacement remains hazard-only.
+
+Order certificates use public Speed intervals, priority, paralysis, and stable
+Trick Room comparisons. Tailwind, Swamp, weather, terrain, screens, dynamic
+types, unresolved status/side modifiers, expiring Trick Room, and selected
+species exceptions fail closed. The same modifier certificate gates incoming
+damage survival and tactical future credit. A concrete Standard-owned setup
+follow-up carries its move/slot, physical-or-special split, before/after HP
+fractions, priority, and the next-turn order/survival check; a different move
+cannot supply the threshold gain.
 
 ## Memory and source gates
 

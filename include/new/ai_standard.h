@@ -25,3 +25,23 @@ void StandardAI_StageLastAction(u8 bank,
 bool8 StandardAI_GetPublicTypes(u8 bank, u8 types[3]);
 u8 StandardAI_PublicTypeMultiplier(u8 attackType, u8 defenseType);
 bool8 StandardAI_IsSupportedDamage(u16 move);
+u32 StandardAI_GetSwitchEntryDamage(u8 bank, const struct Pokemon* mon);
+void StandardAI_DeriveDamageWithCertificate(u8 bank, u8 foe, u16 move,
+	struct StandardPolicyCandidate* candidate, bool8 certified);
+
+/* One concrete, source-owned setup follow-up.  The Ironmon adapter uses this
+ * rather than combining the strongest current move with a marginal gain from
+ * a different move.  Fractions use the shared 1/256 HP scale. */
+struct StandardSetupFollowup
+{
+	bool8 found;
+	u8 slot;
+	u8 split;
+	s8 priority;
+	u16 move;
+	u16 before_fraction;
+	u16 after_fraction;
+};
+
+bool8 StandardAI_FindSetupFollowup(u8 bank, u8 foe, u8 family, u8 afterStage,
+	struct StandardSetupFollowup* out);

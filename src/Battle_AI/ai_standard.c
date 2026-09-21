@@ -388,6 +388,21 @@ static void StandardAI_DeriveDamage(u8 bank, u8 foe, u16 move,
 	if (report != NULL) *report = envelope;
 }
 
+void StandardAI_DeriveDamageWithCertificate(u8 bank, u8 foe, u16 move,
+	struct StandardPolicyCandidate* candidate, bool8 certified)
+{
+	struct StandardMechanicsInput input;
+	struct StandardDamageEnvelope envelope;
+	StandardAI_ProjectDamage(bank, foe, move, candidate, &input);
+	/* Ironmon supplies an independently narrow public modifier certificate.
+	 * Reuse the exact Standard projection/mechanics arithmetic, changing only
+	 * the certificate bit that controls complete-envelope and robust-KO claims. */
+	input.certified_modifiers = certified;
+	input.can_act_safely = certified && gBattleMons[bank].hp != 0
+		&& !(gBattleMons[bank].status1 & (STATUS_SLEEP | STATUS_FREEZE | STATUS_PARALYSIS));
+	StandardMechanicsDamage(&input, candidate, &envelope);
+}
+
 static u8 StandardAI_MoveLegal(u8 bank, u8 movePos, u16 move, u8 forcedMove)
 {
 	if (move == MOVE_NONE || gBattleMons[bank].pp[movePos] == 0)
@@ -449,6 +464,58 @@ static u8 StandardAI_FollowupValue(u8 bank, u8 foe, u8 family, u8 afterStage)
 		if (gain > best) best = MathMin(40, gain);
 	}
 	return best;
+}
+
+bool8 StandardAI_FindSetupFollowup(u8 bank, u8 foe, u8 family, u8 afterStage,
+	struct StandardSetupFollowup* out)
+{
+	u8 slot;
+	Memset(out, 0, sizeof(*out));
+	for (slot = 0; slot < MAX_MON_MOVES; ++slot)
+	{
+		u16 move = gBattleMons[bank].moves[slot];
+		struct StandardMechanicsInput before, after;
+		struct StandardPolicyCandidate old = {0}, next = {0};
+		struct StandardDamageEnvelope envelope;
+		if (!StandardAI_IsSupportedDamage(move)
+			|| !StandardAI_MoveLegal(bank, slot, move, FALSE))
+			continue;
+		if (family == STANDARD_EFFECT_SPEED_DOWN || family == STANDARD_EFFECT_SPEED_UP)
+		{
+			if (gBattleMoves[move].priority != 0) continue;
+		}
+		else if (family == STANDARD_EFFECT_ATTACK_UP || family == STANDARD_EFFECT_DEFENSE_DOWN)
+		{
+			if (SPLIT(move) != SPLIT_PHYSICAL) continue;
+		}
+		else if (family == STANDARD_EFFECT_SPECIAL_ATTACK_UP
+			|| family == STANDARD_EFFECT_SPECIAL_DEFENSE_DOWN)
+		{
+			if (SPLIT(move) != SPLIT_SPECIAL) continue;
+		}
+		else continue;
+		old.known_no_effect = StandardAI_KnownTypeImmunity(move, foe);
+		StandardAI_ProjectDamage(bank, foe, move, &old, &before);
+		after = before;
+		if (family == STANDARD_EFFECT_ATTACK_UP || family == STANDARD_EFFECT_SPECIAL_ATTACK_UP)
+			after.attack_stage = afterStage;
+		if (family == STANDARD_EFFECT_DEFENSE_DOWN || family == STANDARD_EFFECT_SPECIAL_DEFENSE_DOWN)
+			after.defense_stage = afterStage;
+		StandardMechanicsDamage(&before, &old, &envelope);
+		StandardMechanicsDamage(&after, &next, &envelope);
+		/* Keep a deterministic first slot on equal facts. */
+		if (!out->found || next.opponent_hp_fraction_lost > out->after_fraction)
+		{
+			out->found = TRUE;
+			out->slot = slot;
+			out->split = SPLIT(move);
+			out->priority = gBattleMoves[move].priority;
+			out->move = move;
+			out->before_fraction = old.opponent_hp_fraction_lost;
+			out->after_fraction = next.opponent_hp_fraction_lost;
+		}
+	}
+	return out->found;
 }
 
 /* Only certify an order flip across the ENTIRE public Speed interval. Unknown
@@ -735,10 +802,8 @@ static u8 StandardAI_CanSwitchOut(u8 bank)
 		&& gBattleStruct->battlerPreventingSwitchout != bank;
 }
 
-static void StandardAI_FillSwitchCandidate(u8 bank, u8 partyIndex, struct Pokemon* mon,
-	struct StandardPolicyCandidate* candidate, u8 forced)
+u32 StandardAI_GetSwitchEntryDamage(u8 bank, const struct Pokemon* mon)
 {
-	u8 i;
 	u8 side = SIDE(bank);
 	u8 ability = GetMonAbility(mon);
 	u8 item = GetMonItemEffect(mon);
@@ -767,6 +832,14 @@ static void StandardAI_FillSwitchCandidate(u8 bank, u8 partyIndex, struct Pokemo
 			entryDamage += MathMax(1, mon->maxHP / (layers == 1 ? 8 : layers == 2 ? 6 : 4));
 		}
 	}
+	return entryDamage;
+}
+
+static void StandardAI_FillSwitchCandidate(u8 bank, u8 partyIndex, struct Pokemon* mon,
+	struct StandardPolicyCandidate* candidate, u8 forced)
+{
+	u8 i;
+	u32 entryDamage = StandardAI_GetSwitchEntryDamage(bank, mon);
 	u32 entryFraction = mon->maxHP == 0 ? STANDARD_POLICY_HP_SCALE
 		: (entryDamage * STANDARD_POLICY_HP_SCALE) / mon->maxHP;
 

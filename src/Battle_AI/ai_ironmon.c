@@ -31,15 +31,17 @@ struct IronmonIncoming
 	u16 minimum;
 	u16 maximum;
 	u16 fraction;
+	u16 target_hp;
+	u16 target_max_hp;
 	u8 supported;
 	u8 immune;
 	u8 survives;
+	u8 modifiers_certified;
 	u8 order_known;
 	u8 opponent_first;
 };
 
 static u32 IronmonAI_Min(u32 left, u32 right) { return left < right ? left : right; }
-static u32 IronmonAI_Max(u32 left, u32 right) { return left > right ? left : right; }
 
 void IronmonAI_ObservePublicMove(u8 bank, u16 move)
 {
@@ -90,15 +92,64 @@ static u8 IronmonAI_KnownOwnImmunity(u16 move, u8 type1, u8 type2, u8 type3,
 			&& StandardAI_PublicTypeMultiplier(moveType, type3) == 0);
 }
 
-static u8 IronmonAI_CertifiedIncomingModifiers(u8 foe, u8 target)
+static u8 IronmonAI_PublicSideModifiersCertified(void)
 {
-	return (gStatuses3[foe] & STATUS3_ABILITY_SUPPRESS)
-		&& (gStatuses3[target] & STATUS3_ABILITY_SUPPRESS)
-		&& gNewBS->MagicRoomTimer > 1 && !gBattleWeather && !gNewBS->TerrainTimer
-		&& !gNewBS->WonderRoomTimer && !gNewBS->IonDelugeTimer
-		&& !gNewBS->ElectrifyTimers[foe] && !gNewBS->MudSportTimer
-		&& !gNewBS->WaterSportTimer && !gNewBS->AuroraVeilTimers[SIDE(target)]
-		&& !gSideStatuses[SIDE(foe)] && !gSideStatuses[SIDE(target)];
+	const u16 hazards = SIDE_STATUS_SPIKES | SIDE_STATUS_SPIKES_DAMAGED;
+	const u16 unsupported = SIDE_STATUS_REFLECT | SIDE_STATUS_LIGHTSCREEN
+		| SIDE_STATUS_X4 | SIDE_STATUS_CRAFTY_SHIELD | SIDE_STATUS_SAFEGUARD
+		| SIDE_STATUS_FUTUREATTACK | SIDE_STATUS_MAT_BLOCK | SIDE_STATUS_MIST
+		| SIDE_STATUS_QUICK_GUARD | SIDE_STATUS_WIDE_GUARD;
+	return !(gSideStatuses[0] & unsupported) && !(gSideStatuses[1] & unsupported)
+		&& !(gSideStatuses[0] & ~(unsupported | hazards))
+		&& !(gSideStatuses[1] & ~(unsupported | hazards));
+}
+
+static u8 IronmonAI_PublicModifierCertificate(u8 foe, u8 target, u8 allowTrickRoom,
+	u16 targetSpeciesOverride)
+{
+	u16 publicSpecies = gNewBS->ai.standardDisplayedSpecies[foe];
+	u16 targetSpecies = targetSpeciesOverride == SPECIES_NONE
+		? gBattleMons[target].species : targetSpeciesOverride;
+	if (gStatuses3[foe] != STATUS3_ABILITY_SUPPRESS
+		|| gStatuses3[target] != STATUS3_ABILITY_SUPPRESS
+		|| gNewBS->MagicRoomTimer <= 1 || gBattleWeather || gNewBS->TerrainTimer
+		|| gNewBS->WonderRoomTimer || gNewBS->IonDelugeTimer
+		|| gNewBS->ElectrifyTimers[foe] || gNewBS->ElectrifyTimers[target]
+		|| gNewBS->MudSportTimer || gNewBS->WaterSportTimer
+		|| gNewBS->GravityTimer || gNewBS->AuroraVeilTimers[SIDE(target)]
+		|| !IronmonAI_PublicSideModifiersCertified()
+		|| gBattleMons[foe].status2 || gBattleMons[target].status2
+		|| (gBattleMons[foe].status1 & ~(STATUS1_BURN | STATUS1_PARALYSIS))
+		|| (gBattleMons[target].status1 & ~(STATUS1_BURN | STATUS1_PARALYSIS))
+		|| gNewBS->teraData.done[SIDE(foe)][gBattlerPartyIndexes[foe]]
+		|| gNewBS->teraData.done[SIDE(target)][gBattlerPartyIndexes[target]])
+		return FALSE;
+	if (!allowTrickRoom && gNewBS->TrickRoomTimer) return FALSE;
+	#if defined(FLAG_WEIGHT_SPEED_BATTLE) || defined(FLAG_TAILWIND_BATTLE)
+	return FALSE;
+	#endif
+	if (gNewBS->TailwindTimers[0] || gNewBS->TailwindTimers[1]
+		|| gNewBS->SwampTimers[0] || gNewBS->SwampTimers[1])
+		return FALSE;
+	if (publicSpecies == SPECIES_TERAPAGOS
+	#ifdef SPECIES_TERAPAGOS_TERA
+		|| publicSpecies == SPECIES_TERAPAGOS_TERA
+	#endif
+	)
+		return FALSE;
+	/* StandardMechanicsDamage does not model Shedinja's one-HP exception in
+	 * the revealed incoming adapter, so its survival/order certificate fails
+	 * closed rather than treating it as an ordinary HP target. */
+	if (targetSpecies == SPECIES_SHEDINJA)
+		return FALSE;
+	return StandardAI_GetPublicTypes(foe, (u8[3]){0, 0, 0});
+}
+
+static u8 IronmonAI_CertifiedIncomingModifiers(u8 foe, u8 target,
+	const struct Pokemon* partyMon)
+{
+	return IronmonAI_PublicModifierCertificate(foe, target, TRUE,
+		partyMon == NULL ? SPECIES_NONE : partyMon->species);
 }
 
 static void IronmonAI_Order(u8 bank, u8 foe, s8 ownPriority, u16 response,
@@ -107,6 +158,8 @@ static void IronmonAI_Order(u8 bank, u8 foe, s8 ownPriority, u16 response,
 	u16 species = gNewBS->ai.standardDisplayedSpecies[foe];
 	u32 ownSpeed, low, high;
 	s8 responsePriority = gBattleMoves[response].priority;
+	if (!incoming->modifiers_certified) return;
+	if (!IronmonAI_PublicModifierCertificate(foe, bank, TRUE, SPECIES_NONE)) return;
 	if (ownPriority != responsePriority)
 	{
 		incoming->order_known = TRUE;
@@ -121,18 +174,12 @@ static void IronmonAI_Order(u8 bank, u8 foe, s8 ownPriority, u16 response,
 		gBattleMons[foe].level, gBattleMons[foe].statStages[STAT_STAGE_SPEED - 1], FALSE);
 	high = StandardMechanicsSpeed(gBaseStats[species].baseSpeed,
 		gBattleMons[foe].level, gBattleMons[foe].statStages[STAT_STAGE_SPEED - 1], TRUE);
-	/* Hidden speed items remain possible unless their effect is suppressed. */
-	if (gNewBS->MagicRoomTimer <= 1)
-	{
-		low = IronmonAI_Max(1, low / 2);
-		high = IronmonAI_Min(65535, high * 2);
-	}
 	if (gBattleMons[bank].status1 & STATUS_PARALYSIS) ownSpeed /= 2;
 	if (gBattleMons[foe].status1 & STATUS_PARALYSIS) { low /= 2; high /= 2; }
 	if (gNewBS->TrickRoomTimer > 1)
 	{
-		if (ownSpeed < low) { incoming->order_known = TRUE; incoming->opponent_first = TRUE; }
-		else if (ownSpeed > high) { incoming->order_known = TRUE; incoming->opponent_first = FALSE; }
+		if (ownSpeed < low) { incoming->order_known = TRUE; incoming->opponent_first = FALSE; }
+		else if (ownSpeed > high) { incoming->order_known = TRUE; incoming->opponent_first = TRUE; }
 	}
 	else if (!gNewBS->TrickRoomTimer)
 	{
@@ -142,7 +189,7 @@ static void IronmonAI_Order(u8 bank, u8 foe, s8 ownPriority, u16 response,
 }
 
 static void IronmonAI_ProjectIncoming(u8 bank, u16 response, const struct Pokemon* partyMon,
-	s8 ownPriority, struct IronmonIncoming* incoming)
+	s8 ownPriority, u16 hpOverride, struct IronmonIncoming* incoming)
 {
 	u8 foe = FOE(bank), publicTypes[3], ownTypes[3], split, type, i;
 	u16 defense, hp, maxHP;
@@ -163,17 +210,24 @@ static void IronmonAI_ProjectIncoming(u8 bank, u16 response, const struct Pokemo
 		ownTypes[2] = gBattleMons[bank].type3; ability = gBattleMons[bank].ability;
 		defense = split == SPLIT_PHYSICAL ? gBattleMons[bank].defense : gBattleMons[bank].spDefense;
 		defenseStage = gBattleMons[bank].statStages[(split == SPLIT_PHYSICAL ? STAT_STAGE_DEF : STAT_STAGE_SPDEF) - 1];
-		hp = gBattleMons[bank].hp; maxHP = gBattleMons[bank].maxHP; level = gBattleMons[bank].level;
+		hp = hpOverride == 0xFFFF ? gBattleMons[bank].hp : hpOverride;
+		maxHP = gBattleMons[bank].maxHP; level = gBattleMons[bank].level;
 	}
 	else
 	{
+		u32 entryDamage;
 		ownTypes[0] = gBaseStats[partyMon->species].type1;
 		ownTypes[1] = gBaseStats[partyMon->species].type2;
 		ownTypes[2] = NUMBER_OF_MON_TYPES; ability = GetMonAbility(partyMon);
 		defense = split == SPLIT_PHYSICAL ? partyMon->defense : partyMon->spDefense;
-		defenseStage = 6; hp = partyMon->hp; maxHP = partyMon->maxHP; level = partyMon->level;
+		defenseStage = 6; maxHP = partyMon->maxHP; level = partyMon->level;
+		entryDamage = StandardAI_GetSwitchEntryDamage(bank, partyMon);
+		hp = entryDamage >= partyMon->hp ? 0 : partyMon->hp - entryDamage;
 	}
 	incoming->supported = TRUE;
+	incoming->target_hp = hp;
+	incoming->target_max_hp = maxHP;
+	incoming->modifiers_certified = IronmonAI_CertifiedIncomingModifiers(foe, bank, partyMon);
 	incoming->immune = IronmonAI_KnownOwnImmunity(response, ownTypes[0], ownTypes[1], ownTypes[2], ability);
 	if (incoming->immune)
 	{
@@ -196,7 +250,7 @@ static void IronmonAI_ProjectIncoming(u8 bank, u16 response, const struct Pokemo
 	input.stab = type == publicTypes[0] || type == publicTypes[1];
 	input.own_burn = split == SPLIT_PHYSICAL && (gBattleMons[foe].status1 & STATUS_BURN);
 	input.supported_damage = TRUE; input.known_immunity = FALSE;
-	input.certified_modifiers = IronmonAI_CertifiedIncomingModifiers(foe, bank)
+	input.certified_modifiers = incoming->modifiers_certified
 		&& (partyMon == NULL || ability == ABILITY_NONE);
 	for (i = 0; i < 3; ++i)
 		input.effectiveness[i] = ownTypes[i] >= NUMBER_OF_MON_TYPES
@@ -205,6 +259,7 @@ static void IronmonAI_ProjectIncoming(u8 bank, u16 response, const struct Pokemo
 	StandardMechanicsDamage(&input, &projected, &envelope);
 	incoming->minimum = envelope.minimum;
 	incoming->maximum = envelope.maximum;
+	incoming->modifiers_certified = input.certified_modifiers;
 	incoming->fraction = maxHP == 0 ? 256
 		: IronmonAI_Min(256, IronmonAI_Min(envelope.maximum, hp) * 256 / maxHP);
 	incoming->survives = envelope.maximum < hp;
@@ -220,9 +275,9 @@ static u8 IronmonAI_TwoStepSpeedThreshold(u8 bank,
 	u8 delta;
 	if (candidate->effect_family != STANDARD_EFFECT_SPEED_DOWN
 		|| species == SPECIES_NONE || species >= NUM_SPECIES
-		|| !(gStatuses3[bank] & STATUS3_ABILITY_SUPPRESS)
-		|| !(gStatuses3[foe] & STATUS3_ABILITY_SUPPRESS)
-		|| gNewBS->MagicRoomTimer <= 1 || gBattleWeather || gNewBS->TerrainTimer)
+		|| !IronmonAI_PublicModifierCertificate(foe, bank, TRUE, SPECIES_NONE)
+		|| (gBattleMons[bank].status1 & STATUS_PARALYSIS)
+		|| (gBattleMons[foe].status1 & STATUS_PARALYSIS))
 		return FALSE;
 	delta = candidate->stat_stage_before - candidate->stat_stage_after;
 	afterTwo = candidate->stat_stage_after >= delta
@@ -286,6 +341,54 @@ static void IronmonAI_AssignFamily(u8 bank, struct IronmonPolicyCandidate* candi
 	else if (effect == EFFECT_PROTECT) candidate->floor.effect_family = STANDARD_EFFECT_PROTECT;
 }
 
+static u16 IronmonAI_RecoveryAmount(u8 bank, u16 move, u16 hp)
+{
+	u16 maxHP = gBattleMons[bank].maxHP;
+	u16 amount = maxHP;
+	u8 effect = move == MOVE_NONE ? 0 : gBattleMoves[move].effect;
+	if (!maxHP || hp >= maxHP || (effect != EFFECT_RESTORE_HP && effect != EFFECT_REST))
+		return 0;
+	if (effect == EFFECT_RESTORE_HP)
+		amount = MathMax(1, maxHP / (move == MOVE_LIFEDEW ? 4 : 2));
+	return MathMin(amount, maxHP - hp);
+}
+
+static u8 IronmonAI_SetupThreshold(u8 bank, const struct StandardPolicyCandidate* candidate,
+	struct StandardSetupFollowup* followup)
+{
+	if (candidate->effect_family != STANDARD_EFFECT_ATTACK_UP
+		&& candidate->effect_family != STANDARD_EFFECT_SPECIAL_ATTACK_UP
+		&& candidate->effect_family != STANDARD_EFFECT_DEFENSE_DOWN
+		&& candidate->effect_family != STANDARD_EFFECT_SPECIAL_DEFENSE_DOWN)
+		return FALSE;
+	if (!IronmonAI_PublicModifierCertificate(FOE(bank), bank, TRUE, SPECIES_NONE))
+		return FALSE;
+	if (!StandardAI_FindSetupFollowup(bank, FOE(bank), candidate->effect_family,
+		candidate->stat_stage_after, followup))
+		return FALSE;
+	/* A threshold belongs to this one follow-up, never to another move's
+	 * current damage.  Fractions are the shared 1/256 HP scale. */
+	return followup->before_fraction * 2 < 256
+		&& followup->before_fraction * 3 >= 256
+		&& followup->after_fraction * 2 >= 256;
+}
+
+static u8 IronmonAI_NextTurnCertified(u8 bank, u16 response, u16 hp,
+	s8 priority, struct IronmonIncoming* next)
+{
+	if (!hp) return FALSE;
+	IronmonAI_ProjectIncoming(bank, response, NULL, priority, hp, next);
+	return next->supported && next->modifiers_certified && next->order_known
+		&& next->survives;
+}
+
+static s32 IronmonAI_ClampFraction(s32 value)
+{
+	if (value < -256) return -256;
+	if (value > 256) return 256;
+	return value;
+}
+
 static void IronmonAI_FillBranches(u8 bank, struct IronmonPolicyObservation* observation,
 	struct IronmonPolicyCandidate* candidate)
 {
@@ -294,26 +397,26 @@ static void IronmonAI_FillBranches(u8 bank, struct IronmonPolicyObservation* obs
 	struct Pokemon* party = LoadPartyRange(bank, &firstId, &lastId);
 	const struct Pokemon* switchTarget = candidate->floor.kind == STANDARD_POLICY_SWITCH
 		? &party[candidate->floor.switch_to] : NULL;
-	u8 setupThreshold = FALSE;
+	struct StandardSetupFollowup setupFollowup;
+	u8 setupThreshold = IronmonAI_SetupThreshold(bank, &candidate->floor, &setupFollowup);
+	u8 tactical = candidate->tactical_class;
+	u16 actionMove = candidate->floor.kind == STANDARD_POLICY_MOVE
+		? gBattleMons[bank].moves[candidate->floor.id] : MOVE_NONE;
+	u16 startHp = gBattleMons[bank].hp;
+	u16 maxHP = gBattleMons[bank].maxHP;
 	(void)firstId; (void)lastId;
-	if (candidate->tactical_class == IRONMON_TACTICAL_SETUP_PLAN
-		&& candidate->floor.immediate_future_gain > 0)
-	{
-		u8 slot; u16 best = 0;
-		for (slot = 0; slot < MAX_MON_MOVES; ++slot)
-			if (observation->candidates[slot].floor.kind == STANDARD_POLICY_MOVE)
-				best = IronmonAI_Max(best, observation->candidates[slot].floor.opponent_hp_fraction_lost);
-		if (best * 2 < 256 && best * 3 >= 256
-			&& (best + candidate->floor.immediate_future_gain * 256 / 100) * 2 >= 256)
-			setupThreshold = TRUE;
-	}
+	if (tactical != IRONMON_TACTICAL_SETUP_PLAN) setupThreshold = FALSE;
 	for (branchIndex = 0; branchIndex < observation->response_count; ++branchIndex)
 	{
 		struct IronmonPolicyBranch* branch = &candidate->responses[branchIndex];
 		u16 response = observation->responses[branchIndex].id;
 		struct IronmonIncoming incoming;
-		s32 ownLoss = candidate->floor.own_hp_fraction_lost;
-		u8 horizonSurvives;
+		struct IronmonIncoming next;
+		s32 ownLoss;
+		u16 postHp;
+		u8 actionFirst, recovery = tactical == IRONMON_TACTICAL_RECOVERY;
+		u8 recoveryRace = FALSE;
+		s8 nextPriority = candidate->floor.priority;
 		branch->response_id = response;
 		branch->net_faints = candidate->floor.net_faints;
 		branch->opponent_hp_fraction_lost = candidate->floor.opponent_hp_fraction_lost;
@@ -324,51 +427,115 @@ static void IronmonAI_FillBranches(u8 bank, struct IronmonPolicyObservation* obs
 			continue;
 		IronmonAI_ProjectIncoming(bank, response, switchTarget,
 			candidate->floor.kind == STANDARD_POLICY_SWITCH ? -128 : candidate->floor.priority,
-			&incoming);
-		if (!incoming.supported)
+			0xFFFF, &incoming);
+		if (!incoming.supported || !incoming.modifiers_certified)
 			continue;
-		if (candidate->floor.kind == STANDARD_POLICY_MOVE
-			&& candidate->floor.robust_safe_ko && incoming.order_known && !incoming.opponent_first)
-			incoming.fraction = 0;
-		ownLoss += incoming.fraction;
-		if (ownLoss < -256) ownLoss = -256;
-		if (ownLoss > 256) ownLoss = 256;
-		branch->own_hp_fraction_lost = ownLoss;
-		if (!incoming.survives && (candidate->floor.kind == STANDARD_POLICY_SWITCH
-			|| !incoming.order_known || incoming.opponent_first))
+		/* An unresolved order cannot certify that the trainer action occurs. */
+		if (!incoming.order_known)
 		{
-			branch->net_faints = -1;
-			branch->own_hp_fraction_lost = 256;
+			if (candidate->floor.kind == STANDARD_POLICY_MOVE)
+			{
+				branch->net_faints = 0;
+				branch->opponent_hp_fraction_lost = 0;
+				branch->own_hp_fraction_lost = 0;
+			}
 			continue;
 		}
-		if (!incoming.order_known || !incoming.survives)
+		actionFirst = !incoming.opponent_first
+			&& candidate->floor.kind != STANDARD_POLICY_SWITCH;
+		/* A robust terminal KO prevents the response entirely, but only after
+		 * the public order certificate says the trainer acts first. */
+		if (actionFirst && candidate->floor.robust_safe_ko)
+		{
 			continue;
-		horizonSurvives = !incoming.opponent_first
-			|| (u32)incoming.maximum * 2 < gBattleMons[bank].hp;
-		if (candidate->tactical_class == IRONMON_TACTICAL_DAMAGE
+		}
+		/* The response acts before a switch, and before a slower move.  A
+		 * certified lethal response ends the branch before any outgoing action. */
+		if (!incoming.survives && !(actionFirst && recovery))
+		{
+			branch->net_faints = -1;
+			if (!actionFirst)
+				branch->opponent_hp_fraction_lost = 0;
+			branch->own_hp_fraction_lost = 256;
+			branch->future_gain_undiscounted = 0;
+			continue;
+		}
+		postHp = incoming.target_hp - IronmonAI_Min(incoming.maximum, incoming.target_hp);
+		if (actionFirst)
+		{
+			if (recovery)
+			{
+				u16 heal = IronmonAI_RecoveryAmount(bank, actionMove, startHp);
+				u16 healedHp = IronmonAI_Min(maxHP, startHp + heal);
+				IronmonAI_ProjectIncoming(bank, response, NULL, candidate->floor.priority,
+					healedHp, &next);
+				if (!next.supported || !next.modifiers_certified || !next.order_known)
+					continue;
+				if (!next.survives)
+				{
+					branch->net_faints = -1;
+					branch->opponent_hp_fraction_lost = candidate->floor.opponent_hp_fraction_lost;
+					branch->own_hp_fraction_lost = 256;
+					continue;
+				}
+				if (!incoming.survives) recoveryRace = TRUE;
+				postHp = next.target_hp - IronmonAI_Min(next.maximum, next.target_hp);
+				ownLoss = ((s32)startHp - healedHp) * 256 / (s32)MathMax(1, maxHP);
+				ownLoss += next.fraction;
+			}
+			else
+			{
+				ownLoss = candidate->floor.own_hp_fraction_lost + incoming.fraction;
+			}
+		}
+		else if (recovery)
+		{
+			/* Opponent-first recovery heals from the post-hit HP, not the stale
+			 * pre-response amount used by the floor candidate. */
+			u16 heal = IronmonAI_RecoveryAmount(bank, actionMove, postHp);
+			u16 healedHp = IronmonAI_Min(maxHP, postHp + heal);
+			ownLoss = ((s32)startHp - healedHp) * 256 / (s32)MathMax(1, maxHP);
+		}
+		else
+		{
+			ownLoss = candidate->floor.own_hp_fraction_lost + incoming.fraction;
+		}
+		branch->own_hp_fraction_lost = IronmonAI_ClampFraction(ownLoss);
+		if (branch->own_hp_fraction_lost >= 256)
+		{
+			branch->net_faints = -1;
+			branch->future_gain_undiscounted = 0;
+			continue;
+		}
+		/* No tactical future is credited until the next exposed response has a
+		 * complete public modifier/order/survival certificate. */
+		if (setupThreshold) nextPriority = setupFollowup.priority;
+		if (!IronmonAI_NextTurnCertified(bank, response, postHp,
+			candidate->floor.kind == STANDARD_POLICY_SWITCH ? -128 : nextPriority,
+			&next))
+		{
+			if (recoveryRace) branch->future_gain_undiscounted = 40;
+			continue;
+		}
+		if (tactical == IRONMON_TACTICAL_DAMAGE
 			&& candidate->floor.opponent_hp_fraction_lost > 0
-			&& candidate->floor.opponent_hp_fraction_lost * 2 >= 256
-			&& horizonSurvives)
+			&& candidate->floor.opponent_hp_fraction_lost * 2 >= 256)
 		{
 			u8 value = candidate->floor.opponent_hp_fraction_lost * 100 / 256;
 			branch->future_gain_undiscounted = IronmonAI_Min(80, value * 2);
 			candidate->tactical_class = IRONMON_TACTICAL_TWO_HKO;
 		}
-		else if (candidate->tactical_class == IRONMON_TACTICAL_SPEED_PLAN
+		else if (tactical == IRONMON_TACTICAL_SPEED_PLAN
 			&& IronmonAI_TwoStepSpeedThreshold(bank, &candidate->floor)
-			&& incoming.maximum * 2 < gBattleMons[bank].hp)
+			&& next.order_known)
 			branch->future_gain_undiscounted = 80;
-		else if (candidate->tactical_class == IRONMON_TACTICAL_SETUP_PLAN
-			&& setupThreshold && horizonSurvives)
+		else if (tactical == IRONMON_TACTICAL_SETUP_PLAN && setupThreshold)
 			branch->future_gain_undiscounted = IronmonAI_Min(80,
 				candidate->floor.immediate_future_gain * 2);
-		else if (candidate->tactical_class == IRONMON_TACTICAL_RESIDUAL)
+		else if (tactical == IRONMON_TACTICAL_RESIDUAL)
 			branch->future_gain_undiscounted = IronmonAI_Min(80,
 				candidate->floor.immediate_future_gain * 2);
-		else if (candidate->tactical_class == IRONMON_TACTICAL_RECOVERY
-			&& incoming.maximum >= gBattleMons[bank].hp
-			&& incoming.maximum < gBattleMons[bank].hp
-				- candidate->floor.own_hp_fraction_lost * gBattleMons[bank].maxHP / 256)
+		else if ((recovery && branch->own_hp_fraction_lost < 0) || recoveryRace)
 			branch->future_gain_undiscounted = 40;
 	}
 	if (candidate->tactical_class == IRONMON_TACTICAL_SPEED_PLAN
@@ -416,6 +583,15 @@ static void IronmonAI_BuildObservation(u8 bank, bool8 includeSwitches,
 	{
 		struct IronmonPolicyCandidate* candidate = &observation->candidates[i];
 		candidate->floor = standard.candidates[i];
+		/* The common Standard floor owns the projection.  Ironmon may widen its
+		 * robust-KO certificate only in the same narrow public modifier context
+		 * used for revealed responses; it never reads private opponent facts. */
+		if (candidate->floor.kind == STANDARD_POLICY_MOVE
+			&& candidate->floor.legal
+			&& SPLIT(gBattleMons[bank].moves[candidate->floor.id]) != SPLIT_STATUS
+			&& IronmonAI_CertifiedIncomingModifiers(foe, bank, NULL))
+			StandardAI_DeriveDamageWithCertificate(bank, foe,
+				gBattleMons[bank].moves[candidate->floor.id], &candidate->floor, TRUE);
 		candidate->ironmon_switch_emergency = candidate->floor.standard_switch_emergency;
 		candidate->stay_defensible = candidate->floor.kind == STANDARD_POLICY_MOVE
 			&& candidate->floor.legal && !candidate->floor.known_no_effect

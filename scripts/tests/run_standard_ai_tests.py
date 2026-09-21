@@ -90,6 +90,16 @@ def main() -> int:
         ])
         subprocess.run([str(adapter_binary)], cwd=ROOT, check=True)
 
+        history_binary = Path(directory) / "ironmon_history_clear_host"
+        run([
+            "cc", "-std=gnu99", "-w", "-Wno-unknown-attributes", "-Iinclude",
+            "-ffunction-sections", "-fdata-sections",
+            "scripts/tests/ironmon_history_clear_host.c", "src/battle_util.c",
+            "-Wl,-dead_strip", "-o", str(history_binary),
+        ])
+        subprocess.run([str(history_binary)], cwd=ROOT, check=True)
+        print("Ironmon real ClearBattlerMoveHistory lifecycle: usedMoves/counts cleared PASS")
+
         layout_binary = Path(directory) / "standard_ai_layout_host"
         run([
             "cc", "-std=gnu99", "-Wno-unknown-attributes", "-Iinclude",
