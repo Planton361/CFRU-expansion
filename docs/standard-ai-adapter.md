@@ -82,6 +82,14 @@ unfavorable offensive and favorable defensive stages. Robust KO additionally
 requires own survival/action certainty and minimum damage >= maximum current HP.
 Only robust KO gets `net_faints=1`; a possible/high-roll KO never does.
 
+When a player-side Badge Defense/SpDef modifier is possible from public battle
+context, the bounded mechanics input carries an explicit possible-defense flag.
+`Defense()` first constructs the full legal high stat from base, IV/EV and
+nature, then applies `floor(stat * 11 / 10)`, and only then applies the stat
+stage. It never scales only the base stat and never reads Badge ownership. The
+same path is used by physical and special projections, setup thresholds and
+known own-trainer defensive facts.
+
 Thus ordinary unknown-item battles receive useful damage ranking, but do not
 claim robust KO through a potentially unrevealed Focus Band/Sash or immunity.
 Opponent speed/order is not guessed from submitted moves or hidden stats.
@@ -217,9 +225,10 @@ that value is HOST HARNESS SIZE ONLY, never the target ARM ABI. No Trainer/Pokem
 DPE, ROM table/repoint or randomizer layout changes. Battle allocation/zeroing
 still resets Standard memory/RNG.
 
-Scratch: mechanics input grows from 26 to 32 bytes for exact OWN target stats in
-the revealed-threat model; envelope remains 16. Before/after evaluators use two
-32-byte inputs, two 52-byte candidates and one envelope, plus scalar locals;
+Scratch: the mechanics input is 34 bytes: the prior exact OWN target-stat
+projection plus the explicit possible Badge Defense/SpDef flag and alignment;
+the envelope remains 16. Before/after evaluators use two
+34-byte inputs, two 52-byte candidates and one envelope, plus scalar locals;
 the damage evaluator has a 32-byte critical-bound copy. Candidate and observation
 layouts stay 52/472 bytes. The replacement path has bounded local
 observation/result/memory objects (472/192/33 bytes); it does not recurse or add

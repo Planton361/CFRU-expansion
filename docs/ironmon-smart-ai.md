@@ -57,8 +57,10 @@ projected from public state or exact own-trainer facts.
 Badge ownership is private save/progression state, not a fair observation. When
 the configured CFRU battle context permits a player-side Badge modifier, the
 adapter bounds the public Speed and damage intervals with both unboosted and
-possible 1.1x values. It never reads Badge possession to narrow a certificate;
-unresolved modifiers remain conservative UNKNOWN.
+possible 1.1x values. For Defense/SpDef, the possible factor is applied to the
+full legal base+IV/EV+nature stat before stat stages, matching CFRU order; it is
+not emulated by scaling only the base stat. It never reads Badge possession to
+narrow a certificate; unresolved modifiers remain conservative UNKNOWN.
 
 ## Production tactical support matrix
 
@@ -127,15 +129,17 @@ object sizes, static stack estimates, undefined symbols, helper bindings, and
 direct relocatable-link closure are emitted by
 `scripts/tests/run_standard_ai_tests.py --arm-cc <approved compiler>`.
 
-At the source candidate gate, exact production-CFLAGS temporary ARM objects
-reported: Ironmon policy text 4,352 bytes / BSS 0 / maximum per-function static
-stack estimate 232 bytes; Ironmon adapter text 4,612 / BSS 2,140 / maximum
-static estimate 728 bytes. The related unchanged-semantics objects reported
-Standard policy 1,668 / 0 / 152, mechanics 1,264 / 0 / 96, and Standard adapter
-7,955 / 0 / 728. Thus the modeled Ironmon EWRAM delta is 2,196 bytes (2,140
-scratch plus the aligned 56-byte `NewBattleStruct` increase), and IWRAM/save
-deltas are zero. These compiler estimates are source evidence only, not a
-runtime frame-budget or two-frame timing claim.
+At the pre-defense-bound-correction source candidate gate, exact
+production-CFLAGS temporary ARM objects reported: Ironmon policy text 4,352
+bytes / BSS 0 / maximum per-function static stack estimate 232 bytes; Ironmon
+adapter text 4,612 / BSS 2,140 / maximum static estimate 728 bytes. The
+related earlier objects reported Standard policy 1,668 / 0 / 152, mechanics
+1,264 / 0 / 96, and Standard adapter 7,955 / 0 / 728. These figures are
+historical supporting evidence, not final-head measurements after the
+full-stat Badge-bound repair. The modeled Ironmon EWRAM delta is 2,196 bytes
+(2,140 scratch plus the aligned 56-byte `NewBattleStruct` increase), and
+IWRAM/save deltas are zero. These compiler estimates are source evidence only,
+not a runtime frame-budget or two-frame timing claim.
 
 `scripts/tests/run_ironmon_ai_tests.py` validates the three accepted Workspace
 digests, generates a temporary C harness from the accepted 63-fixture v3

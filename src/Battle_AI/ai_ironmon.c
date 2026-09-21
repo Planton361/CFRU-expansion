@@ -261,9 +261,8 @@ static void IronmonAI_ProjectIncoming(u8 bank, u16 response, const struct Pokemo
 	if (StandardAI_PublicBadgeBoost(foe, split == SPLIT_PHYSICAL
 		? STANDARD_AI_BADGE_ATTACK : STANDARD_AI_BADGE_SPECIAL_ATTACK))
 		input.attack = MathMin(2048, input.attack * 11 / 10);
-	if (StandardAI_PublicBadgeBoost(bank, split == SPLIT_PHYSICAL
-		? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE))
-		defense = MathMin(2048, (defense * 11 + 9) / 10);
+	input.possible_defense_badge = StandardAI_PublicBadgeBoost(bank, split == SPLIT_PHYSICAL
+		? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE);
 	input.known_defense = defense; input.known_hp = hp; input.known_max_hp = maxHP;
 	input.level = gBattleMons[foe].level; input.target_level = level;
 	input.attack_stage = gBattleMons[foe].statStages[(split == SPLIT_PHYSICAL ? STAT_STAGE_ATK : STAT_STAGE_SPATK) - 1];

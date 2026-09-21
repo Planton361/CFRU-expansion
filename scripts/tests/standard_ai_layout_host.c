@@ -28,6 +28,8 @@ _Static_assert(offsetof(struct NewBattleStruct, ai.ironmonMoveUseCounts)
 	- offsetof(struct NewBattleStruct, ai.ironmonPolicySeeded) == 52,
 	"Ironmon battle-local allocation must remain 52 bytes");
 _Static_assert(sizeof(struct StandardPolicyCandidate) == 52, "UNKNOWN flag uses existing padding");
+_Static_assert(sizeof(struct StandardMechanicsInput) == 34,
+	"possible Badge defense flag must remain source-owned mechanics state");
 _Static_assert(sizeof(struct BattlePokemon) == 0x58, "BattlePokemon ABI");
 _Static_assert(sizeof(struct BattleMove) == 0xC, "BattleMove ABI");
 #ifdef __arm__

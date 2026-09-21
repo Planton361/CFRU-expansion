@@ -373,9 +373,8 @@ static void StandardAI_ProjectDamage(u8 bank, u8 foe, u16 move,
 	if (StandardAI_PublicBadgeBoost(bank, split == SPLIT_PHYSICAL
 		? STANDARD_AI_BADGE_ATTACK : STANDARD_AI_BADGE_SPECIAL_ATTACK))
 		input.attack = MathMin(2048, input.attack * 11 / 10);
-	if (StandardAI_PublicBadgeBoost(foe, split == SPLIT_PHYSICAL
-		? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE))
-		input.base_defense = MathMin(255, (input.base_defense * 11 + 9) / 10);
+	input.possible_defense_badge = StandardAI_PublicBadgeBoost(foe, split == SPLIT_PHYSICAL
+		? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE);
 	input.shedinja = species == SPECIES_SHEDINJA;
 	input.hp_pixels = StandardAI_PublicHpPixels(foe);
 	input.accuracy = gBattleMoves[move].accuracy;
@@ -636,6 +635,8 @@ static u8 StandardAI_DefensiveValue(u8 bank, u8 foe, u8 family, u8 afterStage)
 			base = gBaseStats[species].baseSpAttack;
 			before.known_defense = gBattleMons[bank].spDefense;
 		}
+		before.possible_defense_badge = StandardAI_PublicBadgeBoost(bank,
+			split == SPLIT_PHYSICAL ? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE);
 		if (!before.known_defense || !gBattleMons[bank].maxHP) continue;
 		before.attack = (StandardMechanicsSpeed(base, gBattleMons[foe].level, 6, 0)
 			+ StandardMechanicsSpeed(base, gBattleMons[foe].level, 6, 1)) / 2;

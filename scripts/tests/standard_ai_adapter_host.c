@@ -652,6 +652,85 @@ static void StandardProductionBadgeRobustKO(void)
 	puts("Standard possible Badge defense cannot create a false robust KO PASS");
 }
 
+static u32 BadgeDefenseEngineOracle(u16 base, u8 level, u8 stage)
+{
+	u32 full = ((2 * base + 94) * level / 100 + 5) * 110 / 100;
+	u32 badge = full * 11 / 10;
+	if (stage >= 6) return badge * (stage - 4) / 2;
+	return badge * 2 / (8 - stage);
+}
+
+static void StandardProductionBadgeDefenseOracle(void)
+{
+	struct StandardMechanicsInput input;
+	struct StandardMechanicsInput physical, special;
+	struct StandardPolicyCandidate candidate = {0};
+	u32 checked = 0;
+	u16 base;
+	u8 level, stage, split;
+	Memset(&input, 0, sizeof(input));
+	for (base = 1; base <= 255; ++base)
+		for (level = 1; level <= 100; ++level)
+			for (stage = 0; stage <= 12; ++stage)
+				for (split = 0; split < 2; ++split)
+				{
+					u32 modeled, engine;
+					(void)split; /* Physical and special use the same bounded path. */
+					input.base_defense = base;
+					input.target_level = level;
+					input.defense_stage = stage;
+					input.possible_defense_badge = TRUE;
+					modeled = StandardMechanicsDefenseMaximum(&input);
+					engine = BadgeDefenseEngineOracle(base, level, stage);
+					assert(modeled >= engine);
+					++checked;
+				}
+	assert(checked == 255u * 100u * 13u * 2u);
+	Memset(&input, 0, sizeof(input));
+	input.base_defense = 100; input.target_level = 50; input.defense_stage = 6;
+	input.possible_defense_badge = TRUE;
+	assert(((2 * 100 + 94) * 50 / 100 + 5) * 110 / 100 == 167);
+	assert(BadgeDefenseEngineOracle(100, 50, 6) == 183);
+	assert(StandardMechanicsDefenseMaximum(&input) >= 183);
+	Reset(); profile = TRAINER_AI_PROFILE_STANDARD; Certify();
+	gTrainerBattleOpponent_A = 0;
+	StandardAI_ProjectDamage(1, 0, MOVE_STRENGTH, &candidate, &physical);
+	StandardAI_ProjectDamage(1, 0, MOVE_EMBER, &candidate, &special);
+	assert(physical.possible_defense_badge && special.possible_defense_badge);
+	puts("Standard physical/SpDef Badge full-stat oracle: 663000 cases; base100/level50/stage6 167->183 PASS");
+}
+
+static void IronmonProductionBadgeSetupBoundary(void)
+{
+	struct StandardSetupFollowup absentFollowup, possibleFollowup;
+	bool8 found = FALSE;
+	u16 attack;
+	Reset(); profile = TRAINER_AI_PROFILE_IRONMON_SMART; IronmonCertify();
+	gBattleMons[0].hp = gBattleMons[0].maxHP = 100;
+	gBattleMons[1].hp = gBattleMons[1].maxHP = 400;
+	gBattleMons[1].moves[0] = MOVE_SWORDSDANCE;
+	gBattleMons[1].moves[1] = MOVE_STRENGTH;
+	gBattleMons[1].pp[0] = gBattleMons[1].pp[1] = 10;
+	for (attack = 30; attack <= 500; ++attack)
+	{
+		bool8 absent, possible;
+		gBattleMons[1].attack = attack;
+		gTrainerBattleOpponent_A = 0x400;
+		absent = StandardAI_FindSetupFollowup(1, 0, STANDARD_EFFECT_ATTACK_UP, 8, &absentFollowup)
+			&& absentFollowup.before_fraction * 2 < 256
+			&& absentFollowup.before_fraction * 3 >= 256
+			&& absentFollowup.after_fraction * 2 >= 256;
+		gTrainerBattleOpponent_A = 0;
+		possible = StandardAI_FindSetupFollowup(1, 0, STANDARD_EFFECT_ATTACK_UP, 8, &possibleFollowup)
+			&& possibleFollowup.before_fraction * 2 < 256
+			&& possibleFollowup.before_fraction * 3 >= 256
+			&& possibleFollowup.after_fraction * 2 >= 256;
+		if (absent && !possible) { found = TRUE; break; }
+	}
+	assert(found);
+	puts("Ironmon setup threshold rejects uncertain possible Badge defense PASS");
+}
+
 static void IronmonProductionResponseAndDispatch(void)
 {
 	struct IronmonPolicyObservation o, beforeReveal;
@@ -1044,6 +1123,8 @@ int main(void)
 	IronmonProductionBadgeTwins();
 	IronmonProductionBadgeBounds();
 	StandardProductionBadgeRobustKO();
+	StandardProductionBadgeDefenseOracle();
+	IronmonProductionBadgeSetupBoundary();
 	IronmonForcedReplacementTiming(); IronmonProductionTurnOrderAndFaints();
 	IronmonProductionRecoveryRaces();
 	IronmonProductionVoluntaryHazardResponse();
