@@ -581,13 +581,33 @@ static u8 StandardAI_Choose(bool8 includeSwitches, struct StandardPolicyCandidat
 	StandardAI_BuildObservation(bank, includeSwitches, &observation);
 	StandardAI_LoadMemory(bank, &memory);
 	if (StandardPolicyChoose(&observation, &memory, StandardAI_GetPolicyRng(bank), &result) != 0)
-		return STANDARD_AI_PENDING_NONE;
+		goto FALLBACK_TO_ENGINE;
 	for (i = 0; i < observation.count; ++i)
 	{
 		if (observation.candidates[i].id == result.selected_id)
 		{
 			*selected = observation.candidates[i];
 			StandardAI_StageLastAction(bank, selected);
+			return selected->id;
+		}
+	}
+
+FALLBACK_TO_ENGINE:
+	/*
+	 * The controller still requires a real move-slot index when every
+	 * candidate is unusable; for example, an all-PP-depleted turn.  Return
+	 * the first occupied own slot without staging it in Standard memory; the
+	 * normal engine limitation path can then resolve Struggle or a forced
+	 * action.  This fallback reads only own moves and never submits or predicts
+	 * a player action.
+	 */
+	for (i = 0; i < observation.count; ++i)
+	{
+		if (observation.candidates[i].kind == STANDARD_POLICY_MOVE
+		&& observation.candidates[i].id < MAX_MON_MOVES
+		&& gBattleMons[bank].moves[observation.candidates[i].id] != MOVE_NONE)
+		{
+			*selected = observation.candidates[i];
 			return selected->id;
 		}
 	}
