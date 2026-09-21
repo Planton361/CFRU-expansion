@@ -11,3 +11,4 @@ bool8 StandardAI_IsSupportedBattle(void);
 void StandardAI_SetupAIData(void);
 u8 StandardAI_ChooseMoveOrAction(void);
 void StandardAI_TrySwitchOrUseItem(void);
+u8 StandardAI_ChooseReplacement(void);

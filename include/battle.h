@@ -1115,6 +1115,8 @@ struct NewBattleStruct
 		u8 standardMemorySwitchTo[MAX_BATTLERS_COUNT][4];
 		s8 standardMemoryStageBefore[MAX_BATTLERS_COUNT][4];
 		s8 standardMemoryStageAfter[MAX_BATTLERS_COUNT][4];
+		/* Identity actually passed to the public sprite presentation path. */
+		u16 standardDisplayedSpecies[MAX_BATTLERS_COUNT];
 	} ai;
 
 	struct Pokemon** foePartyBackup; //Pointer to dynamically allocated memory

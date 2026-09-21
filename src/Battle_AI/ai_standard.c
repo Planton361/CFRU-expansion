@@ -6,6 +6,7 @@
 #include "../../include/new/ai_master.h"
 #include "../../include/new/ai_standard.h"
 #include "../../include/new/ai_standard_policy.h"
+#include "../../include/new/ai_standard_mechanics.h"
 #include "../../include/new/battle_util.h"
 #include "../../include/new/frontier.h"
 #include "../../include/new/switching.h"
@@ -31,15 +32,33 @@ static void StandardAI_StageLastAction(u8 bank, const struct StandardPolicyCandi
 static void StandardAI_BuildObservation(u8 bank, bool8 includeSwitches,
 	struct StandardPolicyObservation* observation);
 
-static u16 StandardAI_OwnHpFraction(u8 bank)
+/* Only the displayed HP ratio crosses this boundary, never max HP or exact
+ * current HP. Floor to the 48-pixel public bar; the builder restores an interval.
+ * Both values are deliberately read ONLY here, not in mechanics/scoring. */
+static u8 StandardAI_PublicHpPixels(u8 foe)
 {
-	u32 hp = gBattleMons[bank].hp;
-	u32 maxHp = gBattleMons[bank].maxHP;
+	u32 maximum = gBattleMons[foe].maxHP;
+	u32 current = gBattleMons[foe].hp;
+	if (!maximum) return 255;
+	return current ? MathMax(1, MathMin(48, current * 48 / maximum)) : 0;
+}
 
-	/* Own trainer HP is exact; no opponent max-HP or hidden stat is projected. */
-	if (maxHp == 0)
-		return 0;
-	return (u16)MathMin(STANDARD_POLICY_HP_SCALE, (hp * STANDARD_POLICY_HP_SCALE + maxHp / 2) / maxHp);
+/* The history is populated by public ability messages. Do not infer an ability
+ * from the actual species/hidden slot, or inspect the current hidden ability. */
+static ability_t StandardAI_RevealedAbility(u8 bank)
+{
+	if (gStatuses3[bank] & STATUS3_ABILITY_SUPPRESS) return ABILITY_NONE;
+	return BATTLE_HISTORY->abilities[bank];
+}
+
+static u8 StandardAI_TypeMultiplier(u8 attackType, u8 defenseType)
+{
+	u8 value;
+	if (attackType >= NUMBER_OF_MON_TYPES || defenseType >= NUMBER_OF_MON_TYPES)
+		return 10;
+	value = gTypeEffectiveness[attackType][defenseType];
+	/* CFRU encodes neutral as NO_DATA=0 and immunity as NO_EFFECT=1. */
+	return value == TYPE_MUL_NO_DATA ? 10 : value == TYPE_MUL_NO_EFFECT ? 0 : value;
 }
 
 static u8 StandardAI_KnownTypeImmunity(u16 move, u8 bankDef)
@@ -55,7 +74,7 @@ static u8 StandardAI_KnownTypeImmunity(u16 move, u8 bankDef)
 	type = gBattleMoves[move].type;
 	if (type >= NUMBER_OF_MON_TYPES)
 		return FALSE;
-	knownAbility = GetRecordedAbility(bankDef);
+	knownAbility = StandardAI_RevealedAbility(bankDef);
 	if ((knownAbility == ABILITY_LEVITATE || knownAbility == ABILITY_EARTHEATER) && type == TYPE_GROUND)
 		return TRUE;
 	if (knownAbility == ABILITY_FLASHFIRE && type == TYPE_FIRE)
@@ -214,13 +233,100 @@ static u8 StandardAI_IsSelfStageFamily(u8 family)
 		|| family == STANDARD_EFFECT_EVASION_UP;
 }
 
-static u8 StandardAI_IsForcedMove(u8 bank, u8 move)
+static u8 StandardAI_IsForcedMove(u8 bank, u16 move)
 {
 	if (gBattleMons[bank].status2 & (STATUS2_RECHARGE | STATUS2_MULTIPLETURNS))
 		return gLockedMoves[bank] != MOVE_NONE && gLockedMoves[bank] == move;
 	if (gDisableStructs[bank].encoreTimer && gDisableStructs[bank].encoredMove == move)
 		return TRUE;
 	return FALSE;
+}
+
+/* Explicit constant-power, single-hit subset: no recoil, self-KO, variable
+ * power, charging, contact-dependent power, or item removal. Secondary effects
+ * receive no speculative positive utility; the direct damage is supported. */
+static bool8 StandardAI_SupportedDamage(u16 move)
+{
+	switch (move)
+	{
+	case MOVE_TACKLE: case MOVE_POUND: case MOVE_SCRATCH: case MOVE_QUICKATTACK:
+	case MOVE_VINEWHIP: case MOVE_WATERGUN: case MOVE_HORNATTACK: case MOVE_PECK:
+	case MOVE_WINGATTACK: case MOVE_SWIFT: case MOVE_AERIALACE:
+	case MOVE_DRAGONCLAW: case MOVE_DRAGONPULSE: case MOVE_STRENGTH:
+	case MOVE_EMBER: case MOVE_FLAMETHROWER: case MOVE_ICEBEAM:
+	case MOVE_THUNDERSHOCK: case MOVE_THUNDERBOLT: case MOVE_BUBBLE:
+	case MOVE_CONFUSION: case MOVE_PSYCHIC: case MOVE_BITE: case MOVE_CRUNCH:
+	case MOVE_METALCLAW: case MOVE_ROCKTHROW: case MOVE_ROCKSLIDE:
+	case MOVE_SURF: case MOVE_RAZORLEAF: case MOVE_LEAFBLADE:
+	case MOVE_ENERGYBALL: case MOVE_SHADOWBALL: case MOVE_FLASHCANNON:
+		return TRUE;
+	default: return FALSE;
+	}
+}
+
+static void StandardAI_DeriveDamage(u8 bank, u8 foe, u16 move,
+	struct StandardPolicyCandidate* candidate, struct StandardDamageEnvelope* report)
+{
+	struct StandardMechanicsInput input;
+	struct StandardDamageEnvelope envelope;
+	u16 species = gNewBS->ai.standardDisplayedSpecies[foe];
+	u8 split = SPLIT(move);
+	u8 type = gBattleMoves[move].type;
+	u8 types[3] = {gBattleMons[foe].type1, gBattleMons[foe].type2, gBattleMons[foe].type3};
+	u8 i;
+	if (species >= NUM_SPECIES) species = SPECIES_NONE;
+	Memset(&input, 0, sizeof(input));
+	input.power = gBattleMoves[move].power;
+	input.attack = split == SPLIT_PHYSICAL ? gBattleMons[bank].attack : gBattleMons[bank].spAttack;
+	input.attack_stage = gBattleMons[bank].statStages[(split == SPLIT_PHYSICAL ? STAT_STAGE_ATK : STAT_STAGE_SPATK) - 1];
+	input.defense_stage = gBattleMons[foe].statStages[(split == SPLIT_PHYSICAL ? STAT_STAGE_DEF : STAT_STAGE_SPDEF) - 1];
+	input.level = gBattleMons[bank].level;
+	input.target_level = gBattleMons[foe].level;
+	input.base_defense = split == SPLIT_PHYSICAL ? gBaseStats[species].baseDefense : gBaseStats[species].baseSpDefense;
+	input.base_hp = gBaseStats[species].baseHP;
+	input.shedinja = species == SPECIES_SHEDINJA;
+	input.hp_pixels = StandardAI_PublicHpPixels(foe);
+	input.accuracy = gBattleMoves[move].accuracy;
+	input.accuracy_stage = gBattleMons[bank].statStages[STAT_STAGE_ACC - 1];
+	input.evasion_stage = gBattleMons[foe].statStages[STAT_STAGE_EVASION - 1];
+	input.stab = type == gBattleMons[bank].type1 || type == gBattleMons[bank].type2 || type == gBattleMons[bank].type3;
+	input.own_burn = split == SPLIT_PHYSICAL && (gBattleMons[bank].status1 & STATUS_BURN);
+	input.known_immunity = candidate->known_no_effect;
+	input.supported_damage = species != SPECIES_NONE && species < NUM_SPECIES
+		&& StandardAI_SupportedDamage(move);
+	for (i = 0; i < 3; ++i)
+		input.effectiveness[i] = types[i] >= NUMBER_OF_MON_TYPES
+			|| (i > 0 && types[i] == types[0]) || (i > 1 && types[i] == types[1])
+			? 10 : StandardAI_TypeMultiplier(type, types[i]);
+	/* The initial CERTIFIED envelope deliberately requires public suppression
+	 * of both abilities and held items. Hidden Sash/Band/Sturdy/absorbers are
+	 * never assumed absent. Other contexts still receive a nominal estimate
+	 * but a [0,65535] complete envelope and cannot claim a robust KO. */
+	input.certified_modifiers = (gStatuses3[bank] == STATUS3_ABILITY_SUPPRESS)
+		&& (gStatuses3[foe] == STATUS3_ABILITY_SUPPRESS)
+		&& gNewBS->MagicRoomTimer > 1 && !gBattleWeather && !gNewBS->TerrainTimer
+		&& !gNewBS->WonderRoomTimer && !gNewBS->TrickRoomTimer
+		&& !gNewBS->IonDelugeTimer && !gNewBS->ElectrifyTimers[bank]
+		&& !gNewBS->MudSportTimer && !gNewBS->WaterSportTimer
+		&& !gNewBS->AuroraVeilTimers[SIDE(foe)]
+		&& !gSideStatuses[SIDE(bank)] && !gSideStatuses[SIDE(foe)]
+		&& !gBattleMons[bank].status2 && gBattleMons[foe].status2 == STATUS2_RECHARGE
+		&& !gNewBS->teraData.done[SIDE(bank)][gBattlerPartyIndexes[bank]]
+		&& !gNewBS->teraData.done[SIDE(foe)][gBattlerPartyIndexes[foe]];
+	/* The selected engine has a species-based Tera Shell modifier even with
+	 * ability suppression. Do not certify that known special-case species. */
+	if (species == SPECIES_TERAPAGOS
+	#ifdef SPECIES_TERAPAGOS_TERA
+		|| species == SPECIES_TERAPAGOS_TERA
+	#endif
+	)
+		input.certified_modifiers = FALSE;
+	/* Public recharge precludes every unrevealed opponent move this turn.
+	 * No speed guess, submitted choice, or future damage roll certifies survival. */
+	input.can_act_safely = input.certified_modifiers && gBattleMons[bank].hp != 0
+		&& !(gBattleMons[bank].status1 & (STATUS_SLEEP | STATUS_FREEZE | STATUS_PARALYSIS));
+	StandardMechanicsDamage(&input, candidate, &envelope);
+	if (report != NULL) *report = envelope;
 }
 
 static u8 StandardAI_MoveLegal(u8 bank, u8 movePos, u16 move, u8 forcedMove)
@@ -287,12 +393,18 @@ static void StandardAI_FillMoveCandidate(u8 bank, u8 foe, u8 movePos,
 	}
 	candidate->stat_stage_after = stageAfter;
 
-	if (stageId != 0)
+	if (move != MOVE_NONE && !statusMove && gBattleMoves[move].power != 0)
+	{
+		StandardAI_DeriveDamage(bank, foe, move, candidate, NULL);
+	}
+	else if (stageId != 0)
 	{
 		candidate->productive = stageBefore != stageAfter;
 		candidate->immediate_future_gain = candidate->productive ? 8 + 4 * delta : 0;
 		if (family == STANDARD_EFFECT_ACCURACY_DOWN || family == STANDARD_EFFECT_SPEED_DOWN)
 			candidate->uncertainty_cost = candidate->productive ? 4 : 0;
+		if (family == STANDARD_EFFECT_ACCURACY_DOWN)
+			StandardMechanicsAccuracy(candidate);
 	}
 	else if (effect == EFFECT_RESTORE_HP || effect == EFFECT_REST)
 	{
@@ -315,12 +427,6 @@ static void StandardAI_FillMoveCandidate(u8 bank, u8 foe, u8 movePos,
 		candidate->immediate_future_gain = candidate->productive ? 20 : 0;
 		candidate->uncertainty_cost = candidate->productive ? 4 : 0;
 	}
-	else if (move != MOVE_NONE && !statusMove && gBattleMoves[move].power != 0)
-	{
-		/* Damage is unknown until a fair public/revealed damage bound exists. */
-		candidate->productive = !knownNoEffect;
-		candidate->uncertainty_cost = candidate->productive ? 8 : 0;
-	}
 
 	if (candidate->known_no_effect)
 		candidate->productive = FALSE;
@@ -330,10 +436,9 @@ static void StandardAI_FillMoveCandidate(u8 bank, u8 foe, u8 movePos,
 static u8 StandardAI_CanSwitchOut(u8 bank)
 {
 	u8 foe = FOE(bank);
-	ability_t knownAbility = GetRecordedAbility(foe);
+	ability_t knownAbility = StandardAI_RevealedAbility(foe);
 	bool8 canBeTrappedByUnknown = TRUE;
-	/* GetRecordedAbility is fail-closed: it returns only a recorded or
-	 * species-unambiguous ability and otherwise returns ABILITY_NONE. */
+	/* Unknown opposing trap ability remains unknown. */
 
 	/* Own Ghost/Shed Shell state is exact and certifies immunity to trapping. */
 	if (gBattleMons[bank].type1 == TYPE_GHOST
@@ -371,7 +476,35 @@ static u8 StandardAI_CanSwitchOut(u8 bank)
 static void StandardAI_FillSwitchCandidate(u8 bank, u8 partyIndex, struct Pokemon* mon,
 	struct StandardPolicyCandidate* candidate, u8 forced)
 {
-	u32 entryDamage = GetMonEntryHazardDamage(mon, SIDE(bank));
+	u8 i;
+	u8 side = SIDE(bank);
+	u8 ability = GetMonAbility(mon);
+	u8 item = GetMonItemEffect(mon);
+	u8 type1 = gBaseStats[mon->species].type1, type2 = gBaseStats[mon->species].type2;
+	u32 entryDamage = 0;
+	/* Do not call GetMonEntryHazardDamage: its transitive type helper reads
+	 * the active player's exact HP even for a party-mon calculation. This
+	 * bounded own-party calculation uses the same divisors without that graph. */
+	if (mon->species != SPECIES_NONE && (gSideStatuses[side] & SIDE_STATUS_SPIKES)
+		&& ability != ABILITY_MAGICGUARD && item != ITEM_EFFECT_HEAVY_DUTY_BOOTS)
+	{
+		u8 hazard;
+		for (hazard = 0; hazard < 2; ++hazard)
+		{
+			u8 type = hazard == 0 ? TYPE_ROCK : TYPE_STEEL;
+			u32 factor = 40 * StandardAI_TypeMultiplier(type, type1) / 10;
+			if (type1 != type2) factor = factor * StandardAI_TypeMultiplier(type, type2) / 10;
+			if (hazard == 0 ? gSideTimers[side].srAmount : gSideTimers[side].steelsurge)
+				entryDamage += MathMax(1, mon->maxHP * factor / 320);
+		}
+		if (gSideTimers[side].spikesAmount && (gNewBS->GravityTimer
+			|| item == ITEM_EFFECT_IRON_BALL || (type1 != TYPE_FLYING && type2 != TYPE_FLYING
+			&& ability != ABILITY_LEVITATE && item != ITEM_EFFECT_AIR_BALLOON)))
+		{
+			u8 layers = MathMin(3, gSideTimers[side].spikesAmount);
+			entryDamage += MathMax(1, mon->maxHP / (layers == 1 ? 8 : layers == 2 ? 6 : 4));
+		}
+	}
 	u32 entryFraction = mon->maxHP == 0 ? STANDARD_POLICY_HP_SCALE
 		: (entryDamage * STANDARD_POLICY_HP_SCALE) / mon->maxHP;
 
@@ -379,9 +512,15 @@ static void StandardAI_FillSwitchCandidate(u8 bank, u8 partyIndex, struct Pokemo
 	candidate->id = STANDARD_AI_SWITCH_ID_BASE + partyIndex;
 	candidate->kind = STANDARD_POLICY_SWITCH;
 	candidate->legal = mon->species != SPECIES_NONE && mon->hp != 0 && !mon->isEgg;
-	candidate->productive = candidate->legal;
+	candidate->productive = FALSE;
+	/* A live bench slot alone is not a productive escape. Certify at least
+	 * one usable, supported attack against the same public active target. */
+	for (i = 0; i < MAX_MON_MOVES; ++i)
+		if (mon->pp[i] && StandardAI_SupportedDamage(mon->moves[i])
+			&& !StandardAI_KnownTypeImmunity(mon->moves[i], FOE(bank)))
+			candidate->productive = candidate->legal;
 	candidate->switch_legal = forced ? candidate->legal : StandardAI_CanSwitchOut(bank) && candidate->legal;
-	candidate->entry_survives = !WillFaintFromEntryHazards(mon, SIDE(bank));
+	candidate->entry_survives = entryDamage < mon->hp;
 	candidate->forced = forced;
 	candidate->fallback_cost = 1000 + partyIndex;
 	candidate->switch_from = gBattlerPartyIndexes[bank];
@@ -490,7 +629,6 @@ static void StandardAI_BuildObservation(u8 bank, bool8 includeSwitches,
 	u8 foe = FOE(bank);
 	u8 i;
 	u8 forcedMove = FALSE;
-	u8 hasProductiveMove = FALSE;
 	u8 firstId;
 	u8 lastId;
 	struct Pokemon* party;
@@ -507,17 +645,12 @@ static void StandardAI_BuildObservation(u8 bank, bool8 includeSwitches,
 	{
 		struct StandardPolicyCandidate* candidate = &observation->candidates[observation->count++];
 		StandardAI_FillMoveCandidate(bank, foe, i, candidate, forcedMove);
-		if (candidate->legal && candidate->productive)
-			hasProductiveMove = TRUE;
 	}
 
 	if (!includeSwitches)
 		return;
 
 	party = LoadPartyRange(bank, &firstId, &lastId);
-	/* A low own health-bar fraction is an emergency signal, not matchup prediction. */
-	if (StandardAI_OwnHpFraction(bank) <= 64)
-		hasProductiveMove = FALSE;
 	for (i = firstId; i < lastId && observation->count < STANDARD_POLICY_MAX_CANDIDATES; ++i)
 	{
 		struct StandardPolicyCandidate* candidate;
@@ -525,9 +658,8 @@ static void StandardAI_BuildObservation(u8 bank, bool8 includeSwitches,
 			continue;
 		candidate = &observation->candidates[observation->count++];
 		StandardAI_FillSwitchCandidate(bank, i, &party[i], candidate, !BATTLER_ALIVE(bank));
-		if (!hasProductiveMove && candidate->legal && candidate->switch_legal && candidate->entry_survives)
-			candidate->standard_switch_emergency = TRUE;
 	}
+	StandardMechanicsQualifySwitches(observation);
 
 }
 
@@ -539,11 +671,15 @@ bool8 StandardAI_IsSupportedBattle(void)
 		| BATTLE_TYPE_SCRIPTED_WILD_2 | BATTLE_TYPE_LEGENDARY_FRLG
 		| BATTLE_TYPE_TRAINER_TOWER | BATTLE_TYPE_TWO_OPPONENTS
 		| BATTLE_TYPE_INGAME_PARTNER | BATTLE_TYPE_POKE_DUDE | BATTLE_TYPE_OLD_MAN
-		| BATTLE_TYPE_FRONTIER | BATTLE_TYPE_SHADOW_WARRIOR | BATTLE_TYPE_DYNAMAX;
+		| BATTLE_TYPE_FRONTIER | BATTLE_TYPE_SHADOW_WARRIOR | BATTLE_TYPE_DYNAMAX
+		| BATTLE_TYPE_KYOGRE_GROUDON | BATTLE_TYPE_REGI | BATTLE_TYPE_GHOST
+		| BATTLE_TYPE_RING_CHALLENGE | BATTLE_TYPE_MOCK_BATTLE
+		| BATTLE_TYPE_BENJAMIN_BUTTERFREE | BATTLE_TYPE_CAMOMONS | BATTLE_TYPE_MEGA_BRAWL;
 
 	return (gBattleTypeFlags & BATTLE_TYPE_TRAINER)
 		&& !(gBattleTypeFlags & excluded)
 		&& !IsRaidBattle()
+		&& !IsInverseBattle()
 		&& !IsFrontierTrainerId(gTrainerBattleOpponent_A)
 		&& GetTrainerAIProfile() == TRAINER_AI_PROFILE_STANDARD;
 }
@@ -612,6 +748,36 @@ FALLBACK_TO_ENGINE:
 		}
 	}
 	return STANDARD_AI_PENDING_NONE;
+}
+
+u8 StandardAI_ChooseReplacement(void)
+{
+	struct StandardPolicyObservation observation;
+	struct StandardPolicyMemory memory;
+	struct StandardPolicyResult result;
+	u8 bank = gActiveBattler, i;
+	StandardAI_BuildObservation(bank, TRUE, &observation);
+	StandardAI_LoadMemory(bank, &memory);
+	for (i = 0; i < observation.count; ++i)
+	{
+		struct StandardPolicyCandidate* c = &observation.candidates[i];
+		if (c->kind == STANDARD_POLICY_MOVE) c->legal = FALSE;
+		else
+		{
+			/* Replacement/pivot has already been required by the engine. */
+			c->forced = TRUE;
+			c->switch_legal = c->legal;
+			c->standard_switch_emergency = FALSE;
+		}
+	}
+	if (StandardPolicyChoose(&observation, &memory, StandardAI_GetPolicyRng(bank), &result) == 0)
+		for (i = 0; i < observation.count; ++i)
+			if (observation.candidates[i].id == result.selected_id)
+			{
+				StandardAI_StageLastAction(bank, &observation.candidates[i]);
+				return observation.candidates[i].switch_to;
+			}
+	return PARTY_SIZE;
 }
 
 u8 StandardAI_ChooseMoveOrAction(void)

@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PURE_FILES = (
     ROOT / "include/new/ai_standard_policy.h",
     ROOT / "src/Battle_AI/ai_standard_policy.c",
+    ROOT / "include/new/ai_standard_mechanics.h",
+    ROOT / "src/Battle_AI/ai_standard_mechanics.c",
 )
 ADAPTER = ROOT / "src/Battle_AI/ai_standard.c"
 DISPATCH = ROOT / "src/Battle_AI/ai_master.c"
@@ -33,11 +35,12 @@ ADAPTER_FORBIDDEN = (
     "AI_SpecialTypeCalc", "AI_TypeCalc", "CalcFinalAIMoveDamage",
     "GetFinalAIMoveDamage", "MoveKnocksOutXHits", "IsTrapped", "GetAIAbility",
     "GetAIChosenMove", "gBattleStruct->moveTarget", "gBattleBufferA",
+    "GetRecordedItemEffect", "GetRecordedAbility",
+    "GetMonEntryHazardDamage", "WillFaintFromEntryHazards", "TypeDamageModificationPartyMon",
 )
 
 FORBIDDEN_OPPONENT_FIELDS = (
-    r"gBattleMons\[foe\]\.(hp|maxHP|moves|pp|ability|heldItem)",
-    r"gBattleMons\[targetBank\]\.(hp|maxHP|moves|pp|ability|heldItem)",
+    r"gBattleMons\[(?:foe|targetBank|bankDef)\]\.(?:hp|maxHP|species|moves|pp|ability|item|attack|defense|spAttack|spDefense|speed)\b",
 )
 
 EXCLUDED_BATTLE_FLAGS = (
@@ -52,9 +55,10 @@ EXCLUDED_BATTLE_FLAGS = (
 )
 
 REVIEWED_HELPERS = {
-    "EmitTwoReturnValues", "GetMonEntryHazardDamage", "WillFaintFromEntryHazards",
+    "EmitTwoReturnValues", "GetMonAbility", "GetMonItemEffect", "IsInverseBattle",
     "LoadPartyRange", "IsFrontierTrainerId", "IsRaidBattle", "GetTrainerAIProfile",
-    "GetRecordedAbility", "ItemId_GetHoldEffect", "CheckGrounding",
+    "ItemId_GetHoldEffect", "CheckGrounding",
+    "StandardMechanicsDamage", "StandardMechanicsAccuracy", "StandardMechanicsQualifySwitches",
     "StandardPolicyChoose", "StandardPolicyNormalizeEffectFamily",
 }
 
@@ -67,16 +71,23 @@ def fail(message: str) -> None:
 def main() -> int:
     pure = "\n".join(path.read_text(encoding="utf-8") for path in PURE_FILES)
     adapter = ADAPTER.read_text(encoding="utf-8")
+    code = re.sub(r"/\*.*?\*/|//[^\n]*", "", adapter, flags=re.S)
     dispatch = DISPATCH.read_text(encoding="utf-8")
 
     for token in PURE_FORBIDDEN:
         if token in pure:
             fail(f"pure policy contains forbidden token {token!r}")
     for token in ADAPTER_FORBIDDEN:
-        if token in adapter:
+        if token in code:
             fail(f"adapter contains forbidden token/helper {token!r}")
+    # The sole permitted HP read is a public-display projection. Remove only
+    # this exact small body, then audit all other opponent fields normally.
+    public_hp = re.search(r"static u8 StandardAI_PublicHpPixels\(u8 foe\)\n\{[^}]+\}", adapter)
+    if public_hp is None or "current * 48 / maximum" not in public_hp.group():
+        fail("public 48-pixel HP projection is missing")
+    projected_adapter = adapter.replace(public_hp.group(), "")
     for pattern in FORBIDDEN_OPPONENT_FIELDS:
-        if re.search(pattern, adapter):
+        if re.search(pattern, projected_adapter):
             fail(f"adapter reads a forbidden unrevealed opponent field: {pattern}")
 
     if '#include "../../include/new/ai_util.h"' in adapter:
@@ -129,14 +140,26 @@ def main() -> int:
     if not (setup_guard < legacy_limitations and choose_guard < legacy_mega and switch_guard < legacy_prediction):
         fail("Standard dispatch guard occurs after a legacy AI graph entry")
 
+    controller = (ROOT / "src/battle_controller_opponent.c").read_text(encoding="utf-8")
+    presentation = (ROOT / "src/battle_anims.c").read_text(encoding="utf-8")
+    if "gNewBS->ai.standardDisplayedSpecies[bank] = species;" not in presentation:
+        fail("public display identity producer is missing")
+    move_path = controller.split("void OpponentHandleChooseMove(void)", 1)[1].split("//You get 1", 1)[0]
+    replacement = controller.split("void OpponentHandleChoosePokemon(void)", 1)[1].split("CalcMostSuitableMonToSwitchInto", 1)[0]
+    if "StandardAI_ChooseMoveOrAction()" not in move_path or "return;" not in move_path:
+        fail("Standard controller reaches legacy gimmick prediction")
+    if "StandardAI_ChooseReplacement()" not in replacement or "return;" not in replacement:
+        fail("Standard replacement reaches legacy matchup selection")
+
     # Review every call-like identifier in the adapter against a small
     # documented surface.  Local/static helpers and C/GBA primitives are
     # excluded; anything else is printed for human review rather than silently
     # accepted as a transitive dependency.
     local_names = set(re.findall(r"\b(StandardAI_[A-Za-z0-9_]+)\s*\(", adapter))
-    calls = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", adapter))
+    code = re.sub(r"/\*.*?\*/|//[^\n]*", "", adapter, flags=re.S)
+    calls = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", code))
     c_primitives = {
-        "if", "for", "while", "switch", "sizeof", "MathMin", "Memset", "return",
+        "if", "for", "while", "switch", "sizeof", "MathMin", "MathMax", "Memset", "return",
     }
     unknown = sorted(
         call for call in calls

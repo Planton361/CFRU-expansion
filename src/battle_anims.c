@@ -6589,6 +6589,12 @@ u16 GetBattlerYDeltaFromSpriteId(u8 spriteId)
 	else
 		species = spriteInfo[bank].transformSpecies;
 
+	/* Snapshot only the identity already selected for the visible sprite.
+	 * Standard must not discover an Illusion user's real species/bench through
+	 * its candidate builder. The record is zeroed with battle-local storage. */
+	if (gNewBS != NULL)
+		gNewBS->ai.standardDisplayedSpecies[bank] = species;
+
 	if (SIDE(bank) == B_SIDE_PLAYER)
 		return gMonBackPicCoords[species].y_offset;
 	else
