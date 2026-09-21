@@ -199,6 +199,8 @@ enum TrainerAIProfile
 	TRAINER_AI_PROFILE_HARD,
 	TRAINER_AI_PROFILE_EXPERT,
 	TRAINER_AI_PROFILE_SMART_AI,
+	/* Appended for source-only compatibility; the existing raw values stay put. */
+	TRAINER_AI_PROFILE_STANDARD,
 };
 
 enum

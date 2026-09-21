@@ -1086,6 +1086,39 @@ struct NewBattleStruct
 		bool8 shouldUseZMove[MAX_BATTLERS_COUNT][MAX_BATTLERS_COUNT][MAX_MON_MOVES]; //shouldUseZMove[bankAtk][bankDef][monMoveIndex]
 		bool8 dynamaxPotential[MAX_BATTLERS_COUNT][MAX_BATTLERS_COUNT]; //dynamaxPotential[bankAtk][bankDef]
 		const void* megaPotential[MAX_BATTLERS_COUNT]; //aiMegaPotential[bankAtk] - stores evolution data of attacker
+
+		/* CFRU Standard AI state; battle-local EWRAM, never serialized. */
+		bool8 standardPolicySeeded[MAX_BATTLERS_COUNT];
+		u32 standardPolicyRng[MAX_BATTLERS_COUNT];
+		bool8 standardPendingValid[MAX_BATTLERS_COUNT];
+		u8 standardPendingKind[MAX_BATTLERS_COUNT];
+		u8 standardPendingAction[MAX_BATTLERS_COUNT];
+		u8 standardPendingSwitchTarget[MAX_BATTLERS_COUNT];
+		u8 standardLastValid[MAX_BATTLERS_COUNT];
+		u8 standardLastKind[MAX_BATTLERS_COUNT];
+		u8 standardLastFamily[MAX_BATTLERS_COUNT];
+		u8 standardLastSuccessHint[MAX_BATTLERS_COUNT];
+		u8 standardLastForced[MAX_BATTLERS_COUNT];
+		u8 standardLastSwitchFrom[MAX_BATTLERS_COUNT];
+		u8 standardLastSwitchTo[MAX_BATTLERS_COUNT];
+		u8 standardLastTargetBank[MAX_BATTLERS_COUNT];
+		s8 standardLastStageBefore[MAX_BATTLERS_COUNT];
+		s8 standardLastStageAfter[MAX_BATTLERS_COUNT];
+		bool8 standardLastStatusChecked[MAX_BATTLERS_COUNT];
+		u32 standardLastStatusBefore[MAX_BATTLERS_COUNT];
+		u8 standardMemoryCount[MAX_BATTLERS_COUNT];
+		u8 standardMemoryKind[MAX_BATTLERS_COUNT][4];
+		u8 standardMemoryFamily[MAX_BATTLERS_COUNT][4];
+		u8 standardMemorySuccess[MAX_BATTLERS_COUNT][4];
+		u8 standardMemoryForced[MAX_BATTLERS_COUNT][4];
+		u8 standardMemorySwitchFrom[MAX_BATTLERS_COUNT][4];
+		u8 standardMemorySwitchTo[MAX_BATTLERS_COUNT][4];
+		s8 standardMemoryStageBefore[MAX_BATTLERS_COUNT][4];
+		s8 standardMemoryStageAfter[MAX_BATTLERS_COUNT][4];
+		/* Identity actually passed to the public sprite presentation path. */
+		u16 standardDisplayedSpecies[MAX_BATTLERS_COUNT];
+		/* Sticky conservative dynamic-type uncertainty, reset with battle. */
+		u8 standardTypeUncertain[MAX_BATTLERS_COUNT];
 	} ai;
 
 	struct Pokemon** foePartyBackup; //Pointer to dynamically allocated memory

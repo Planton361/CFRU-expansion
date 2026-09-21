@@ -118,7 +118,20 @@ def check_source_contract():
                "scripts/check_premier_bonus.py", "scripts/tests/m013_premier_host.c",
                "include/new/hidden_item_sparkle.h", "scripts/insert.py",
                "scripts/check_hidden_item_sparkle.py", "scripts/tests/m009_sparkle_host.c",
-               "src/Tables/level_up_learnsets.c", "scripts/check_coherent_learnsets.py"}
+               "src/Tables/level_up_learnsets.c", "scripts/check_coherent_learnsets.py",
+               # Independent CFRU Standard AI source-only milestone.  Keep its
+               # exact file set explicit so this gate still fails closed for
+               # unrelated source, assembly, or data edits.
+               "include/battle.h", "include/global.h", "include/new/ai_standard.h",
+               "include/new/ai_standard_policy.h", "src/Battle_AI/ai_master.c",
+               "src/Battle_AI/ai_standard.c", "src/Battle_AI/ai_standard_policy.c",
+               "src/util.c", "scripts/tests/audit_standard_ai.py",
+               "scripts/tests/run_standard_ai_tests.py",
+               "scripts/tests/standard_ai_layout_host.c",
+               "scripts/tests/standard_ai_policy_host.c",
+               "include/new/ai_standard_mechanics.h", "src/Battle_AI/ai_standard_mechanics.c",
+               "scripts/tests/standard_ai_adapter_host.c", "src/battle_controller_opponent.c",
+               "src/battle_anims.c", "src/battle_util.c"}
     changed = set(git("diff", "--name-only", BASE, "--", "src", "include", "assembly", "scripts").splitlines())
     changed.update(git("ls-files", "--others", "--exclude-standard", "--", "src", "include", "assembly", "scripts").splitlines())
     require(changed <= allowed, "unapproved source/test change: " + str(sorted(changed - allowed)))
