@@ -25,6 +25,7 @@ def main() -> int:
     util = read("src/util.c")
     strings = read("strings/option_menu.string")
     header = read("include/new/settings.h")
+    close = option_menu[option_menu.index("void CloseAndSaveOptionMenu(u8 taskId)"):]
 
     require("gText_StandardOption" in strings, "Standard menu label is missing")
     require("gText_IronmonSmartOption" in strings, "Ironmon Smart menu label is missing")
@@ -54,6 +55,39 @@ def main() -> int:
     require(
         "static u16 TrainerAIProfileRawToMenuSelection" not in option_menu,
         "Trainer AI raw mapping was duplicated in the menu",
+    )
+    require("gameDifficultyOriginalRaw" in option_menu, "Difficulty original raw side channel is missing")
+    require("wildLevelScalingOriginalRaw" in option_menu, "Wild Scaling original raw side channel is missing")
+    require("gameDifficultyDirty" in option_menu, "Difficulty dirty bit is missing")
+    require("wildLevelScalingDirty" in option_menu, "Wild Scaling dirty bit is missing")
+    require(
+        "sOptionMenuPtr->gameDifficultyOriginalRaw = VarGet(VAR_GAME_DIFFICULTY);" in option_menu
+        and "DifficultyRawToMenuSelection(sOptionMenuPtr->gameDifficultyOriginalRaw)" in option_menu,
+        "Difficulty entry does not preserve original raw before safe display conversion",
+    )
+    require(
+        "sOptionMenuPtr->wildLevelScalingOriginalRaw = VarGet(VAR_WILD_LEVEL_SCALING);" in option_menu
+        and "WildLevelScalingRawToMenuSelection(sOptionMenuPtr->wildLevelScalingOriginalRaw)" in option_menu,
+        "Wild Scaling entry does not preserve original raw before safe display conversion",
+    )
+    require(
+        option_menu.count("MarkSecondPageOptionDirty(sOptionMenuPtr->cursorPos);") == 2,
+        "Difficulty/Wild Scaling edits are not dirty-tracked on both directions",
+    )
+    require("DifficultyRawAfterOptions" in close, "Difficulty close path lacks original-raw/dirty selection")
+    require("WildLevelScalingRawAfterOptions" in close, "Wild Scaling close path lacks original-raw/dirty selection")
+    require("TrainerLevelScalingRawAfterOptions" in close, "Trainer Scaling close path lost raw preservation")
+    require(
+        "VarSet(VAR_GAME_DIFFICULTY, DifficultyMenuSelectionToRaw" not in close,
+        "Difficulty close path unconditionally rewrites the display fallback",
+    )
+    require(
+        "VarSet(VAR_WILD_LEVEL_SCALING, sOptionMenuPtr->option_secondPage[MENUITEM_WILDLEVELSCALING])" not in close,
+        "Wild Scaling close path writes the display index instead of original raw when untouched",
+    )
+    require(
+        "option_secondPage[MENUITEM_WILDLEVELSCALING] = VarGet(VAR_WILD_LEVEL_SCALING)" not in option_menu,
+        "Wild Scaling raw is copied directly into a menu selection",
     )
 
     wipe = save[save.index("void NewGameWipeNewSaveData(void)"):]
