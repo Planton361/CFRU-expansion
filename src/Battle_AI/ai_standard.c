@@ -370,6 +370,12 @@ static void StandardAI_ProjectDamage(u8 bank, u8 foe, u16 move,
 	input.target_level = gBattleMons[foe].level;
 	input.base_defense = split == SPLIT_PHYSICAL ? gBaseStats[species].baseDefense : gBaseStats[species].baseSpDefense;
 	input.base_hp = gBaseStats[species].baseHP;
+	if (StandardAI_PublicBadgeBoost(bank, split == SPLIT_PHYSICAL
+		? STANDARD_AI_BADGE_ATTACK : STANDARD_AI_BADGE_SPECIAL_ATTACK))
+		input.attack = MathMin(2048, input.attack * 11 / 10);
+	if (StandardAI_PublicBadgeBoost(foe, split == SPLIT_PHYSICAL
+		? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE))
+		input.base_defense = MathMin(255, (input.base_defense * 11 + 9) / 10);
 	input.shedinja = species == SPECIES_SHEDINJA;
 	input.hp_pixels = StandardAI_PublicHpPixels(foe);
 	input.accuracy = gBattleMoves[move].accuracy;
@@ -430,12 +436,6 @@ void StandardAI_DeriveDamageWithCertificate(u8 bank, u8 foe, u16 move,
 	struct StandardMechanicsInput input;
 	struct StandardDamageEnvelope envelope;
 	StandardAI_ProjectDamage(bank, foe, move, candidate, &input);
-	if (StandardAI_PublicBadgeBoost(bank, SPLIT(move) == SPLIT_PHYSICAL
-		? STANDARD_AI_BADGE_ATTACK : STANDARD_AI_BADGE_SPECIAL_ATTACK))
-		input.attack = MathMin(2048, input.attack * 11 / 10);
-	if (StandardAI_PublicBadgeBoost(foe, SPLIT(move) == SPLIT_PHYSICAL
-		? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE))
-		input.base_defense = MathMin(255, (input.base_defense * 11 + 9) / 10);
 	/* Ironmon supplies an independently narrow public modifier certificate.
 	 * Reuse the exact Standard projection/mechanics arithmetic, changing only
 	 * the certificate bit that controls complete-envelope and robust-KO claims. */
@@ -538,12 +538,6 @@ bool8 StandardAI_FindSetupFollowup(u8 bank, u8 foe, u8 family, u8 afterStage,
 		else continue;
 		old.known_no_effect = StandardAI_KnownTypeImmunity(move, foe);
 		StandardAI_ProjectDamage(bank, foe, move, &old, &before);
-		if (StandardAI_PublicBadgeBoost(bank, SPLIT(move) == SPLIT_PHYSICAL
-			? STANDARD_AI_BADGE_ATTACK : STANDARD_AI_BADGE_SPECIAL_ATTACK))
-			before.attack = MathMin(2048, before.attack * 11 / 10);
-		if (StandardAI_PublicBadgeBoost(foe, SPLIT(move) == SPLIT_PHYSICAL
-			? STANDARD_AI_BADGE_DEFENSE : STANDARD_AI_BADGE_SPECIAL_DEFENSE))
-			before.base_defense = MathMin(255, (before.base_defense * 11 + 9) / 10);
 		after = before;
 		if (family == STANDARD_EFFECT_ATTACK_UP || family == STANDARD_EFFECT_SPECIAL_ATTACK_UP)
 			after.attack_stage = afterStage;

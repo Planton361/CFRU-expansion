@@ -88,7 +88,7 @@ static void Reset(void)
 	memset(&battle, 0, sizeof(battle));
 	memset(&history, 0, sizeof(history));
 	testBadgeMask = 0;
-	gTrainerBattleOpponent_A = 0;
+	gTrainerBattleOpponent_A = 0x400;
 	memset(gDisableStructs, 0, sizeof(gDisableStructs));
 	memset(gStatuses3, 0, sizeof(gStatuses3));
 	memset(gSideStatuses, 0, sizeof(gSideStatuses));
@@ -156,6 +156,7 @@ static void Certify(void)
 static void IronmonCertify(void)
 {
 	Certify();
+	gTrainerBattleOpponent_A = 0;
 	gBattleMons[0].status2 = 0;
 	gBattleMons[0].hp = gBattleMons[0].maxHP;
 	gBattleMons[1].status2 = 0;
@@ -459,7 +460,8 @@ static void HazardsAndReplacement(void)
 	Reset(); gBattleMons[1].hp=0;
 	assert(StandardAI_ChooseReplacement()==1);
 	assert(newBattle.ai.standardLastForced[1]);
-	assert(newBattle.ai.standardPolicyRng[1]==(STANDARD_AI_DEFAULT_SEED^1));
+	assert(newBattle.ai.standardPolicyRng[1]
+		== (STANDARD_AI_DEFAULT_SEED ^ ((u32)gTrainerBattleOpponent_A << 8) ^ 1));
 	puts("production hazards/replacement: exact entry costs, entry KO, forced/singleton RNG PASS");
 }
 
@@ -622,6 +624,32 @@ static void IronmonProductionBadgeBounds(void)
 	assert(damagePossible.expected_damage <= damageAbsent.expected_damage);
 	assert(damagePossible.opponent_hp_fraction_lost <= damageAbsent.opponent_hp_fraction_lost);
 	puts("Ironmon possible Badge Speed/Attack/SpA/Defense bounds PASS");
+}
+
+static void StandardProductionBadgeRobustKO(void)
+{
+	struct StandardPolicyCandidate possible = {0}, absent = {0};
+	struct StandardDamageEnvelope envelope;
+	u16 attack;
+	bool8 found = FALSE;
+	Reset(); profile = TRAINER_AI_PROFILE_STANDARD; Certify();
+	gBattleMons[0].hp = 5; gBattleMons[1].speed = 200;
+	for (attack = 1; attack <= 500; ++attack)
+	{
+		gBattleMons[1].attack = attack;
+		gTrainerBattleOpponent_A = 0x400;
+		StandardAI_DeriveDamage(1, 0, MOVE_STRENGTH, &absent, &envelope);
+		if (!absent.robust_safe_ko) continue;
+		gTrainerBattleOpponent_A = 0;
+		StandardAI_DeriveDamage(1, 0, MOVE_STRENGTH, &possible, &envelope);
+		if (!possible.robust_safe_ko)
+		{
+			found = TRUE;
+			break;
+		}
+	}
+	assert(found);
+	puts("Standard possible Badge defense cannot create a false robust KO PASS");
 }
 
 static void IronmonProductionResponseAndDispatch(void)
@@ -1015,6 +1043,7 @@ int main(void)
 	ArithmeticBounds(); IronmonPublicCounts(); IronmonProductionTwins(); IronmonProductionResponseAndDispatch();
 	IronmonProductionBadgeTwins();
 	IronmonProductionBadgeBounds();
+	StandardProductionBadgeRobustKO();
 	IronmonForcedReplacementTiming(); IronmonProductionTurnOrderAndFaints();
 	IronmonProductionRecoveryRaces();
 	IronmonProductionVoluntaryHazardResponse();
