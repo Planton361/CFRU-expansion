@@ -25,8 +25,10 @@
 #define STANDARD_AI_DEFAULT_SEED 0x51A1F512
 #define STANDARD_AI_INT32_MAX 2147483647
 
-/* Badge stat boosts are public save/battle state. Keep the exact engine
- * gating here so Ironmon widens only the affected public interval. */
+/* Badge ownership is private save/progression state. This helper deliberately
+ * returns whether the configured public battle context permits a possible
+ * player-side boost, never whether the player owns the Badge. Ironmon and the
+ * shared fair projection then bound both no-boost and possible 1.1x states. */
 bool8 StandardAI_PublicBadgeBoost(u8 bank, u8 kind)
 {
 	(void)bank; (void)kind;
@@ -39,7 +41,7 @@ bool8 StandardAI_PublicBadgeBoost(u8 bank, u8 kind)
 			| BATTLE_TYPE_FRONTIER | BATTLE_TYPE_EREADER_TRAINER)
 			|| gTrainerBattleOpponent_A == 0x400)
 			return FALSE;
-		return FlagGet(FLAG_BADGE03_GET);
+		return TRUE;
 	}
 	if (gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_TRAINER_TOWER
 		| BATTLE_TYPE_FRONTIER | BATTLE_TYPE_EREADER_TRAINER)
@@ -47,10 +49,10 @@ bool8 StandardAI_PublicBadgeBoost(u8 bank, u8 kind)
 		return FALSE;
 	switch (kind)
 	{
-	case STANDARD_AI_BADGE_ATTACK: return FlagGet(FLAG_BADGE01_GET);
-	case STANDARD_AI_BADGE_DEFENSE: return FlagGet(FLAG_BADGE05_GET);
+	case STANDARD_AI_BADGE_ATTACK:
+	case STANDARD_AI_BADGE_DEFENSE:
 	case STANDARD_AI_BADGE_SPECIAL_ATTACK:
-	case STANDARD_AI_BADGE_SPECIAL_DEFENSE: return FlagGet(FLAG_BADGE07_GET);
+	case STANDARD_AI_BADGE_SPECIAL_DEFENSE: return TRUE;
 	default: return FALSE;
 	}
 

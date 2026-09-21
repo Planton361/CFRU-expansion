@@ -39,7 +39,9 @@ u32 gStatuses3[4], gBattleTypeFlags = BATTLE_TYPE_TRAINER, gHitMarker;
 u32 gRngValue, gRng2Value;
 u8 gChosenActionByBank[4];
 static enum TrainerAIProfile profile = TRAINER_AI_PROFILE_STANDARD;
-static bool8 testBadge03;
+/* Private save/progression harness state. Fair production code must never
+ * call FlagGet for these IDs; Badge twins vary this mask to prove that. */
+static u8 testBadgeMask;
 
 /* The real source tables, including their nonstandard 0/1 neutral/immunity
  * encoding. No hand-authored substitute move/type table can hide drift. */
@@ -61,7 +63,17 @@ u8 CheckGrounding(u8 bank) { assert(bank == 1); return GROUNDED; }
 bool8 IsRaidBattle(void) { return FALSE; }
 bool8 IsInverseBattle(void) { return FALSE; }
 bool8 IsFrontierTrainerId(u16 trainer) { (void)trainer; return FALSE; }
-bool8 FlagGet(u16 id) { return id == FLAG_BADGE03_GET && testBadge03; }
+bool8 FlagGet(u16 id)
+{
+	switch (id)
+	{
+	case FLAG_BADGE01_GET: return testBadgeMask & 1;
+	case FLAG_BADGE03_GET: return testBadgeMask & 2;
+	case FLAG_BADGE05_GET: return testBadgeMask & 4;
+	case FLAG_BADGE07_GET: return testBadgeMask & 8;
+	default: return FALSE;
+	}
+}
 enum TrainerAIProfile GetTrainerAIProfile(void) { return profile; }
 void EmitTwoReturnValues(u8 buffer, u8 action, u16 value)
 { (void)buffer; (void)action; (void)value; }
@@ -75,7 +87,8 @@ static void Reset(void)
 	memset(&newBattle, 0, sizeof(newBattle));
 	memset(&battle, 0, sizeof(battle));
 	memset(&history, 0, sizeof(history));
-	testBadge03 = FALSE;
+	testBadgeMask = 0;
+	gTrainerBattleOpponent_A = 0;
 	memset(gDisableStructs, 0, sizeof(gDisableStructs));
 	memset(gStatuses3, 0, sizeof(gStatuses3));
 	memset(gSideStatuses, 0, sizeof(gSideStatuses));
@@ -557,6 +570,60 @@ static void IronmonProductionTwins(void)
 	printf("Ironmon production twins: %u pairs (128 each hidden move/item/ability/bench/stats, submitted action, future RNG, hidden identity), 0 mismatches\n",count);
 }
 
+static void IronmonProductionBadgeTwins(void)
+{
+	struct IronmonPolicyObservation a, b;
+	struct StandardPolicyMemory memory;
+	struct IronmonPolicyResult ra, rb;
+	u8 mask;
+	for (mask = 0; mask < 16; ++mask)
+	{
+		u32 sa = 0x515A0000u + mask, sb = sa;
+		Reset(); profile = TRAINER_AI_PROFILE_IRONMON_SMART;
+		IronmonCertify(); testBadgeMask = mask;
+		history.usedMoves[0][0] = MOVE_STRENGTH;
+		newBattle.ai.ironmonMoveUseCounts[0][0] = 1;
+		IronmonAI_BuildObservation(1, TRUE, &a);
+		StandardAI_LoadMemory(1, &memory);
+		assert(IronmonPolicyChoose(&a, &memory, &sa, &ra) == 0);
+		Reset(); profile = TRAINER_AI_PROFILE_IRONMON_SMART;
+		IronmonCertify(); testBadgeMask = mask ^ 0x0F;
+		history.usedMoves[0][0] = MOVE_STRENGTH;
+		newBattle.ai.ironmonMoveUseCounts[0][0] = 1;
+		IronmonAI_BuildObservation(1, TRUE, &b);
+		StandardAI_LoadMemory(1, &memory);
+		assert(IronmonPolicyChoose(&b, &memory, &sb, &rb) == 0);
+		assert(memcmp(&a, &b, sizeof(a)) == 0);
+		assert(memcmp(&ra, &rb, sizeof(ra)) == 0 && sa == sb);
+	}
+	puts("Ironmon Badge-ownership twins: 16 pairs, 0 mismatches; fair state unaffected PASS");
+}
+
+static void IronmonProductionBadgeBounds(void)
+{
+	struct IronmonIncoming physicalPossible, physicalAbsent;
+	struct IronmonIncoming specialPossible, specialAbsent;
+	struct StandardPolicyCandidate damagePossible = {0}, damageAbsent = {0};
+	Reset(); profile = TRAINER_AI_PROFILE_IRONMON_SMART; IronmonCertify();
+	/* Ordinary public context permits the possible 1.1x states, regardless of
+	 * the private ownership mask. */
+	testBadgeMask = 0;
+	IronmonAI_ProjectIncoming(1, MOVE_POUND, NULL, 0, 0xFFFF, &physicalPossible);
+	IronmonAI_ProjectIncoming(1, MOVE_EMBER, NULL, 0, 0xFFFF, &specialPossible);
+	StandardAI_DeriveDamageWithCertificate(1, 0, MOVE_STRENGTH, &damagePossible, TRUE);
+	/* A public context that excludes the CFRU Badge modifier is a boundary
+	 * oracle for the conservative interval, not an ownership observation. */
+	gTrainerBattleOpponent_A = 0x400;
+	IronmonAI_ProjectIncoming(1, MOVE_POUND, NULL, 0, 0xFFFF, &physicalAbsent);
+	IronmonAI_ProjectIncoming(1, MOVE_EMBER, NULL, 0, 0xFFFF, &specialAbsent);
+	StandardAI_DeriveDamageWithCertificate(1, 0, MOVE_STRENGTH, &damageAbsent, TRUE);
+	assert(physicalPossible.maximum >= physicalAbsent.maximum);
+	assert(specialPossible.maximum >= specialAbsent.maximum);
+	assert(damagePossible.expected_damage <= damageAbsent.expected_damage);
+	assert(damagePossible.opponent_hp_fraction_lost <= damageAbsent.opponent_hp_fraction_lost);
+	puts("Ironmon possible Badge Speed/Attack/SpA/Defense bounds PASS");
+}
+
 static void IronmonProductionResponseAndDispatch(void)
 {
 	struct IronmonPolicyObservation o, beforeReveal;
@@ -700,7 +767,8 @@ static void IronmonProductionRecoveryRaces(void)
 	/* Trainer first: pre-heal HP would be lethal, post-heal HP survives. */
 	Reset(); profile = TRAINER_AI_PROFILE_IRONMON_SMART; IronmonCertify();
 	gBattleMons[1].moves[0] = MOVE_RECOVER; gBattleMons[1].maxHP = 200;
-	gBattleMons[1].hp = 99; gBattleMons[1].speed = 200; RevealIronmonResponse(MOVE_POUND);
+	gBattleMons[1].defense = gBattleMons[1].spDefense = 500;
+	gBattleMons[1].hp = 20; gBattleMons[1].speed = 200; RevealIronmonResponse(MOVE_POUND);
 	IronmonAI_BuildObservation(1, TRUE, &o);
 	c = FindIronmonMove(&o, MOVE_RECOVER); assert(c != NULL);
 	b = FindIronmonBranch(c, MOVE_POUND); assert(b != NULL);
@@ -709,6 +777,7 @@ static void IronmonProductionRecoveryRaces(void)
 	/* Opponent first and lethal: recovery is never applied. */
 	Reset(); profile = TRAINER_AI_PROFILE_IRONMON_SMART; IronmonCertify();
 	gBattleMons[1].moves[0] = MOVE_RECOVER; gBattleMons[1].maxHP = 200;
+	gBattleMons[1].defense = gBattleMons[1].spDefense = 500;
 	gBattleMons[1].hp = 20; gBattleMons[1].speed = 1; RevealIronmonResponse(MOVE_POUND);
 	IronmonAI_BuildObservation(1, TRUE, &o);
 	c = FindIronmonMove(&o, MOVE_RECOVER); assert(c != NULL);
@@ -719,6 +788,7 @@ static void IronmonProductionRecoveryRaces(void)
 	 * so the net HP result differs from the stale pre-response floor amount. */
 	Reset(); profile = TRAINER_AI_PROFILE_IRONMON_SMART; IronmonCertify();
 	gBattleMons[1].moves[0] = MOVE_RECOVER; gBattleMons[1].maxHP = 200;
+	gBattleMons[1].defense = gBattleMons[1].spDefense = 500;
 	gBattleMons[1].hp = 120; gBattleMons[1].speed = 1; RevealIronmonResponse(MOVE_POUND);
 	IronmonAI_BuildObservation(1, TRUE, &o);
 	c = FindIronmonMove(&o, MOVE_RECOVER); assert(c != NULL);
@@ -768,14 +838,19 @@ static void IronmonProductionOrderCertificates(void)
 	gBattleMons[1].speed = 1;
 	IronmonAI_ProjectIncoming(1, MOVE_POUND, NULL, 0, 0xFFFF, &in);
 	assert(in.order_known && in.opponent_first);
-	/* Public badge speed is modeled by the same battle gate as SpeedCalc: the
-	 * upper interval widens, so a previously clear comparison becomes UNKNOWN
-	 * instead of certifying an order that the boost could reverse. */
-	testBadge03 = TRUE; gBattleMons[1].speed = 140;
+	/* Badge ownership is private and irrelevant. In an ordinary public battle
+	 * context, the possible 1.1x player speed boost widens the upper interval,
+	 * so a previously clear comparison becomes UNKNOWN. */
+	testBadgeMask = 0x0F; gBattleMons[1].speed = 140;
 	IronmonAI_ProjectIncoming(1, MOVE_POUND, NULL, 0, 0xFFFF, &in);
 	assert(!in.order_known);
+	/* A public context where the CFRU boost cannot apply removes that possible
+	 * widening without consulting the private ownership mask. */
+	gTrainerBattleOpponent_A = 0x400;
+	IronmonAI_ProjectIncoming(1, MOVE_POUND, NULL, 0, 0xFFFF, &in);
+	assert(in.order_known && !in.opponent_first);
+	gTrainerBattleOpponent_A = 0;
 	/* Stable Trick Room reverses the certified comparisons. */
-	testBadge03 = FALSE;
 	newBattle.TrickRoomTimer = 3; gBattleMons[1].speed = 1;
 	IronmonAI_ProjectIncoming(1, MOVE_POUND, NULL, 0, 0xFFFF, &in);
 	assert(in.order_known && !in.opponent_first);
@@ -814,7 +889,7 @@ static void IronmonProductionMatchingSetup(void)
 	/* Same physical follow-up owns the 3HKO -> 2HKO transition. */
 	Reset(); profile = TRAINER_AI_PROFILE_IRONMON_SMART; IronmonCertify();
 	gBattleMons[0].hp = gBattleMons[0].maxHP = 100;
-	gBattleMons[1].hp = gBattleMons[1].maxHP = 200;
+	gBattleMons[1].hp = gBattleMons[1].maxHP = 400;
 	gBattleMons[1].attack = 30; gBattleMons[1].speed = 200;
 	gBattleMons[1].moves[0] = MOVE_SWORDSDANCE;
 	gBattleMons[1].moves[1] = MOVE_STRENGTH; gBattleMons[1].pp[0] = gBattleMons[1].pp[1] = 10;
@@ -836,11 +911,12 @@ static void IronmonProductionMatchingSetup(void)
 		&& followup.after_fraction * 2 >= 256);
 	RevealIronmonResponse(MOVE_POUND); IronmonAI_BuildObservation(1, TRUE, &o);
 	c = FindIronmonMove(&o, MOVE_SWORDSDANCE); assert(c != NULL);
-	b = FindIronmonBranch(c, MOVE_POUND); assert(b != NULL && b->future_gain_undiscounted > 0);
+	b = FindIronmonBranch(c, MOVE_POUND); assert(b != NULL);
+	assert(b->future_gain_undiscounted > 0);
 	/* Matching special follow-up. */
 	Reset(); profile = TRAINER_AI_PROFILE_IRONMON_SMART; IronmonCertify();
 	gBattleMons[0].hp = gBattleMons[0].maxHP = 100;
-	gBattleMons[1].hp = gBattleMons[1].maxHP = 200;
+	gBattleMons[1].hp = gBattleMons[1].maxHP = 400;
 	gBattleMons[1].spAttack = 30; gBattleMons[1].speed = 200;
 	gBattleMons[1].moves[0] = MOVE_NASTYPLOT;
 	gBattleMons[1].moves[1] = MOVE_EMBER; gBattleMons[1].pp[0] = gBattleMons[1].pp[1] = 10;
@@ -937,6 +1013,8 @@ int main(void)
 {
 	Behavior(); Twins(); EnvelopeOracle(); Dispatch(); HazardsAndReplacement(); MarginalBehavior();
 	ArithmeticBounds(); IronmonPublicCounts(); IronmonProductionTwins(); IronmonProductionResponseAndDispatch();
+	IronmonProductionBadgeTwins();
+	IronmonProductionBadgeBounds();
 	IronmonForcedReplacementTiming(); IronmonProductionTurnOrderAndFaints();
 	IronmonProductionRecoveryRaces();
 	IronmonProductionVoluntaryHazardResponse();

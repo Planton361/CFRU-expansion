@@ -44,6 +44,7 @@ def main() -> int:
         "AI_SpecialTypeCalc", "AI_TypeCalc", "CalcFinalAIMoveDamage",
         "GetFinalAIMoveDamage", "MoveKnocksOutXHits", "GetAIChosenMove",
         "GetRecordedItemEffect", "GetRecordedAbility",
+        "FlagGet(FLAG_BADGE",
     ):
         if token in code:
             fail(f"adapter contains forbidden token/helper {token!r}")

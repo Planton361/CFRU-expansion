@@ -54,6 +54,12 @@ UNKNOWN never invents a move, coverage, order, damage, survival, absorber,
 revenge, or tactical future. It retains only candidate value independently
 projected from public state or exact own-trainer facts.
 
+Badge ownership is private save/progression state, not a fair observation. When
+the configured CFRU battle context permits a player-side Badge modifier, the
+adapter bounds the public Speed and damage intervals with both unboosted and
+possible 1.1x values. It never reads Badge possession to narrow a certificate;
+unresolved modifiers remain conservative UNKNOWN.
+
 ## Production tactical support matrix
 
 | Module | v1 source disposition |

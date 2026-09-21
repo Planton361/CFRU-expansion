@@ -37,6 +37,7 @@ ADAPTER_FORBIDDEN = (
     "GetAIChosenMove", "gBattleStruct->moveTarget", "gBattleBufferA",
     "GetRecordedItemEffect", "GetRecordedAbility",
     "GetMonEntryHazardDamage", "WillFaintFromEntryHazards", "TypeDamageModificationPartyMon",
+    "FlagGet(FLAG_BADGE",
 )
 
 FORBIDDEN_OPPONENT_FIELDS = (

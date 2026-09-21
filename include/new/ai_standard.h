@@ -34,6 +34,8 @@ enum StandardAIBadgeBoostKind
 	STANDARD_AI_BADGE_SPECIAL_ATTACK,
 	STANDARD_AI_BADGE_SPECIAL_DEFENSE,
 };
+/* Returns whether a player-side Badge boost is possible from public
+ * compile/battle context. It never reads private Badge ownership. */
 bool8 StandardAI_PublicBadgeBoost(u8 bank, u8 kind);
 void StandardAI_DeriveDamageWithCertificate(u8 bank, u8 foe, u16 move,
 	struct StandardPolicyCandidate* candidate, bool8 certified);
