@@ -1117,6 +1117,8 @@ struct NewBattleStruct
 		s8 standardMemoryStageAfter[MAX_BATTLERS_COUNT][4];
 		/* Identity actually passed to the public sprite presentation path. */
 		u16 standardDisplayedSpecies[MAX_BATTLERS_COUNT];
+		/* Sticky conservative dynamic-type uncertainty, reset with battle. */
+		u8 standardTypeUncertain[MAX_BATTLERS_COUNT];
 	} ai;
 
 	struct Pokemon** foePartyBackup; //Pointer to dynamically allocated memory

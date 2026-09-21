@@ -1,7 +1,10 @@
 # Standard adapter — Workspace #512 repair
 
 This document describes the supported source subset, not runtime acceptance.
-The pure policy and its existing parity vectors are unchanged by this repair.
+The accepted policy arithmetic/RNG and existing parity vectors are preserved.
+The only policy-floor extension admits explicitly unknown potentially productive
+damage without assigning it positive utility. CONTROL re-review is required;
+this document does not claim `CFRU_STANDARD_SOURCE_READY`.
 
 ## Observation and damage
 
@@ -18,6 +21,19 @@ active species. Missing display identity fails closed. Ability reveals come from
 the existing public-message history. The snapshot follows public form/redraw
 events and is zeroed with the battle allocation.
 
+Types likewise come only from that displayed species' public base-type table,
+never the opponent's internal type1/type2/type3. An unbroken Illusion therefore
+cannot expose real typing. A public displayed-identity reveal can change the
+model. Dynamic types are deliberately UNKNOWN: observed Conversion/Conversion2,
+Camouflage, Reflect Type, Soak, Trick-or-Treat, Forest's Curse, Magic Powder,
+Transform, Burn Up, Double Shock or Roost conservatively invalidate baseline
+types. Public Color Change/Protean records, transformed state and Tera also
+invalidate them. The move producer requires the printed attack-string marker.
+Four sticky battle-local uncertainty bytes retain this invalidation through
+history eviction, switches and ability replacement; they reset only on the next
+battle allocation. This intentionally sacrifices precision rather than reading
+hidden current types. Unknown types produce no invented damage or type immunity.
+
 The initial direct-damage allowlist contains 33 constant-power single-hit moves:
 Tackle, Pound, Scratch, Quick Attack, Vine Whip, Water Gun, Horn Attack, Peck,
 Wing Attack, Swift, Aerial Ace, Dragon Claw, Dragon Pulse, Strength, Ember,
@@ -26,6 +42,11 @@ Bite, Crunch, Metal Claw, Rock Throw, Rock Slide, Surf, Razor Leaf, Leaf Blade,
 Energy Ball, Shadow Ball and Flash Cannon. Secondary effects add no speculative
 utility. Recoil, sacrifice, variable-power, multi-hit, charging and other moves
 remain unsupported by this direct-damage derivation.
+Legal unsupported damage, including fixed-damage zero-power table entries, is
+`unknown_potentially_productive`: no expected damage, HP utility, net faint or
+robust KO is invented, but it remains floor-eligible and blocks a fabricated
+no-productive-stay emergency. Publicly proven immunity still rejects it. This
+flag occupies former candidate padding; candidate size remains 52 bytes.
 
 For public species/level and stages, the neutral model spans all IVs 0–31,
 EV/4 0–63 and nature factors 90–110%. HP spans the corresponding legal max-HP
@@ -69,7 +90,7 @@ contexts; their displayed identity can inform a nominal estimate only. Full
 item/move/bench reveal tracking remains a limitation of this initial adapter.
 No full engine damage parity is claimed outside this subset.
 
-## Accuracy and switching
+## Marginal utility and switching
 
 Accuracy utility measures a single hypothetical 100-accuracy exposure: the
 100->75->60->50... hit-rate curve gives decreasing marginal value per stage.
@@ -77,8 +98,52 @@ The one-HP-bar exposure is an upper bound, with half the gain charged as
 uncertainty because the opponent's unobserved move is unknown. Capped drops are
 unproductive. Sand Attack and Smokescreen still share the policy's effect family.
 
+Speed uses exact own Speed and public displayed-species/level/stage bounds over
+all legal IV/EV/nature values. Badge-boost uncertainty widens the upper bound.
+Public paralysis divisors and Trick Room order inversion are explicit. A credit
+requires a strict definitely-behind to definitely-ahead flip across the entire
+interval after one application, plus a supported ordinary-priority follow-up.
+Already faster, overlapping intervals and ties receive zero. Both abilities must
+be publicly suppressed and Magic Room must survive the horizon; weather,
+terrain, Tailwind/Swamp and unmodeled optional speed rules preclude certification.
+The credited value is the supported follow-up HP value (at most 40), not a fixed
+Speed bonus or a prediction of the submitted move. String Shot retains its
+Speed-down family normalization.
+
+Attack/SpA boosts and Defense/SpD drops compare supported follow-up damage before
+and after one stage change. The best single improvement in public HP terms is
+valued at 100 points/bar, capped at 40; damage already capped by remaining HP
+cannot gain a setup bonus. Defense/SpD boosts and Attack/SpA drops instead use
+only supported moves in the public revealed-move history. Their nominal incoming
+attack is derived from displayed-species legal-stat bounds and public stages;
+own defensive stats/HP are exact. No revealed supported threat means zero.
+Unmodeled own ability/item, status2, weather, terrain and defensive-side effects
+also suppress this threat estimate rather than inventing a reduction.
+The before/after reduction of one incoming HP exposure supplies value. No hidden
+move or private offensive stat is read. Half of nominal marginal value is charged
+as uncertainty; no claim is made that the opponent will choose that threat.
+
+Major status has no class bonus. Poison values one 1/8-bar residual; Toxic values
+its first 1/16-bar residual; burn values 1/16 (or configured legacy 1/8). Residuals
+are clipped by public remaining HP and scaled by move accuracy, then priced for
+unknown blockers. No speculative burn Attack reduction is added. Paralysis earns
+only certified Speed-flip follow-up value; unmodeled action-loss value is zero.
+Sleep duration/action-loss remains unsupported and receives zero. Known public
+type immunity and redundant status reject status; unrevealed abilities/items
+are not inspected or assumed absent.
+Recorded Immunity/Water Veil/Limber/Insomnia block their relevant effects;
+recorded Magic Guard/Poison Heal suppress unsupported positive residual value.
+
+Recovery counts actual supported healing once, through negative own HP loss.
+Ordinary recovery is capped at half max HP (Life Dew at a quarter), then missing
+HP, using engine integer rounding. Rest can restore the missing bar; no separate
+survival/action-loss bonus is invented. Full HP and Heal Block are nonproductive.
+Purify/Jungle Healing/Lunar Blessing prerequisites remain unmodeled. Recovery's
+future term is zero: at 60/100 HP Recover scores the host HP term 39; at 10/100 it
+heals 50 and scores 50, with no duplicate missing-HP bonus or 50%-HP threshold.
+
 Low HP is no longer an emergency condition. Any legal productive stay prevents
-voluntary switching. A switch needs no productive stay, a usable supported
+voluntary switching, as does unknown potentially productive damage. A switch needs no productive stay, a usable supported
 non-immune own-party attack, legal switching and survival of entry hazards.
 The existing policy owns the A->B->A guard. Forced replacement/pivot selection
 is a separate controller path and records a forced memory edge.
@@ -125,23 +190,34 @@ Use its clean, final-commit output for revision-bound ARM evidence. It compiles
 all changed C files against the contract base, including host harness sources,
 using syntax-only ARM7TDMI/Thumb checks with the production relative includes.
 
-Production twins cover 7 hidden-input categories x 32 mutations x 5 contexts
-(ordinary, certified KO, emergency switch, hazards and near-best ties): 1120 pairs. They compare the entire
+Production twins cover 8 hidden-input categories x 32 mutations x 16 contexts:
+4096 pairs, including the original 1120 cases. Hidden real species/all three
+types are the added category (512 pairs); public identity remains fixed. Added
+contexts exercise Speed, setup, revealed incoming threats, major status, healing,
+unknown damage and dynamic-type uncertainty. They compare the entire
 candidate observation, damage envelope, policy diagnostics, RNG state/draws and
 selected action. The independent damage oracle covers 98,304 IV/EV/nature/roll
 combinations. Behavior witnesses cover both Accuracy moves versus KO, useful and
 diminishing Accuracy, cap, meaningful/weak damage, possible-only KO, reveal,
 switch admission, entry-KO, loop guard, forced replacement and singleton RNG.
+Additional production witnesses cover Speed flip/no-benefit/uncertainty/Trick
+Room; useful/saturated/capped setup; revealed versus absent/ineffective threats;
+residual/redundant status; recovery host-utility parity; eligible unknown damage
+without invented facts or emergency switching; and public type reveal/invalidation.
 
-Repair delta: 8 battle-local EWRAM bytes for displayed species; zero IWRAM or
-save/persistent bytes. Existing Standard state is 0xE4 bytes plus this 8-byte
-snapshot (0xEC total), checked by compile-time assertions. ARM asserts
+Round-2 delta: 4 battle-local EWRAM bytes for sticky type uncertainty; zero IWRAM
+or save/persistent bytes. Total Standard state is 0xE4 original bytes plus the
+8-byte displayed-species snapshot and these 4 bytes (0xF0 total), checked by
+compile-time assertions. ARM asserts
 BattlePokemon=0x58, BattleMove=0x0C and BattleStruct=0x200. No Trainer/Pokemon,
 DPE, ROM table/repoint or randomizer layout changes. Battle allocation/zeroing
 still resets Standard memory/RNG.
 
-Scratch additions: mechanics input 26 bytes, envelope 16 bytes, and a 26-byte
-critical-bound copy plus scalar locals. The replacement path has bounded local
+Scratch: mechanics input grows from 26 to 32 bytes for exact OWN target stats in
+the revealed-threat model; envelope remains 16. Before/after evaluators use two
+32-byte inputs, two 52-byte candidates and one envelope, plus scalar locals;
+the damage evaluator has a 32-byte critical-bound copy. Candidate and observation
+layouts stay 52/472 bytes. The replacement path has bounded local
 observation/result/memory objects (472/192/33 bytes); it does not recurse or add
 dynamic allocation. Exact optimized call-chain stack/cycle cost is not certified
 by syntax checks and remains part of later target build/runtime measurement.

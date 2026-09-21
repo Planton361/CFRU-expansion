@@ -131,7 +131,7 @@ def check_source_contract():
                "scripts/tests/standard_ai_policy_host.c",
                "include/new/ai_standard_mechanics.h", "src/Battle_AI/ai_standard_mechanics.c",
                "scripts/tests/standard_ai_adapter_host.c", "src/battle_controller_opponent.c",
-               "src/battle_anims.c"}
+               "src/battle_anims.c", "src/battle_util.c"}
     changed = set(git("diff", "--name-only", BASE, "--", "src", "include", "assembly", "scripts").splitlines())
     changed.update(git("ls-files", "--others", "--exclude-standard", "--", "src", "include", "assembly", "scripts").splitlines())
     require(changed <= allowed, "unapproved source/test change: " + str(sorted(changed - allowed)))

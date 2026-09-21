@@ -12,3 +12,5 @@ void StandardAI_SetupAIData(void);
 u8 StandardAI_ChooseMoveOrAction(void);
 void StandardAI_TrySwitchOrUseItem(void);
 u8 StandardAI_ChooseReplacement(void);
+void StandardAI_ObservePublicMove(u16 move);
+void StandardAI_ObservePublicAbility(u8 bank, u8 ability);

@@ -147,7 +147,7 @@ static uint16_t FloorReasons(const struct StandardPolicyCandidate* candidate,
 	repeats = ConsecutiveSuccessfulFamily(memory, candidate->effect_family);
 	if (candidate->pure_status && repeats >= 2 && !candidate->positive_marginal_exception)
 		reasons |= STANDARD_FLOOR_HARMFUL_REPEAT;
-	if (!candidate->productive && reasons == 0)
+	if (!candidate->productive && !candidate->unknown_potentially_productive && reasons == 0)
 		reasons |= STANDARD_FLOOR_NO_MARGINAL_VALUE;
 	return reasons;
 }

@@ -6,6 +6,7 @@
 #include "../include/constants/pokedex.h"
 
 #include "../include/new/ai_master.h"
+#include "../include/new/ai_standard.h"
 #include "../include/new/ability_tables.h"
 #include "../include/new/battle_start_turn_start.h"
 #include "../include/new/battle_util.h"
@@ -166,6 +167,7 @@ ability_t* GetAbilityLocationIgnoreNeutralizingGas(u8 bank)
 
 void RecordAbilityBattle(u8 bank, u8 ability)
 {
+	StandardAI_ObservePublicAbility(bank, ability);
 	BATTLE_HISTORY->abilities[bank] = ability;
 }
 
@@ -211,6 +213,8 @@ void ClearBattlerItemEffectHistory(u8 bank)
 void RecordLastUsedMoveByAttacker(u16 move)
 {
 	u32 i;
+	if (gHitMarker & HITMARKER_ATTACKSTRING_PRINTED)
+		StandardAI_ObservePublicMove(move);
 
 	for (i = 0; i < MAX_MON_MOVES; i++)
 	{

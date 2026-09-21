@@ -99,6 +99,8 @@ struct StandardPolicyCandidate
 	int32_t repeat_cost;
 	int32_t uncertainty_cost;
 	uint8_t standard_switch_emergency;
+	/* Legal unmodeled damage is not evidence of futility. No positive utility. */
+	uint8_t unknown_potentially_productive;
 };
 
 struct StandardPolicyObservation

@@ -40,7 +40,7 @@ ADAPTER_FORBIDDEN = (
 )
 
 FORBIDDEN_OPPONENT_FIELDS = (
-    r"gBattleMons\[(?:foe|targetBank|bankDef)\]\.(?:hp|maxHP|species|moves|pp|ability|item|attack|defense|spAttack|spDefense|speed)\b",
+    r"gBattleMons\[(?:foe|targetBank|bankDef)\]\.(?:hp|maxHP|species|type[123]|moves|pp|ability|item|attack|defense|spAttack|spDefense|speed)\b",
 )
 
 EXCLUDED_BATTLE_FLAGS = (
@@ -59,6 +59,7 @@ REVIEWED_HELPERS = {
     "LoadPartyRange", "IsFrontierTrainerId", "IsRaidBattle", "GetTrainerAIProfile",
     "ItemId_GetHoldEffect", "CheckGrounding",
     "StandardMechanicsDamage", "StandardMechanicsAccuracy", "StandardMechanicsQualifySwitches",
+    "StandardMechanicsSpeed", "StandardMechanicsStage",
     "StandardPolicyChoose", "StandardPolicyNormalizeEffectFamily",
 }
 
@@ -144,6 +145,13 @@ def main() -> int:
     presentation = (ROOT / "src/battle_anims.c").read_text(encoding="utf-8")
     if "gNewBS->ai.standardDisplayedSpecies[bank] = species;" not in presentation:
         fail("public display identity producer is missing")
+    history_source = (ROOT / "src/battle_util.c").read_text(encoding="utf-8")
+    if "if (gHitMarker & HITMARKER_ATTACKSTRING_PRINTED)\n\t\tStandardAI_ObservePublicMove(move);" not in history_source:
+        fail("type uncertainty producer must require a printed public move")
+    if "StandardAI_ObservePublicAbility(bank, ability);" not in history_source:
+        fail("public ability type uncertainty producer missing")
+    if "8 + 4 * delta" in code or "missingHpFraction / 4" in code:
+        fail("generic stage or duplicate recovery bonus restored")
     move_path = controller.split("void OpponentHandleChooseMove(void)", 1)[1].split("//You get 1", 1)[0]
     replacement = controller.split("void OpponentHandleChoosePokemon(void)", 1)[1].split("CalcMostSuitableMonToSwitchInto", 1)[0]
     if "StandardAI_ChooseMoveOrAction()" not in move_path or "return;" not in move_path:
@@ -159,7 +167,7 @@ def main() -> int:
     code = re.sub(r"/\*.*?\*/|//[^\n]*", "", adapter, flags=re.S)
     calls = set(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", code))
     c_primitives = {
-        "if", "for", "while", "switch", "sizeof", "MathMin", "MathMax", "Memset", "return",
+        "if", "for", "while", "switch", "sizeof", "MathMin", "MathMax", "Memset", "return", "defined",
     }
     unknown = sorted(
         call for call in calls

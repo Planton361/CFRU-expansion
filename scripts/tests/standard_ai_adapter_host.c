@@ -86,6 +86,7 @@ static void Reset(void)
 		gBattleMons[i].level = 50;
 		gBattleMons[i].hp = gBattleMons[i].maxHP = 100;
 		gBattleMons[i].attack = gBattleMons[i].spAttack = 150;
+		gBattleMons[i].defense = gBattleMons[i].spDefense = 100;
 		gBattleMons[i].type1 = gBattleMons[i].type2 = TYPE_NORMAL;
 		gBattleMons[i].type3 = NUMBER_OF_MON_TYPES;
 		memset(gBattleMons[i].statStages, 6, sizeof(gBattleMons[i].statStages));
@@ -94,6 +95,10 @@ static void Reset(void)
 	testBaseStats[SPECIES_RATTATA].baseHP = 30;
 	testBaseStats[SPECIES_RATTATA].baseDefense = 35;
 	testBaseStats[SPECIES_RATTATA].baseSpDefense = 35;
+	testBaseStats[SPECIES_RATTATA].baseSpeed = 72;
+	testBaseStats[SPECIES_RATTATA].baseAttack = testBaseStats[SPECIES_RATTATA].baseSpAttack = 56;
+	testBaseStats[SPECIES_RATTATA].type1 = testBaseStats[SPECIES_RATTATA].type2 = TYPE_NORMAL;
+	gBattleMons[1].speed = 100;
 	gBattleMons[1].moves[0] = MOVE_STRENGTH;
 	gBattleMons[1].moves[1] = MOVE_SANDATTACK;
 	gBattleMons[1].moves[2] = MOVE_SMOKESCREEN;
@@ -185,8 +190,9 @@ static void Twins(void)
 	struct StandardPolicyObservation a,b;
 	struct StandardPolicyResult ra,rb;
 	struct StandardDamageEnvelope ea,eb;
+	struct StandardPolicyCandidate da,db;
 	unsigned mode,field,k,count=0;
-	for (mode=0;mode<5;++mode) for(field=0;field<7;++field) for(k=1;k<=32;++k)
+	for (mode=0;mode<16;++mode) for(field=0;field<8;++field) for(k=1;k<=32;++k)
 	{
 		u32 sa=12345,sb=12345;
 		Reset();
@@ -194,8 +200,23 @@ static void Twins(void)
 		if(mode==2) memset(gBattleMons[1].pp,0,4);
 		if(mode==3) {gSideStatuses[1]=SIDE_STATUS_SPIKES; gSideTimers[1].srAmount=1; gSideTimers[1].spikesAmount=3;}
 		if(mode==4) gBattleMons[1].attack=1;
+		if(mode==5 || mode==12 || mode==13)
+		{
+			Certify(); gBattleMons[0].hp=100; testBaseStats[SPECIES_RATTATA].baseSpeed=150;
+			gBattleMons[1].speed=125;
+			gBattleMons[1].moves[1]= mode==12 ? MOVE_THUNDERWAVE : MOVE_STRINGSHOT;
+			if(mode==13) newBattle.MagicRoomTimer=0;
+		}
+		if(mode==6) {gBattleMons[1].attack=30; gBattleMons[1].moves[1]=MOVE_SWORDSDANCE;}
+		if(mode==7) {gBattleMons[1].moves[1]=MOVE_POISONPOWDER; gBattleMons[1].moves[2]=MOVE_WILLOWISP;}
+		if(mode==8) {gBattleMons[1].hp=60; gBattleMons[1].moves[1]=MOVE_RECOVER;}
+		if(mode==9) {memset(gBattleMons[1].pp,0,4); gBattleMons[1].pp[0]=10; gBattleMons[1].moves[0]=MOVE_SEISMICTOSS;}
+		if(mode==10) StandardAI_ObservePublicMove(MOVE_SOAK);
+		if(mode==11) {gBattleMons[1].attack=30; gBattleMons[1].moves[1]=MOVE_TAILWHIP;}
+		if(mode==14) {history.abilities[0]=ABILITY_WATERABSORB; gBattleMons[1].moves[0]=MOVE_WATERGUN;}
+		if(mode==15) {history.usedMoves[0][0]=MOVE_WATERGUN; gBattleMons[1].moves[1]=MOVE_AMNESIA;}
 		Build(&a,&ra,&sa);
-		StandardAI_DeriveDamage(1,0,MOVE_STRENGTH,&a.candidates[0],&ea);
+		memset(&da,0,sizeof(da)); StandardAI_DeriveDamage(1,0,MOVE_STRENGTH,&da,&ea);
 		switch(field)
 		{
 		case 0: gBattleMons[0].moves[0]=k; gPlayerParty[0].moves[0]=k; break;
@@ -219,10 +240,17 @@ static void Twins(void)
 			break;
 		case 5: gChosenActionByBank[0]=k; gChosenMovesByBanks[0]=k; battle.moveTarget[0]=k; battle.monToSwitchIntoId[0]=k; break;
 		case 6: gRngValue=k; gRng2Value=k*999; newBattle.ai.randSeed=k; break;
+		case 7:
+			gBattleMons[0].species=k;
+			gBattleMons[0].type1=k%NUMBER_OF_MON_TYPES;
+			gBattleMons[0].type2=(k+4)%NUMBER_OF_MON_TYPES;
+			gBattleMons[0].type3=(k+7)%NUMBER_OF_MON_TYPES;
+			break;
 		}
 		Build(&b,&rb,&sb);
-		StandardAI_DeriveDamage(1,0,MOVE_STRENGTH,&b.candidates[0],&eb);
+		memset(&db,0,sizeof(db)); StandardAI_DeriveDamage(1,0,MOVE_STRENGTH,&db,&eb);
 		assert(memcmp(&a,&b,sizeof(a))==0);
+		assert(memcmp(&da,&db,sizeof(da))==0);
 		assert(memcmp(&ea,&eb,sizeof(ea))==0);
 		assert(memcmp(&ra,&rb,sizeof(ra))==0 && sa==sb);
 		++count;
@@ -237,7 +265,8 @@ static void Twins(void)
 	{u32 seed=3; Build(&b,&rb,&seed);}
 	assert(b.candidates[0].known_no_effect && !b.candidates[0].productive);
 	assert(!a.candidates[0].known_no_effect);
-	Reset(); gBattleMons[0].type1=gBattleMons[0].type2=TYPE_GHOST;
+	Reset(); newBattle.ai.standardDisplayedSpecies[0]=SPECIES_GASTLY;
+	testBaseStats[SPECIES_GASTLY].type1=testBaseStats[SPECIES_GASTLY].type2=TYPE_GHOST;
 	{u32 seed=3; Build(&b,&rb,&seed);}
 	assert(b.candidates[0].known_no_effect && !b.candidates[0].productive);
 	Reset(); gBattleMons[0].hp=1;
@@ -246,6 +275,87 @@ static void Twins(void)
 	{u32 seed=3; Build(&b,&rb,&seed);}
 	assert(memcmp(&a,&b,sizeof(a))==0 && memcmp(&ra,&rb,sizeof(ra))==0);
 	printf("production adapter twins: %u pairs, 0 mismatches; public reveal PASS\n",count);
+}
+
+static void MarginalBehavior(void)
+{
+	struct StandardPolicyObservation o,a;
+	struct StandardPolicyResult r,ra;
+	u32 seed=7;
+	Reset(); Certify(); gBattleMons[0].hp=100;
+	testBaseStats[SPECIES_RATTATA].baseSpeed=150; gBattleMons[1].speed=125;
+	gBattleMons[1].moves[1]=MOVE_STRINGSHOT;
+	Build(&o,&r,&seed);
+	assert(o.candidates[1].productive && o.candidates[1].immediate_future_gain>0);
+	assert(StandardMechanicsSpeed(150,50,6,0)==139 && StandardMechanicsSpeed(150,50,6,1)==222);
+	gBattleMons[1].speed=250; Build(&o,&r,&seed); /* Already definitely faster. */
+	assert(!o.candidates[1].productive && !o.candidates[1].immediate_future_gain);
+	gBattleMons[1].speed=170; Build(&o,&r,&seed); /* Before interval overlaps. */
+	assert(!o.candidates[1].immediate_future_gain);
+	gBattleMons[1].speed=125; newBattle.MagicRoomTimer=0; Build(&o,&r,&seed);
+	assert(!o.candidates[1].immediate_future_gain); /* Unknown speed item. */
+	newBattle.MagicRoomTimer=3; newBattle.TrickRoomTimer=3; Build(&o,&r,&seed);
+	assert(!o.candidates[1].immediate_future_gain); /* Drop cannot help under TR. */
+	newBattle.TrickRoomTimer=0; gBattleMons[1].moves[1]=MOVE_THUNDERWAVE;
+	Build(&o,&r,&seed); assert(o.candidates[1].immediate_future_gain>0);
+	gBattleMons[1].speed=250; Build(&o,&r,&seed); assert(!o.candidates[1].immediate_future_gain);
+	Reset(); gBattleMons[1].attack=30; gBattleMons[1].moves[1]=MOVE_SWORDSDANCE;
+	Build(&o,&r,&seed); assert(o.candidates[1].productive && o.candidates[1].immediate_future_gain>0);
+	gBattleMons[1].attack=150; gBattleMons[0].hp=1; Build(&o,&r,&seed);
+	assert(!o.candidates[1].immediate_future_gain); /* Follow-up HP already saturated. */
+	gBattleMons[1].statStages[STAT_STAGE_ATK-1]=12; Build(&o,&r,&seed);
+	assert(r.diagnostics[1].floor_reasons & STANDARD_FLOOR_CAPPED_STAT_CHANGE);
+	Reset(); gBattleMons[1].moves[1]=MOVE_HARDEN; Build(&o,&r,&seed);
+	assert(!o.candidates[1].immediate_future_gain); /* No public incoming threat. */
+	gBattleMons[1].moves[1]=MOVE_GROWL; Build(&o,&r,&seed);
+	assert(!o.candidates[1].immediate_future_gain);
+	gBattleMons[1].type3=NUMBER_OF_MON_TYPES; history.usedMoves[0][0]=MOVE_STRENGTH;
+	Build(&o,&r,&seed); assert(o.candidates[1].immediate_future_gain>0);
+	gBattleMons[1].moves[1]=MOVE_HARDEN; Build(&o,&r,&seed);
+	assert(o.candidates[1].immediate_future_gain>0);
+	gBattleMons[1].type3=TYPE_GHOST; Build(&o,&r,&seed);
+	assert(!o.candidates[1].immediate_future_gain); /* public threat already ineffective */
+	Reset(); gBattleMons[1].attack=30; gBattleMons[1].moves[1]=MOVE_TAILWHIP;
+	Build(&o,&r,&seed); assert(o.candidates[1].immediate_future_gain>0);
+	Reset(); gBattleMons[1].moves[1]=MOVE_POISONPOWDER; Build(&o,&r,&seed);
+	assert(o.candidates[1].immediate_future_gain==9); /* floor(100/8) * .75 */
+	gBattleMons[1].moves[1]=MOVE_TOXIC; Build(&o,&r,&seed);
+	assert(o.candidates[1].immediate_future_gain==5); /* first 1/16, 90% */
+	gBattleMons[1].moves[1]=MOVE_WILLOWISP; Build(&o,&r,&seed);
+	assert(o.candidates[1].immediate_future_gain==5); /* 1/16, 85%; no guessed threat */
+	gBattleMons[0].status1=STATUS_POISON; Build(&o,&r,&seed);
+	assert(o.candidates[1].redundant_status && !r.diagnostics[1].standard_eligible);
+	Reset(); gBattleMons[1].moves[1]=MOVE_HYPNOSIS; Build(&o,&r,&seed);
+	assert(!o.candidates[1].immediate_future_gain); /* Unmodeled sleep duration/action loss. */
+	Reset(); gBattleMons[1].moves[1]=MOVE_RECOVER;
+	gBattleMons[1].hp=60; Build(&o,&r,&seed);
+	assert(o.candidates[1].own_hp_fraction_lost==-102 && !o.candidates[1].immediate_future_gain);
+	assert(r.diagnostics[1].utility_total==39); /* accepted host: trunc(100*102/256), once */
+	gBattleMons[1].hp=10; Build(&o,&r,&seed);
+	assert(o.candidates[1].own_hp_fraction_lost==-128 && r.diagnostics[1].utility_total==50);
+	gBattleMons[1].hp=100; Build(&o,&r,&seed);
+	assert(!o.candidates[1].productive && !r.diagnostics[1].standard_eligible);
+	Reset(); memset(gBattleMons[1].pp,0,4); gBattleMons[1].pp[0]=10;
+	gBattleMons[1].moves[0]=MOVE_SEISMICTOSS; Build(&o,&r,&seed);
+	assert(o.candidates[0].unknown_potentially_productive && r.diagnostics[0].standard_eligible);
+	assert(!o.candidates[0].productive && !o.candidates[0].robust_safe_ko);
+	assert(!o.candidates[0].expected_damage && !o.candidates[0].opponent_hp_fraction_lost);
+	assert(!o.candidates[4].standard_switch_emergency && r.selected_id==0);
+	assert(!r.policy_rng_draws); /* singleton unknown attack must not draw */
+	newBattle.ai.standardDisplayedSpecies[0]=SPECIES_GASTLY;
+	testBaseStats[SPECIES_GASTLY].type1=testBaseStats[SPECIES_GASTLY].type2=TYPE_GHOST;
+	gBattleMons[1].pp[1]=10; /* Keep a productive alternative; no all-futile fallback. */
+	Build(&o,&r,&seed);
+	assert(o.candidates[0].known_no_effect && !o.candidates[0].unknown_potentially_productive);
+	assert(r.diagnostics[0].floor_reasons & STANDARD_FLOOR_KNOWN_NO_EFFECT);
+	Reset(); Build(&a,&ra,&seed);
+	gBattleMons[0].type1=gBattleMons[0].type2=gBattleMons[0].type3=TYPE_GHOST;
+	seed=7; Build(&o,&r,&seed); assert(memcmp(&a,&o,sizeof(o))==0);
+	StandardAI_ObservePublicMove(MOVE_SOAK); Build(&o,&r,&seed);
+	assert(o.candidates[0].unknown_potentially_productive && !o.candidates[0].expected_damage);
+	memset(&history,0,sizeof(history)); Build(&o,&r,&seed);
+	assert(o.candidates[0].unknown_potentially_productive); /* sticky across history eviction */
+	puts("adapter marginals: Speed flip/no-benefit/uncertain/TR; setup useful/useless/capped; residual status; recovery HP-only parity; unknown damage; public types PASS");
 }
 
 static void EnvelopeOracle(void)
@@ -323,6 +433,6 @@ static void HazardsAndReplacement(void)
 
 int main(void)
 {
-	Behavior(); Twins(); EnvelopeOracle(); Dispatch(); HazardsAndReplacement();
+	Behavior(); Twins(); EnvelopeOracle(); Dispatch(); HazardsAndReplacement(); MarginalBehavior();
 	return 0;
 }

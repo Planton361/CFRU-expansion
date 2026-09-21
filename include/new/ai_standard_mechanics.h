@@ -11,6 +11,8 @@ struct StandardMechanicsInput
 	uint8_t effectiveness[3]; /* CFRU factors /10; duplicates already removed */
 	uint8_t supported_damage, known_immunity, certified_modifiers;
 	uint8_t can_act_safely, own_burn, shedinja;
+	/* Nonzero ONLY for an own-trainer target in the public threat model. */
+	uint16_t known_defense, known_max_hp, known_hp;
 };
 
 struct StandardDamageEnvelope
@@ -24,4 +26,7 @@ struct StandardDamageEnvelope
 void StandardMechanicsDamage(const struct StandardMechanicsInput* input,
 	struct StandardPolicyCandidate* candidate, struct StandardDamageEnvelope* envelope);
 void StandardMechanicsAccuracy(struct StandardPolicyCandidate* candidate);
+/* Public stat interval, all legal IV/EV/nature values. */
+uint32_t StandardMechanicsSpeed(uint16_t base, uint8_t level, uint8_t stage, uint8_t high);
+uint32_t StandardMechanicsStage(uint32_t value, uint8_t stage);
 void StandardMechanicsQualifySwitches(struct StandardPolicyObservation* observation);

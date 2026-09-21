@@ -3,18 +3,25 @@
 static uint32_t Min(uint32_t a, uint32_t b) { return a < b ? a : b; }
 static uint32_t Max(uint32_t a, uint32_t b) { return a > b ? a : b; }
 
-static uint32_t Stage(uint32_t value, uint8_t stage)
+uint32_t StandardMechanicsStage(uint32_t value, uint8_t stage)
 {
 	if (stage > 12) stage = 12;
 	return Max(1, stage >= 6 ? value * (stage - 4) / 2 : value * 2 / (8 - stage));
 }
 
+uint32_t StandardMechanicsSpeed(uint16_t base, uint8_t level, uint8_t stage, uint8_t high)
+{
+	uint32_t value = ((2 * base + (high ? 94 : 0)) * level / 100 + 5);
+	return StandardMechanicsStage(value * (high ? 110 : 90) / 100, stage);
+}
+
 /* build_pokemon.c CALC_STAT: IV 0..31, EV/4 0..63, nature 90..110%. */
 static uint32_t Defense(const struct StandardMechanicsInput* s, uint8_t high)
 {
+	if (s->known_defense) return StandardMechanicsStage(s->known_defense, s->defense_stage);
 	uint32_t value = ((2 * s->base_defense + (high ? 94 : 0)) * s->target_level / 100 + 5);
 	value = value * (high ? 110 : 90) / 100;
-	return Stage(value, s->defense_stage);
+	return StandardMechanicsStage(value, s->defense_stage);
 }
 
 /* damage_calc.c CalculateBaseDamage, neutral ordinary single-hit subset.
@@ -22,7 +29,7 @@ static uint32_t Defense(const struct StandardMechanicsInput* s, uint8_t high)
 static uint32_t Damage(const struct StandardMechanicsInput* s, uint32_t defense, uint8_t roll)
 {
 	uint64_t d = ((2 * s->level / 5 + 2) * (uint64_t)s->power
-		* Stage(s->attack, s->attack_stage) / Max(1, defense)) / 50 + 2;
+		* StandardMechanicsStage(s->attack, s->attack_stage) / Max(1, defense)) / 50 + 2;
 	unsigned i;
 	if (s->own_burn) d /= 2;
 	if (s->stab) d = d * 15 / 10;
@@ -41,6 +48,7 @@ void StandardMechanicsDamage(const struct StandardMechanicsInput* s,
 	for (i = 0; i < sizeof(*e); ++i) ((uint8_t*)e)[i] = 0;
 	c->expected_damage = c->opponent_hp_fraction_lost = c->net_faints = c->robust_safe_ko = 0;
 	c->survival_to_act = s->can_act_safely;
+	c->productive = c->unknown_potentially_productive = 0;
 	if (s->known_immunity)
 	{
 		c->known_no_effect = 1;
@@ -51,6 +59,7 @@ void StandardMechanicsDamage(const struct StandardMechanicsInput* s,
 	{
 		e->uncertain = 1;
 		e->maximum = 65535;
+		c->unknown_potentially_productive = 1;
 		return; /* Unsupported effects receive no invented positive value. */
 	}
 	e->max_hp_minimum = s->shedinja ? 1 : 2 * s->base_hp * s->target_level / 100 + s->target_level + 10;
@@ -65,6 +74,11 @@ void StandardMechanicsDamage(const struct StandardMechanicsInput* s,
 	{
 		e->hp_minimum = 1;
 		e->hp_maximum = e->max_hp_maximum;
+	}
+	if (s->known_max_hp)
+	{
+		e->max_hp_minimum = e->max_hp_maximum = s->known_max_hp;
+		e->hp_minimum = e->hp_maximum = s->known_hp;
 	}
 	dmin = Damage(s, Defense(s, 1), 85);
 	/* Critical damage ignores unfavorable attacker / favorable defender stages. */
@@ -123,7 +137,8 @@ void StandardMechanicsQualifySwitches(struct StandardPolicyObservation* o)
 	for (i = 0; i < o->count; ++i)
 	{
 		const struct StandardPolicyCandidate* c = &o->candidates[i];
-		if (c->kind == STANDARD_POLICY_MOVE && c->legal && c->productive
+		if (c->kind == STANDARD_POLICY_MOVE && c->legal
+			&& (c->productive || c->unknown_potentially_productive)
 			&& !c->known_no_effect && !c->redundant_status)
 			productive_stay = 1;
 	}
