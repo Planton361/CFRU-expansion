@@ -777,6 +777,20 @@ static void IronmonProductionResponseAndDispatch(void)
 	puts("Ironmon production response weights 100%/75%+25% and profile isolation PASS");
 }
 
+static void StandardForcedReplacementSelection(void)
+{
+	Reset();
+	profile = TRAINER_AI_PROFILE_STANDARD;
+	gEnemyParty[1].level = 50;
+	gEnemyParty[1].defense = 100;
+	gEnemyParty[1].spDefense = 100;
+	gEnemyParty[1].speed = 100;
+	gBattleMons[1].hp = 0;
+
+	assert(StandardAI_ChooseReplacement() == 1);
+	puts("Standard production forced replacement selects valid second mon PASS");
+}
+
 static void IronmonForcedReplacementTiming(void)
 {
 	struct IronmonPolicyObservation o;
@@ -878,6 +892,115 @@ static void IronmonProductionTurnOrderAndFaints(void)
 	assert(b->net_faints == 1 && b->opponent_hp_fraction_lost > 0
 		&& b->own_hp_fraction_lost == c->floor.own_hp_fraction_lost);
 	puts("Ironmon production order/faint sequencing A/B/C PASS");
+}
+
+static void IronmonWitnessDamageEnvelope(u8 bank, u8 foe, u16 move,
+	struct StandardPolicyCandidate* candidate, struct StandardDamageEnvelope* report)
+{
+	struct StandardMechanicsInput input;
+
+	StandardAI_ProjectDamage(bank, foe, move, candidate, &input);
+	input.certified_modifiers = TRUE;
+	input.can_act_safely = gBattleMons[bank].hp != 0
+		&& !(gBattleMons[bank].status1 & (STATUS_SLEEP | STATUS_FREEZE | STATUS_PARALYSIS));
+	StandardMechanicsDamage(&input, candidate, report);
+}
+
+static void IronmonTackleWaterGunWitness(void)
+{
+	struct StandardPolicyCandidate selected;
+	struct StandardPolicyCandidate tackleFloor, waterFloor;
+	struct StandardDamageEnvelope tackleDamage, waterDamage;
+	struct IronmonPolicyCandidate* tackle;
+	struct IronmonPolicyCandidate* water;
+	struct IronmonPolicyDiagnostic* tackleDiagnostic;
+	struct IronmonPolicyDiagnostic* waterDiagnostic;
+	u8 choice, tackleIndex, waterIndex;
+
+	Reset();
+	profile = TRAINER_AI_PROFILE_IRONMON_SMART;
+	IronmonCertify();
+
+	/* Exact deterministic host fixture, not a claim about the unrecorded
+	 * private runtime levels/stats. Both moves are source-legal for Squirtle. */
+	testBaseStats[SPECIES_CHARMANDER].baseHP = 39;
+	testBaseStats[SPECIES_CHARMANDER].baseAttack = 52;
+	testBaseStats[SPECIES_CHARMANDER].baseDefense = 43;
+	testBaseStats[SPECIES_CHARMANDER].baseSpAttack = 60;
+	testBaseStats[SPECIES_CHARMANDER].baseSpDefense = 50;
+	testBaseStats[SPECIES_CHARMANDER].baseSpeed = 65;
+	testBaseStats[SPECIES_CHARMANDER].type1 = TYPE_FIRE;
+	testBaseStats[SPECIES_CHARMANDER].type2 = TYPE_MYSTERY;
+	testBaseStats[SPECIES_SQUIRTLE].baseHP = 44;
+	testBaseStats[SPECIES_SQUIRTLE].baseAttack = 48;
+	testBaseStats[SPECIES_SQUIRTLE].baseDefense = 65;
+	testBaseStats[SPECIES_SQUIRTLE].baseSpAttack = 50;
+	testBaseStats[SPECIES_SQUIRTLE].baseSpDefense = 64;
+	testBaseStats[SPECIES_SQUIRTLE].baseSpeed = 43;
+	testBaseStats[SPECIES_SQUIRTLE].type1 = TYPE_WATER;
+	testBaseStats[SPECIES_SQUIRTLE].type2 = TYPE_MYSTERY;
+
+	gBattleMons[0].species = SPECIES_CHARMANDER;
+	gBattleMons[0].level = 5;
+	gBattleMons[0].hp = gBattleMons[0].maxHP = 20;
+	gBattleMons[0].defense = 10;
+	gBattleMons[0].spDefense = 11;
+	gBattleMons[0].type1 = TYPE_FIRE;
+	gBattleMons[0].type2 = TYPE_MYSTERY;
+	gNewBS->ai.standardDisplayedSpecies[0] = SPECIES_CHARMANDER;
+
+	gBattleMons[1].species = SPECIES_SQUIRTLE;
+	gBattleMons[1].level = 5;
+	gBattleMons[1].hp = gBattleMons[1].maxHP = 20;
+	gBattleMons[1].attack = 11;
+	gBattleMons[1].spAttack = 11;
+	gBattleMons[1].type1 = TYPE_WATER;
+	gBattleMons[1].type2 = TYPE_MYSTERY;
+	gBattleMons[1].moves[0] = MOVE_TACKLE;
+	gBattleMons[1].moves[1] = MOVE_WATERGUN;
+	gBattleMons[1].moves[2] = MOVE_NONE;
+	gBattleMons[1].moves[3] = MOVE_NONE;
+	gBattleMons[1].pp[0] = 10;
+	gBattleMons[1].pp[1] = 10;
+	gBattleMons[1].pp[2] = 0;
+	gBattleMons[1].pp[3] = 0;
+
+	choice = IronmonAI_Choose(FALSE, &selected);
+	tackle = FindIronmonMove(&sIronmonObservation, MOVE_TACKLE);
+	water = FindIronmonMove(&sIronmonObservation, MOVE_WATERGUN);
+	assert(tackle != NULL && water != NULL);
+	tackleIndex = tackle - sIronmonObservation.candidates;
+	waterIndex = water - sIronmonObservation.candidates;
+	tackleDiagnostic = &sIronmonResult.diagnostics[tackleIndex];
+	waterDiagnostic = &sIronmonResult.diagnostics[waterIndex];
+
+	tackleFloor = tackle->floor;
+	waterFloor = water->floor;
+	IronmonWitnessDamageEnvelope(1, 0, MOVE_TACKLE, &tackleFloor, &tackleDamage);
+	IronmonWitnessDamageEnvelope(1, 0, MOVE_WATERGUN, &waterFloor, &waterDamage);
+
+	assert(tackle->floor.legal && water->floor.legal);
+	assert(water->floor.expected_damage > tackle->floor.expected_damage);
+	assert(water->floor.opponent_hp_fraction_lost
+		> tackle->floor.opponent_hp_fraction_lost);
+	assert(waterDiagnostic->ironmon_eligible && waterDiagnostic->near_best);
+	assert(!tackleDiagnostic->near_best);
+	assert(selected.kind == STANDARD_POLICY_MOVE);
+	assert(gBattleMons[1].moves[choice] == MOVE_WATERGUN);
+
+	printf("Tackle/Water Gun witness: "
+		"Tackle power=40 damage=%u range=%u..%u fraction=%d utility=%d eligible=%u near=%u; "
+		"Water Gun power=40 damage=%u range=%u..%u fraction=%d utility=%d eligible=%u near=%u; "
+		"best=%d pool=%u draws=%u rng=%08X->%08X selected=Water Gun PASS\n",
+		tackleFloor.expected_damage, tackleDamage.minimum, tackleDamage.maximum,
+		tackleFloor.opponent_hp_fraction_lost, tackleDiagnostic->utility_total,
+		tackleDiagnostic->ironmon_eligible, tackleDiagnostic->near_best,
+		waterFloor.expected_damage, waterDamage.minimum, waterDamage.maximum,
+		waterFloor.opponent_hp_fraction_lost, waterDiagnostic->utility_total,
+		waterDiagnostic->ironmon_eligible, waterDiagnostic->near_best,
+		sIronmonResult.best_score, sIronmonResult.near_best_count,
+		sIronmonResult.selection_draws, sIronmonResult.admission_rng_pre,
+		sIronmonResult.rng_post);
 }
 
 static void IronmonProductionRecoveryRaces(void)
@@ -1139,7 +1262,9 @@ int main(void)
 	StandardProductionBadgeRobustKO();
 	StandardProductionBadgeDefenseOracle();
 	IronmonProductionBadgeSetupBoundary();
-	IronmonForcedReplacementTiming(); IronmonProductionTurnOrderAndFaints();
+	StandardForcedReplacementSelection(); IronmonForcedReplacementTiming();
+	IronmonProductionTurnOrderAndFaints();
+	IronmonTackleWaterGunWitness();
 	IronmonProductionRecoveryRaces();
 	IronmonProductionVoluntaryHazardResponse();
 	IronmonProductionOrderCertificates();

@@ -11,6 +11,7 @@
 #include "../include/new/ai_standard.h"
 #include "../include/new/ai_ironmon.h"
 #include "../include/new/ai_switching.h"
+#include "../include/new/ai_opponent_replacement.h"
 #include "../include/new/battle_controller_opponent.h"
 #include "../include/new/battle_start_turn_start.h"
 #include "../include/new/battle_util.h"
@@ -30,6 +31,7 @@ battle_controller_opponent.c
 
 //This file's functions:
 static void TryRechoosePartnerMove(u16 chosenMove);
+static bool8 OpponentProfileReplacementIndexIsUsable(u8 chosenMonId);
 static u8 LoadCorrectTrainerPicId(void);
 
 void OpponentHandleChooseMove(void)
@@ -337,20 +339,61 @@ void OpponentHandleTrainerSlide(void)
 	gBattlerControllerFuncs[gActiveBattler] = CompleteOnBankSpriteCallbackDummy2;
 }
 
+static bool8 OpponentProfileReplacementIndexIsUsable(u8 chosenMonId)
+{
+	u8 firstId, lastId;
+	u8 battlerIn1, battlerIn2;
+	struct Pokemon* party;
+
+	if (SIDE(gActiveBattler) != B_SIDE_OPPONENT)
+		return FALSE;
+
+	party = LoadPartyRange(gActiveBattler, &firstId, &lastId);
+	if (party != gEnemyParty)
+		return FALSE;
+
+	if (IS_DOUBLE_BATTLE)
+	{
+		battlerIn1 = gActiveBattler;
+		if (gAbsentBattlerFlags & gBitTable[PARTNER(gActiveBattler)])
+			battlerIn2 = gActiveBattler;
+		else
+			battlerIn2 = PARTNER(battlerIn1);
+	}
+	else
+	{
+		battlerIn1 = gActiveBattler;
+		battlerIn2 = gActiveBattler;
+	}
+
+	return OpponentReplacementIndexIsUsable(party, gEnemyParty, firstId, lastId, chosenMonId,
+		gBattlerPartyIndexes[battlerIn1], gBattlerPartyIndexes[battlerIn2]);
+}
+
 void OpponentHandleChoosePokemon(void)
 {
 	u8 chosenMonId;
+	bool8 profileReplacement = FALSE;
 
 	if (IronmonAI_IsSupportedBattle())
 	{
 		chosenMonId = gBattleStruct->switchoutIndex[SIDE(gActiveBattler)];
 		if (chosenMonId >= PARTY_SIZE)
 			chosenMonId = IronmonAI_ChooseReplacement();
+
+		if (OpponentProfileReplacementIndexIsUsable(chosenMonId))
+		{
+			gBattleStruct->switchoutIndex[SIDE(gActiveBattler)] = PARTY_SIZE;
+			gBattleStruct->monToSwitchIntoId[gActiveBattler] = chosenMonId;
+			EmitChosenMonReturnValue(1, chosenMonId, 0);
+			OpponentBufferExecCompleted();
+			return;
+		}
+
+		/* A bad preselected target or policy result uses the established CFRU
+		 * forced-replacement path below. Never emit its sentinel or bad index. */
+		profileReplacement = TRUE;
 		gBattleStruct->switchoutIndex[SIDE(gActiveBattler)] = PARTY_SIZE;
-		gBattleStruct->monToSwitchIntoId[gActiveBattler] = chosenMonId;
-		EmitChosenMonReturnValue(1, chosenMonId, 0);
-		OpponentBufferExecCompleted();
-		return;
 	}
 
 	if (StandardAI_IsSupportedBattle())
@@ -358,11 +401,20 @@ void OpponentHandleChoosePokemon(void)
 		chosenMonId = gBattleStruct->switchoutIndex[SIDE(gActiveBattler)];
 		if (chosenMonId >= PARTY_SIZE)
 			chosenMonId = StandardAI_ChooseReplacement();
+
+		if (OpponentProfileReplacementIndexIsUsable(chosenMonId))
+		{
+			gBattleStruct->switchoutIndex[SIDE(gActiveBattler)] = PARTY_SIZE;
+			gBattleStruct->monToSwitchIntoId[gActiveBattler] = chosenMonId;
+			EmitChosenMonReturnValue(1, chosenMonId, 0);
+			OpponentBufferExecCompleted();
+			return;
+		}
+
+		/* A bad preselected target or policy result uses the established CFRU
+		 * forced-replacement path below. Never emit its sentinel or bad index. */
+		profileReplacement = TRUE;
 		gBattleStruct->switchoutIndex[SIDE(gActiveBattler)] = PARTY_SIZE;
-		gBattleStruct->monToSwitchIntoId[gActiveBattler] = chosenMonId;
-		EmitChosenMonReturnValue(1, chosenMonId, 0);
-		OpponentBufferExecCompleted();
-		return;
 	}
 
 	if (gBattleStruct->switchoutIndex[SIDE(gActiveBattler)] == PARTY_SIZE)
@@ -384,36 +436,66 @@ void OpponentHandleChoosePokemon(void)
 			battlerIn2 = gActiveBattler;
 		}
 
-		if (gNewBS->inPivotingMove //TODO: Add logic for Baton Pass
-		&& gNewBS->ai.pivotTo[gActiveBattler] != PARTY_SIZE //Set at some point before
-		&& gNewBS->ai.pivotTo[gActiveBattler] != battlerIn1 //Hasn't been switched in, in the mean time
-		&& gNewBS->ai.pivotTo[gActiveBattler] != battlerIn2
-		&& party[gNewBS->ai.pivotTo[gActiveBattler]].hp != 0) //Still alive
+		if (profileReplacement)
 		{
-			chosenMonId = gNewBS->ai.pivotTo[gActiveBattler];
+			if (gNewBS->inPivotingMove //TODO: Add logic for Baton Pass
+			&& gNewBS->ai.pivotTo[gActiveBattler] != PARTY_SIZE //Set at some point before
+			&& gNewBS->ai.pivotTo[gActiveBattler] != battlerIn1 //Hasn't been switched in, in the mean time
+			&& gNewBS->ai.pivotTo[gActiveBattler] != battlerIn2
+			&& OpponentReplacementIndexIsUsable(party, gEnemyParty, firstId, lastId,
+				gNewBS->ai.pivotTo[gActiveBattler], gBattlerPartyIndexes[battlerIn1],
+				gBattlerPartyIndexes[battlerIn2]))
+			{
+				chosenMonId = gNewBS->ai.pivotTo[gActiveBattler];
+			}
+			else
+			{
+				if (!OpponentReplacementIndexIsUsable(party, gEnemyParty, firstId, lastId,
+					gNewBS->ai.bestMonIdToSwitchInto[gActiveBattler][0],
+					gBattlerPartyIndexes[battlerIn1], gBattlerPartyIndexes[battlerIn2]))
+					CalcMostSuitableMonToSwitchInto();
+
+				chosenMonId = GetMostSuitableMonToSwitchInto();
+			}
+
+			if (!OpponentReplacementIndexIsUsable(party, gEnemyParty, firstId, lastId, chosenMonId,
+				gBattlerPartyIndexes[battlerIn1], gBattlerPartyIndexes[battlerIn2]))
+				chosenMonId = OpponentReplacementFindFirstUsable(party, gEnemyParty, firstId, lastId,
+					gBattlerPartyIndexes[battlerIn1], gBattlerPartyIndexes[battlerIn2]);
 		}
 		else
 		{
-			if (gNewBS->ai.bestMonIdToSwitchInto[gActiveBattler][0] == PARTY_SIZE
-			|| GetMonData(&party[gNewBS->ai.bestMonIdToSwitchInto[gActiveBattler][0]], MON_DATA_HP, NULL) == 0 //Best mon is dead
-			|| gNewBS->ai.bestMonIdToSwitchInto[gActiveBattler][0] == gBattlerPartyIndexes[battlerIn1]
-			|| gNewBS->ai.bestMonIdToSwitchInto[gActiveBattler][0] == gBattlerPartyIndexes[battlerIn2]) //The best mon is already in
-				CalcMostSuitableMonToSwitchInto();
-
-			chosenMonId = GetMostSuitableMonToSwitchInto();
-		}
-
-		if (chosenMonId >= PARTY_SIZE
-		|| chosenMonId < firstId || chosenMonId >= lastId) //Trying to pick from partner's team
-		{
-			for (chosenMonId = firstId; chosenMonId < lastId; ++chosenMonId)
+			if (gNewBS->inPivotingMove //TODO: Add logic about switching if actually Baton Pass
+			&& gNewBS->ai.pivotTo[gActiveBattler] != PARTY_SIZE //Set at some point before
+			&& gNewBS->ai.pivotTo[gActiveBattler] != battlerIn1 //Hasn't been switched in, in the mean time
+			&& gNewBS->ai.pivotTo[gActiveBattler] != battlerIn2
+			&& party[gNewBS->ai.pivotTo[gActiveBattler]].hp != 0) //Still alive
 			{
-				if (party[chosenMonId].species != SPECIES_NONE
-				&& party[chosenMonId].hp != 0
-				&& !GetMonData(&party[chosenMonId], MON_DATA_IS_EGG, 0)
-				&& chosenMonId != gBattlerPartyIndexes[battlerIn1]
-				&& chosenMonId != gBattlerPartyIndexes[battlerIn2])
-					break;
+				chosenMonId = gNewBS->ai.pivotTo[gActiveBattler];
+			}
+			else
+			{
+				if (gNewBS->ai.bestMonIdToSwitchInto[gActiveBattler][0] == PARTY_SIZE
+				|| GetMonData(&party[gNewBS->ai.bestMonIdToSwitchInto[gActiveBattler][0]], MON_DATA_HP, NULL) == 0 //Best mon is dead
+				|| gNewBS->ai.bestMonIdToSwitchInto[gActiveBattler][0] == gBattlerPartyIndexes[battlerIn1]
+				|| gNewBS->ai.bestMonIdToSwitchInto[gActiveBattler][0] == gBattlerPartyIndexes[battlerIn2]) //The best mon is already in
+					CalcMostSuitableMonToSwitchInto();
+
+				chosenMonId = GetMostSuitableMonToSwitchInto();
+			}
+
+			if (chosenMonId >= PARTY_SIZE
+			|| chosenMonId < firstId || chosenMonId >= lastId) //Trying to pick from partner's team
+			{
+				for (chosenMonId = firstId; chosenMonId < lastId; ++chosenMonId)
+				{
+					if (party[chosenMonId].species != SPECIES_NONE
+					&& party[chosenMonId].hp != 0
+					&& !GetMonData(&party[chosenMonId], MON_DATA_IS_EGG, 0)
+					&& chosenMonId != gBattlerPartyIndexes[battlerIn1]
+					&& chosenMonId != gBattlerPartyIndexes[battlerIn2])
+						break;
+				}
 			}
 		}
 	}
@@ -423,12 +505,22 @@ void OpponentHandleChoosePokemon(void)
 		gBattleStruct->switchoutIndex[SIDE(gActiveBattler)] = PARTY_SIZE;
 	}
 
+	/* The engine should not ask for a replacement after the opponent's final
+	 * mon faints. Fail closed if a profile path is nevertheless entered then. */
+	if (profileReplacement && !OpponentProfileReplacementIndexIsUsable(chosenMonId))
+	{
+		gBattleStruct->monToSwitchIntoId[gActiveBattler] = PARTY_SIZE;
+		OpponentBufferExecCompleted();
+		return;
+	}
+
 	RemoveBestMonToSwitchInto(gActiveBattler);
 	gBattleStruct->monToSwitchIntoId[gActiveBattler] = chosenMonId;
 	EmitChosenMonReturnValue(1, chosenMonId, 0);
 	OpponentBufferExecCompleted();
 	TryRechoosePartnerMove(MOVE_NONE);
 }
+
 
 static u8 LoadCorrectTrainerPicId(void)
 {
