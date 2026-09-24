@@ -34,7 +34,7 @@ The deterministic production-adapter host fixture in `scripts/tests/standard_ai_
 | Tackle | 3 | 3–18 | 38 | 14 | yes | no |
 | Water Gun | 11 | 10–42 | 140 | 54 | yes | yes |
 
-Water Gun is the sole near-best candidate and is selected. Pool size is 1, selection draws are 0, and policy RNG is unchanged (`1A0B5156 -> 1A0B5156`). This fixture does not supply the incident's exact private runtime levels, stats, or configuration, so it is a source/host witness rather than a reproduction of that runtime observation. The accepted policy is not violated by this witness; no move-scoring policy change was made.
+Water Gun is the sole near-best candidate and is selected. Pool size is 1, selection draws are 0, and policy RNG is unchanged (`1A0B5156 -> 1A0B5156`). This fixture does not supply the incident's exact private runtime levels, stats, or configuration, so it is a source/host witness rather than a reproduction of that runtime observation. The disposition for the reported Tackle choice is RUNTIME_STATE_INSUFFICIENT_FOR_POLICY_VERDICT; preserve the observation for a targeted user rerun. The witness itself selects Water Gun under the accepted policy, so no move-scoring policy change was made.
 
 ## ARM, object, ABI, save, and layout boundary
 

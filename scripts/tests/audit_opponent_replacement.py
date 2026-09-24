@@ -44,6 +44,23 @@ def main() -> int:
             fail(f"{name} chosen index is emitted without the shared validity gate")
         if "profileReplacement = TRUE;" not in block:
             fail(f"{name} invalid selection does not fall through to CFRU replacement")
+        if "chosenMonId = gBattleStruct->switchoutIndex[SIDE(gActiveBattler)];" not in block:
+            fail(f"{name} no longer honors a valid preselected voluntary target")
+        if "gBattleStruct->switchoutIndex[SIDE(gActiveBattler)] = PARTY_SIZE;" not in block:
+            fail(f"{name} replacement controller bookkeeping changed")
+        if "gBattleStruct->monToSwitchIntoId[gActiveBattler] = chosenMonId;" not in block:
+            fail(f"{name} chosen-mon bookkeeping changed")
+
+    legacy_tokens = (
+        "gNewBS->inPivotingMove",
+        "CalcMostSuitableMonToSwitchInto();",
+        "chosenMonId = GetMostSuitableMonToSwitchInto();",
+        "MON_DATA_HP",
+        "MON_DATA_IS_EGG",
+    )
+    for token in legacy_tokens:
+        if token not in chooser:
+            fail(f"non-profile CFRU replacement path lost legacy behavior: {token}")
 
     if "GetMostSuitableMonToSwitchInto()" not in chooser:
         fail("profile failure no longer reaches the established CFRU selection path")
