@@ -34,9 +34,14 @@ def check_arm_objects(compiler):
         dependencies = symbols(["-u", helper])
         assert dependencies <= linker_symbols, sorted(dependencies - linker_symbols)
         objects = []
-        for name in ("ai_standard_policy", "ai_standard_mechanics", "ai_standard",
-                     "ai_ironmon_policy", "ai_ironmon"):
-            source = f"src/Battle_AI/{name}.c"
+        for source in ("src/Battle_AI/ai_standard_policy.c",
+                       "src/Battle_AI/ai_standard_mechanics.c",
+                       "src/Battle_AI/ai_standard.c",
+                       "src/Battle_AI/ai_ironmon_policy.c",
+                       "src/Battle_AI/ai_ironmon.c",
+                       "src/battle_strings.c",
+                       "src/general_bs_commands.c", "src/switching.c"):
+            name = Path(source).stem
             obj = str(Path(directory) / (name + ".o"))
             print("ARM object command:", "arm-none-eabi-gcc", *flags, "-c", source, "-o", f"<temporary>/{name}.o", flush=True)
             run([compiler, *flags, "-fstack-usage", "-c", source, "-o", obj])
@@ -60,7 +65,7 @@ def check_arm_objects(compiler):
         run([prefix + "ld", "-r", *objects, helper, "-o", combined])
         remaining = symbols(["-u", combined])
         assert {s for s in remaining if s.startswith("__")} <= linker_symbols
-        print("ARM direct-ld runtime closure PASS; remaining engine/BPRE symbols:", ", ".join(sorted(remaining)))
+        print("ARM direct-ld runtime closure PASS; remaining engine/BPRE symbol count:", len(remaining))
     print("ARM unsupported compiler runtime helpers: NONE; temporary objects deleted")
 
 
@@ -68,6 +73,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--arm-cc", help="already-installed approved devkitARM compiler")
     args = parser.parse_args()
+    run(["python3", "scripts/tests/audit_ai_damage_overrides.py"])
     run(["python3", "scripts/tests/audit_standard_ai.py"])
     with tempfile.TemporaryDirectory(prefix="cfru-standard-ai-") as directory:
         binary = Path(directory) / "standard_ai_policy_host"
@@ -113,6 +119,7 @@ def main() -> int:
             ["git", "diff", "--name-only", base, "--", "*.c"], cwd=ROOT, text=True).splitlines())
         sources.update(subprocess.check_output(
             ["git", "ls-files", "--others", "--exclude-standard", "--", "*.c"], cwd=ROOT, text=True).splitlines())
+        sources = {source for source in sources if source.startswith("src/")}
         revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
         dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT))
         run([args.arm_cc, "--version"])
