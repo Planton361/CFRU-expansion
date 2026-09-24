@@ -37,6 +37,17 @@ extern const u8 gStatusConditionString_TauntProblem[];
 extern u8* gMaleFrontierNamesTable[];
 extern u8* gFemaleFrontierNamesTable[];
 
+/* The send-out text is a public reveal before the next Trainer AI decision.
+ * Snapshot the same Illusion-aware species shown by that text on the first
+ * send-out and every replacement. The sprite-coordinate hook is an additional
+ * producer, but its animation timing is not the AI lifecycle contract. */
+static void StandardAI_RecordPublicSendoutSpecies(u8 bank)
+{
+	if (gNewBS != NULL && bank < MAX_BATTLERS_COUNT)
+		gNewBS->ai.standardDisplayedSpecies[bank] =
+			GetMonData(GetIllusionPartyData(bank), MON_DATA_SPECIES, NULL);
+}
+
 
 const u8 * const gStatusConditionStringsTable[11][2] =
 {
@@ -206,6 +217,7 @@ void BufferStringBattle(u16 stringID)
 		break;
 
 	case STRINGID_INTROSENDOUT: // poke first send-out
+		StandardAI_RecordPublicSendoutSpecies(gActiveBattler);
 		if (SIDE(gActiveBattler) == B_SIDE_PLAYER)
 		{
 			if (gBattleTypeFlags & BATTLE_TYPE_DOUBLE)
@@ -290,6 +302,7 @@ void BufferStringBattle(u16 stringID)
 		break;
 
 	case STRINGID_SWITCHINMON: // switch-in msg
+		StandardAI_RecordPublicSendoutSpecies(gBattleScripting.bank);
 		if (SIDE(gBattleScripting.bank) == B_SIDE_PLAYER)
 		{
 			if (gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER && GetBattlerPosition(gBattleScripting.bank) == B_POSITION_PLAYER_RIGHT)

@@ -8,6 +8,7 @@
 #include "../include/new/ability_battle_scripts.h"
 #include "../include/new/ability_tables.h"
 #include "../include/new/ai_master.h"
+#include "../include/new/ai_standard.h"
 #include "../include/new/ai_util.h"
 #include "../include/new/battle_indicators.h"
 #include "../include/new/battle_script_util.h"
@@ -352,6 +353,7 @@ void atk4D_switchindataupdate(void)
 
 	gActiveBattler = GetBankForBattleScript(gBattlescriptCurrInstr[1]);
 	oldData = gBattleMons[gActiveBattler];
+	StandardAI_FinalizePendingForTarget(gActiveBattler);
 	monData = (u8*)(&gBattleMons[gActiveBattler]);
 
 	for (i = 0; i < sizeof(struct BattlePokemon); ++i)

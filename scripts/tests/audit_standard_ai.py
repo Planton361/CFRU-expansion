@@ -153,6 +153,19 @@ def main() -> int:
     presentation = (ROOT / "src/battle_anims.c").read_text(encoding="utf-8")
     if "gNewBS->ai.standardDisplayedSpecies[bank] = species;" not in presentation:
         fail("public display identity producer is missing")
+    strings = (ROOT / "src/battle_strings.c").read_text(encoding="utf-8")
+    if not re.search(r"case STRINGID_INTROSENDOUT:[^:]*StandardAI_RecordPublicSendoutSpecies\(gActiveBattler\)", strings):
+        fail("first-sendout public species producer is missing")
+    if not re.search(r"case STRINGID_SWITCHINMON:[^:]*StandardAI_RecordPublicSendoutSpecies\(gBattleScripting.bank\)", strings):
+        fail("replacement-sendout public species producer is missing")
+    if "GetMonData(GetIllusionPartyData(bank), MON_DATA_SPECIES, NULL)" not in strings:
+        fail("sendout identity must match Illusion-aware public appearance")
+    switching = (ROOT / "src/switching.c").read_text(encoding="utf-8")
+    faint = (ROOT / "src/general_bs_commands.c").read_text(encoding="utf-8")
+    if not re.search(r"oldData = gBattleMons\[gActiveBattler\];\s*StandardAI_FinalizePendingForTarget\(gActiveBattler\);\s*monData", switching):
+        fail("target switch must finalize pending public effect before replacement")
+    if not re.search(r"case Faint_ClearEffects:\s*StandardAI_FinalizePendingForTarget\(gActiveBattler\);\s*gBattleMons", faint):
+        fail("target faint must finalize pending public effect before cleanup")
     history_source = (ROOT / "src/battle_util.c").read_text(encoding="utf-8")
     if not re.search(
             r"if \(gHitMarker & HITMARKER_ATTACKSTRING_PRINTED\)\s*\{\s*"

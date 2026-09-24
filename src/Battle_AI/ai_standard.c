@@ -152,13 +152,18 @@ bool8 StandardAI_GetPublicTypes(u8 foe, u8 types[3])
 	return TRUE;
 }
 
+static bool8 StandardAI_HasEngineDamageOverride(u16 move);
+
 static u8 StandardAI_KnownTypeImmunity(u16 move, u8 bankDef)
 {
 	ability_t knownAbility;
 	u8 type;
 	u8 types[3];
 
-	if (move == MOVE_NONE || SPLIT(move) == SPLIT_STATUS)
+	/* Fixed-damage and other unsupported attacks can still have a certified
+	 * static-type immunity. Engine-overridden types cannot use metadata here. */
+	if (move == MOVE_NONE || move >= MOVES_COUNT || SPLIT(move) == SPLIT_STATUS
+		|| StandardAI_HasEngineDamageOverride(move))
 		return FALSE;
 	type = gBattleMoves[move].type;
 	if (type >= NUMBER_OF_MON_TYPES)
@@ -328,26 +333,120 @@ static u8 StandardAI_IsForcedMove(u8 bank, u16 move)
 	return FALSE;
 }
 
-/* Explicit constant-power, single-hit subset: no recoil, self-KO, variable
- * power, charging, contact-dependent power, or item removal. Secondary effects
- * receive no speculative positive utility; the direct damage is supported. */
-bool8 StandardAI_IsSupportedDamage(u16 move)
+/* The damage engine has move-specific type, power and damage overrides which
+ * its effect and ordinary metadata alone cannot describe. This generated
+ * exclusion set is audited against damage_calc.c; new overrides fail the
+ * source gate until reviewed. It is an exclusion boundary, not an admission
+ * whitelist. Ordinary moves are admitted by effect/power/target semantics. */
+static bool8 StandardAI_HasEngineDamageOverride(u16 move)
 {
 	switch (move)
 	{
-	case MOVE_TACKLE: case MOVE_POUND: case MOVE_SCRATCH: case MOVE_QUICKATTACK:
-	case MOVE_VINEWHIP: case MOVE_WATERGUN: case MOVE_HORNATTACK: case MOVE_PECK:
-	case MOVE_WINGATTACK: case MOVE_SWIFT: case MOVE_AERIALACE:
-	case MOVE_DRAGONCLAW: case MOVE_DRAGONPULSE: case MOVE_STRENGTH:
-	case MOVE_EMBER: case MOVE_FLAMETHROWER: case MOVE_ICEBEAM:
-	case MOVE_THUNDERSHOCK: case MOVE_THUNDERBOLT: case MOVE_BUBBLE:
-	case MOVE_CONFUSION: case MOVE_PSYCHIC: case MOVE_BITE: case MOVE_CRUNCH:
-	case MOVE_METALCLAW: case MOVE_ROCKTHROW: case MOVE_ROCKSLIDE:
-	case MOVE_SURF: case MOVE_RAZORLEAF: case MOVE_LEAFBLADE:
-	case MOVE_ENERGYBALL: case MOVE_SHADOWBALL: case MOVE_FLASHCANNON:
+#include "../../include/new/ai_damage_engine_overrides.inc"
 		return TRUE;
 	default: return FALSE;
 	}
+}
+
+struct StandardAIDamageClassification StandardAI_ClassifyDamage(u16 move)
+{
+	struct StandardAIDamageClassification result = {STANDARD_DAMAGE_D3,
+		STANDARD_DAMAGE_REASON_INVALID, FALSE, FALSE};
+	u8 effect;
+	if (move == MOVE_NONE || move >= MOVES_COUNT) return result;
+	if (SPLIT(move) == SPLIT_STATUS)
+	{
+		result.reason = STANDARD_DAMAGE_REASON_STATUS;
+		return result;
+	}
+	if (move >= FIRST_Z_MOVE && move <= LAST_G_MAX_MOVE)
+	{
+		result.reason = STANDARD_DAMAGE_REASON_Z_MAX_PSEUDO;
+		return result;
+	}
+	if (gBattleMoves[move].target & (MOVE_TARGET_USER_OR_PARTNER | MOVE_TARGET_USER
+		| MOVE_TARGET_OPPONENTS_FIELD))
+	{
+		result.reason = STANDARD_DAMAGE_REASON_NON_TARGET;
+		return result;
+	}
+	effect = gBattleMoves[move].effect;
+	switch (effect)
+	{
+	case EFFECT_HIT:
+	case EFFECT_ALWAYS_HIT:
+	case EFFECT_QUICK_ATTACK:
+		break;
+	/* Secondary effects receive zero speculative tactical credit. The direct
+	 * primary damage remains comparable through the ordinary formula. */
+	case EFFECT_POISON_HIT: case EFFECT_BURN_HIT: case EFFECT_FREEZE_HIT:
+	case EFFECT_PARALYZE_HIT: case EFFECT_FLINCH_HIT: case EFFECT_CONFUSE_HIT:
+	case EFFECT_BAD_POISON_HIT: case EFFECT_TRI_ATTACK:
+	case EFFECT_ATTACK_DOWN_HIT: case EFFECT_DEFENSE_DOWN_HIT:
+	case EFFECT_SPEED_DOWN_HIT: case EFFECT_SPECIAL_ATTACK_DOWN_HIT:
+	case EFFECT_SPECIAL_DEFENSE_DOWN_HIT: case EFFECT_ACCURACY_DOWN_HIT:
+	case EFFECT_EVASION_DOWN_HIT: case EFFECT_SPECIAL_DEFENSE_DOWN_2_HIT:
+	case EFFECT_ATTACK_UP_HIT: case EFFECT_DEFENSE_UP_HIT:
+	case EFFECT_DEFENSE_UP_2_HIT: case EFFECT_SPECIAL_ATTACK_UP_HIT:
+	case EFFECT_SPEED_UP_1_HIT: case EFFECT_ALL_STATS_UP_HIT:
+	case EFFECT_HIGHER_OFFENSES_DEFENSES_UP_HIT:
+	case EFFECT_PAY_DAY: case EFFECT_HIGH_CRITICAL:
+		result.secondary_unmodeled = TRUE;
+		break;
+	case EFFECT_MULTI_HIT: case EFFECT_DOUBLE_HIT: case EFFECT_TRIPLE_KICK:
+	case EFFECT_BEAT_UP:
+		result.reason = STANDARD_DAMAGE_REASON_MULTI_HIT; return result;
+	case EFFECT_LEVEL_DAMAGE: case EFFECT_SUPER_FANG: case EFFECT_DRAGON_RAGE:
+	case EFFECT_SONICBOOM: case EFFECT_PSYWAVE:
+		result.reason = STANDARD_DAMAGE_REASON_FIXED_DAMAGE; return result;
+	case EFFECT_RECOIL: case EFFECT_RECOIL_IF_MISS:
+		result.reason = STANDARD_DAMAGE_REASON_RECOIL; return result;
+	case EFFECT_ABSORB: case EFFECT_DREAM_EATER:
+		result.reason = STANDARD_DAMAGE_REASON_DRAIN; return result;
+	case EFFECT_EXPLOSION: case EFFECT_MEMENTO:
+		result.reason = STANDARD_DAMAGE_REASON_SELF_KO; return result;
+	case EFFECT_RAZOR_WIND: case EFFECT_SKY_ATTACK: case EFFECT_SOLARBEAM:
+	case EFFECT_SEMI_INVULNERABLE: case EFFECT_SKULL_BASH: case EFFECT_SKY_DROP:
+		result.reason = STANDARD_DAMAGE_REASON_TWO_TURN; return result;
+	case EFFECT_COUNTER: case EFFECT_MIRROR_COAT: case EFFECT_BIDE:
+		result.reason = STANDARD_DAMAGE_REASON_COUNTER; return result;
+	case EFFECT_0HKO:
+		result.reason = STANDARD_DAMAGE_REASON_OHKO; return result;
+	case EFFECT_RECHARGE: case EFFECT_RAMPAGE: case EFFECT_UPROAR:
+	case EFFECT_ROLLOUT: case EFFECT_FURY_CUTTER:
+		result.reason = STANDARD_DAMAGE_REASON_RECHARGE_OR_LOCK; return result;
+	case EFFECT_FAKE_OUT: case EFFECT_SUCKER_PUNCH: case EFFECT_FOCUS_PUNCH:
+	case EFFECT_LAST_RESORT: case EFFECT_POLTERGEIST: case EFFECT_SNORE:
+	case EFFECT_PURSUIT: case EFFECT_FUTURE_SIGHT:
+		result.reason = STANDARD_DAMAGE_REASON_CONDITIONAL_SCRIPT; return result;
+	default:
+		result.reason = STANDARD_DAMAGE_REASON_OTHER_EFFECT; return result;
+	}
+	if (gBattleMoves[move].power == 0 || gBattleMoves[move].power > 150)
+	{
+		result.reason = STANDARD_DAMAGE_REASON_POWER_BOUND;
+		return result;
+	}
+	if (StandardAI_HasEngineDamageOverride(move))
+	{
+		result.reason = STANDARD_DAMAGE_REASON_ENGINE_OVERRIDE;
+		return result;
+	}
+	result.reason = STANDARD_DAMAGE_REASON_NONE;
+	result.direct_damage_supported = TRUE;
+	if (gBattleMoves[move].priority != 0 || gBattleMoves[move].accuracy != 100
+		|| effect == EFFECT_ALWAYS_HIT || effect == EFFECT_QUICK_ATTACK)
+		result.mechanics_class = STANDARD_DAMAGE_D2;
+	else if (result.secondary_unmodeled)
+		result.mechanics_class = STANDARD_DAMAGE_D1;
+	else
+		result.mechanics_class = STANDARD_DAMAGE_D0;
+	return result;
+}
+
+bool8 StandardAI_IsSupportedDamage(u16 move)
+{
+	return StandardAI_ClassifyDamage(move).direct_damage_supported;
 }
 
 static void StandardAI_ProjectDamage(u8 bank, u8 foe, u16 move,
@@ -976,6 +1075,20 @@ static void StandardAI_FinalizeLastAction(u8 bank)
 	StandardPolicyRecordMemory(&memory, &decision);
 	StandardAI_SaveMemory(bank, &memory);
 	gNewBS->ai.standardLastValid[bank] = FALSE;
+}
+
+/* Resolve a pending public effect before a target's stages/status are replaced
+ * by a switch or faint cleanup. Otherwise a successful Accuracy drop can be
+ * mistaken for a miss (or vice versa) at the next decision. The established
+ * battle-local host memory format and repeat rule remain unchanged. */
+void StandardAI_FinalizePendingForTarget(u8 targetBank)
+{
+	u8 bank;
+	if (gNewBS == NULL || targetBank >= MAX_BATTLERS_COUNT) return;
+	for (bank = 0; bank < MAX_BATTLERS_COUNT; ++bank)
+		if (gNewBS->ai.standardLastValid[bank]
+			&& gNewBS->ai.standardLastTargetBank[bank] == targetBank)
+			StandardAI_FinalizeLastAction(bank);
 }
 
 void StandardAI_StageLastAction(u8 bank, const struct StandardPolicyCandidate* candidate)

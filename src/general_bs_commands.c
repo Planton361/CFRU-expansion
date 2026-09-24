@@ -14,6 +14,7 @@
 #include "../include/new/ability_battle_scripts.h"
 #include "../include/new/ability_tables.h"
 #include "../include/new/accuracy_calc.h"
+#include "../include/new/ai_standard.h"
 #include "../include/new/attackcanceler.h"
 #include "../include/new/battle_start_turn_start.h"
 #include "../include/new/battle_start_turn_start_battle_scripts.h"
@@ -1429,6 +1430,7 @@ void atk1B_cleareffectsonfaint(void) {
 				__attribute__ ((fallthrough));
 
 			case Faint_ClearEffects:
+				StandardAI_FinalizePendingForTarget(gActiveBattler);
 				gBattleMons[gActiveBattler].status1 = 0;
 				EmitSetMonData(0, REQUEST_STATUS_BATTLE, 0, 0x4, &gBattleMons[gActiveBattler].status1);
 				MarkBufferBankForExecution(gActiveBattler);
