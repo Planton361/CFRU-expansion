@@ -62,6 +62,18 @@ def main() -> int:
             "src/Battle_AI/ai_standard_mechanics.c", "src/Battle_AI/ai_ironmon_policy.c",
             *linker, "-o", str(binary)])
         subprocess.run([str(binary)], cwd=ROOT, check=True)
+        diagnostic_controller = temp / "battle_controller_opponent_diagnostic.o"
+        run(common + host_include + ["-DCFRU_AI_TEST_TRACE",
+            "-DTRAINER_AI_RUNTIME_DISPATCH_TRACE", "-c",
+            "src/battle_controller_opponent.c", "-o", str(diagnostic_controller)])
+        diagnostic_binary = temp / "controller_dispatch_marker_host"
+        run(common + ["-DTRAINER_AI_RUNTIME_DISPATCH_TRACE",
+            "scripts/tests/controller_fallback_host.c", str(master),
+            str(diagnostic_controller), str(util), str(strings), str(learn_move),
+            str(learnsets), "src/Battle_AI/ai_standard_policy.c",
+            "src/Battle_AI/ai_standard_mechanics.c", "src/Battle_AI/ai_ironmon_policy.c",
+            *linker, "-o", str(diagnostic_binary)])
+        subprocess.run([str(diagnostic_binary)], cwd=ROOT, check=True)
     print("production controller/fallback suite: PASS")
     return 0
 

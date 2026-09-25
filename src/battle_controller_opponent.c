@@ -36,6 +36,118 @@ static u8 LoadCorrectTrainerPicId(void);
 #ifdef CFRU_AI_TEST_TRACE
 u8 OpponentAI_TestLastBufferMismatch;
 u8 OpponentAI_TestLastBoundedFallback;
+struct OpponentAIDispatchTrace OpponentAI_DispatchTrace;
+extern int StandardAI_TestLastPolicyRc;
+extern int IronmonAI_TestLastPolicyRc;
+
+static void OpponentAI_CaptureDispatchEntry(void)
+{
+	struct OpponentAIDispatchTrace *trace = &OpponentAI_DispatchTrace;
+	u8 i, bank = gActiveBattler;
+	Memset(trace, 0, sizeof(*trace));
+	trace->rawProfile = VarGet(VAR_TRAINER_AI_PROFILE);
+	trace->profile = GetTrainerAIProfile();
+	trace->trainerId = gTrainerBattleOpponent_A;
+	trace->battleFlags = gBattleTypeFlags;
+	trace->exclusionBits = gBattleTypeFlags & (BATTLE_TYPE_DOUBLE | BATTLE_TYPE_LINK
+		| BATTLE_TYPE_OAK_TUTORIAL | BATTLE_TYPE_MULTI | BATTLE_TYPE_SAFARI
+		| BATTLE_TYPE_ROAMER | BATTLE_TYPE_EREADER_TRAINER
+		| BATTLE_TYPE_SCRIPTED_WILD_1 | BATTLE_TYPE_SCRIPTED_WILD_2
+		| BATTLE_TYPE_LEGENDARY_FRLG | BATTLE_TYPE_TRAINER_TOWER
+		| BATTLE_TYPE_TWO_OPPONENTS | BATTLE_TYPE_INGAME_PARTNER
+		| BATTLE_TYPE_POKE_DUDE | BATTLE_TYPE_OLD_MAN | BATTLE_TYPE_FRONTIER
+		| BATTLE_TYPE_SHADOW_WARRIOR | BATTLE_TYPE_DYNAMAX
+		| BATTLE_TYPE_KYOGRE_GROUDON | BATTLE_TYPE_REGI | BATTLE_TYPE_GHOST
+		| BATTLE_TYPE_RING_CHALLENGE | BATTLE_TYPE_MOCK_BATTLE
+		| BATTLE_TYPE_BENJAMIN_BUTTERFREE | BATTLE_TYPE_CAMOMONS
+		| BATTLE_TYPE_MEGA_BRAWL);
+	trace->raid = IsRaidBattle();
+	trace->inverse = IsInverseBattle();
+	trace->frontierTrainer = IsFrontierTrainerId(gTrainerBattleOpponent_A);
+	trace->standardSupported = StandardAI_IsSupportedBattle();
+	trace->ironmonSupported = IronmonAI_IsSupportedBattle();
+	trace->activeBattler = bank;
+	trace->bankAttacker = gBankAttacker;
+	trace->bankTarget = gBankTarget;
+	trace->selectedSlot = trace->emittedSlot = 0xFF;
+	trace->policyRc = -1;
+	if (bank >= MAX_BATTLERS_COUNT || gNewBS == NULL)
+		return;
+	trace->publicPlayerSpecies = gNewBS->ai.standardDisplayedSpecies[FOE(bank)];
+	trace->publicOpponentSpecies = gNewBS->ai.standardDisplayedSpecies[bank];
+	trace->defenseStage = gBattleMons[FOE(bank)].statStages[STAT_STAGE_DEF - 1];
+	for (i = 0; i < MAX_MON_MOVES; ++i)
+		trace->moves[i] = gBattleMons[bank].moves[i];
+}
+#endif
+
+#ifdef TRAINER_AI_RUNTIME_DISPATCH_TRACE
+static bool8 OpponentNormalizeSupportedMoveInfo(struct ChooseMoveStruct *moveInfo, u8 bank);
+/* The marker is deliberately outside the fair-support gate: a rejected gate
+ * is one of the states it must expose. Normal builds contain none of this. */
+static bool8 OpponentHandleOakDispatchMarker(struct ChooseMoveStruct *moveInfo)
+{
+	u8 slot;
+	u8 target;
+	u8 bank = gActiveBattler;
+	u16 publicSpecies;
+	u16 move;
+
+	if (gTrainerBattleOpponent_A != TRAINER_RIVAL_OAKS_LAB_SQUIRTLE
+		|| !(gBattleTypeFlags & BATTLE_TYPE_TRAINER)
+		|| (gBattleTypeFlags & (BATTLE_TYPE_DOUBLE | BATTLE_TYPE_LINK
+			| BATTLE_TYPE_MULTI | BATTLE_TYPE_TWO_OPPONENTS))
+		|| bank >= MAX_BATTLERS_COUNT || SIDE(bank) != B_SIDE_OPPONENT
+		|| gNewBS == NULL || gBattleMons[bank].species != SPECIES_SQUIRTLE
+		|| gBattleMons[bank].moves[0] != MOVE_TACKLE
+		|| gBattleMons[bank].moves[1] != MOVE_TAILWHIP
+		|| gBattleMons[bank].moves[2] != MOVE_WATERGUN
+		|| gBattleMons[bank].moves[3] != MOVE_NONE
+		|| gBattleResults.battleTurnCounter > 2)
+		return FALSE;
+
+	if (gBattleResults.battleTurnCounter == 0)
+		slot = IronmonAI_IsSupportedBattle() ? 2
+			: StandardAI_IsSupportedBattle() ? 0 : 1;
+	else if (gBattleResults.battleTurnCounter == 1)
+	{
+		enum TrainerAIProfile profile = GetTrainerAIProfile();
+		slot = profile == TRAINER_AI_PROFILE_IRONMON_SMART ? 2
+			: profile == TRAINER_AI_PROFILE_STANDARD ? 0 : 1;
+	}
+	else
+	{
+		publicSpecies = gNewBS->ai.standardDisplayedSpecies[FOE(bank)];
+		slot = publicSpecies == SPECIES_CHARMANDER ? 2
+			: publicSpecies == SPECIES_NONE ? 0 : 1;
+	}
+
+	/* A restriction or exhausted PP makes the proposed marker illegal. Let the
+	 * ordinary controller handle that state instead of emitting a false code. */
+	if (!gBattleMons[bank].pp[slot]
+		|| (CheckMoveLimitations(bank, 0, 0xFF) & gBitTable[slot]))
+		return FALSE;
+
+	OpponentNormalizeSupportedMoveInfo(moveInfo, bank);
+	move = gBattleMons[bank].moves[slot];
+	target = gBattleMoves[move].target;
+	gBankAttacker = bank;
+	gBankTarget = target & (MOVE_TARGET_USER | MOVE_TARGET_USER_OR_PARTNER)
+		? bank : FOE(bank);
+	gBattleStruct->chosenMovePositions[bank] = slot;
+	gBattleStruct->moveTarget[bank] = gBankTarget;
+	gChosenMovesByBanks[bank] = move;
+	EmitMoveChosen(1, slot, gBankTarget, 0, 0, 0, FALSE, 0);
+#ifdef CFRU_AI_TEST_TRACE
+	OpponentAI_DispatchTrace.adapter = 3;
+	OpponentAI_DispatchTrace.selectedSlot = slot;
+	OpponentAI_DispatchTrace.selectedMove = move;
+	OpponentAI_DispatchTrace.emittedSlot = slot;
+	OpponentAI_DispatchTrace.emittedMove = move;
+#endif
+	OpponentBufferExecCompleted();
+	return TRUE;
+}
 #endif
 
 static bool8 OpponentNormalizeSupportedMoveInfo(struct ChooseMoveStruct *moveInfo,
@@ -93,6 +205,13 @@ bool8 OpponentHandleSupportedAIMoveChoice(struct ChooseMoveStruct *moveInfo)
 #endif
 		BattleAI_SetupAIData(0xF);
 		chosenMovePos = IronmonAI_ChooseMoveOrAction();
+#ifdef CFRU_AI_TEST_TRACE
+		OpponentAI_DispatchTrace.adapter = 2;
+		OpponentAI_DispatchTrace.policyRc = IronmonAI_TestLastPolicyRc;
+		OpponentAI_DispatchTrace.selectedSlot = chosenMovePos;
+		OpponentAI_DispatchTrace.selectedMove = chosenMovePos < MAX_MON_MOVES
+			? gBattleMons[gActiveBattler].moves[chosenMovePos] : MOVE_NONE;
+#endif
 		chosenMovePos = OpponentResolveSupportedAIMoveSlot(moveInfo, gActiveBattler,
 			chosenMovePos);
 		target = gBattleMoves[moveInfo->moves[chosenMovePos]].target;
@@ -102,6 +221,10 @@ bool8 OpponentHandleSupportedAIMoveChoice(struct ChooseMoveStruct *moveInfo)
 		gBattleStruct->moveTarget[gActiveBattler] = gBankTarget;
 		gChosenMovesByBanks[gActiveBattler] = moveInfo->moves[chosenMovePos];
 		EmitMoveChosen(1, chosenMovePos, gBankTarget, 0, 0, 0, FALSE, 0);
+#ifdef CFRU_AI_TEST_TRACE
+		OpponentAI_DispatchTrace.emittedSlot = chosenMovePos;
+		OpponentAI_DispatchTrace.emittedMove = moveInfo->moves[chosenMovePos];
+#endif
 		OpponentBufferExecCompleted();
 		return TRUE;
 	}
@@ -116,6 +239,13 @@ bool8 OpponentHandleSupportedAIMoveChoice(struct ChooseMoveStruct *moveInfo)
 #endif
 		BattleAI_SetupAIData(0xF);
 		chosenMovePos = StandardAI_ChooseMoveOrAction();
+#ifdef CFRU_AI_TEST_TRACE
+		OpponentAI_DispatchTrace.adapter = 1;
+		OpponentAI_DispatchTrace.policyRc = StandardAI_TestLastPolicyRc;
+		OpponentAI_DispatchTrace.selectedSlot = chosenMovePos;
+		OpponentAI_DispatchTrace.selectedMove = chosenMovePos < MAX_MON_MOVES
+			? gBattleMons[gActiveBattler].moves[chosenMovePos] : MOVE_NONE;
+#endif
 		chosenMovePos = OpponentResolveSupportedAIMoveSlot(moveInfo, gActiveBattler,
 			chosenMovePos);
 		target = gBattleMoves[moveInfo->moves[chosenMovePos]].target;
@@ -126,6 +256,10 @@ bool8 OpponentHandleSupportedAIMoveChoice(struct ChooseMoveStruct *moveInfo)
 		gChosenMovesByBanks[gActiveBattler] = moveInfo->moves[chosenMovePos];
 		/* Keep fair profiles out of legacy prediction and gimmick routing. */
 		EmitMoveChosen(1, chosenMovePos, gBankTarget, 0, 0, 0, FALSE, 0);
+#ifdef CFRU_AI_TEST_TRACE
+		OpponentAI_DispatchTrace.emittedSlot = chosenMovePos;
+		OpponentAI_DispatchTrace.emittedMove = moveInfo->moves[chosenMovePos];
+#endif
 		OpponentBufferExecCompleted();
 		return TRUE;
 	}
@@ -137,6 +271,13 @@ void OpponentHandleChooseMove(void)
 {
 	u8 chosenMovePos;
 	struct ChooseMoveStruct* moveInfo = (struct ChooseMoveStruct*)(&gBattleBufferA[gActiveBattler][4]);
+#ifdef CFRU_AI_TEST_TRACE
+	OpponentAI_CaptureDispatchEntry();
+#endif
+#ifdef TRAINER_AI_RUNTIME_DISPATCH_TRACE
+	if (OpponentHandleOakDispatchMarker(moveInfo))
+		return;
+#endif
 	if (OpponentHandleSupportedAIMoveChoice(moveInfo))
 		return;
 

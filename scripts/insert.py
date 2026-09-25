@@ -39,6 +39,10 @@ else:  # Linux, OSX, etc.
 OUTPUT = 'build/output.bin'
 BYTE_REPLACEMENT = 'bytereplacement'
 HOOKS = 'hooks'
+REQUIRED_RUNTIME_HOOKS = frozenset({
+    'OpponentHandleChooseMove', 'BattleSetup_StartTrainerBattle',
+    'ExpandedVarsHook', 'BufferStringBattle',
+})
 REPOINTS = 'repoints'
 GENERATED_REPOINTS = 'generatedrepoints'
 REPOINT_ALL = 'repointall'
@@ -2046,6 +2050,8 @@ def main():
                     try:
                         code = table[symbol]
                     except KeyError:
+                        if symbol in REQUIRED_RUNTIME_HOOKS:
+                            raise ValueError('Required runtime hook symbol missing: ' + symbol)
                         print('Symbol missing:', symbol)
                         continue
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -12,7 +13,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKSPACE = ROOT.parents[1]
+WORKSPACE = Path(os.environ.get("CFRU_WORKSPACE_ROOT", ROOT.parents[1]))
 HOST_ROOT = WORKSPACE / "07_scripts"
 EXPECTED_DIGESTS = {
     "uniform_legal": "71fc84c8fd3e219c4e364ecd506127303ac8524a73d47a39999be384efbc95a7",

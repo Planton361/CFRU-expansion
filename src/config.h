@@ -222,6 +222,7 @@ enum //These vars need to be one after the other (hence the enum)
 #define MEGA_EVOLUTION_FEATURE //Comment this line to remove Mega Evolutions
 #define DYNAMAX_FEATURE //Comment this line to remove Dynamax and Raid Battles
 //#define TUTORIAL_BATTLES //Comment this line to remove Oak's Tutorial
+//#define TRAINER_AI_RUNTIME_DISPATCH_TRACE // Temporary Oak's-Lab three-turn move marker; enable only for a private diagnostic build.
 #define TANOBY_RUINS_ENABLED //The Tanoby Ruins will be the only location Unown can be encountered
 #define ALTERING_CAVE_ENABLED //The Altering Cave from FR will work as intended provided the proper var is set
 #define SWEET_SCENT_ONLY_IN_CLEAR_WEATHER //Sweet Scent won't attract any wild Pokemon if the weather is not clear

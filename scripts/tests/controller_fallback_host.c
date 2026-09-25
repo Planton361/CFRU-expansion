@@ -34,6 +34,7 @@ extern u8 OpponentAI_TestLastBoundedFallback;
 extern bool8 StandardAI_GetPublicTypes(u8 foe, u8 types[3]);
 
 u8 gBattleBufferA[MAX_BATTLERS_COUNT][0x200];
+struct BattleResults gBattleResults;
 static u8 sEmitCount;
 static u8 sEmittedPosition;
 static u8 sEmittedTarget;
@@ -718,7 +719,8 @@ static void FailureFallbackWitnesses(void)
 		IRONMON_POLICY_ERROR, 0xFF, 0, TRUE);
 }
 
-static void OpeningOakLabWitness(enum TrainerAIProfile aiProfile, bool8 reveal)
+static void OpeningOakLabWitness(enum TrainerAIProfile aiProfile, bool8 reveal,
+	bool8 cappedDefense)
 {
 	static const u16 expectedTrainerMoves[MAX_MON_MOVES] = {
 		MOVE_TACKLE, MOVE_TAILWHIP, MOVE_WATERGUN, MOVE_NONE
@@ -761,6 +763,8 @@ static void OpeningOakLabWitness(enum TrainerAIProfile aiProfile, bool8 reveal)
 		gPlayerParty[0].pp[i] = playerMoves[i] == MOVE_NONE ? 0 : 10;
 	}
 	SetControllerMoves(1);
+	if (cappedDefense)
+		gBattleMons[0].statStages[STAT_STAGE_DEF - 1] = STAT_STAGE_MIN;
 	assert(gBattleMons[1].moves[0] == MOVE_TACKLE);
 	assert(gBattleMons[1].moves[1] == MOVE_TAILWHIP);
 	assert(gBattleMons[1].moves[2] == MOVE_WATERGUN);
@@ -804,8 +808,10 @@ static void OpeningOakLabWitness(enum TrainerAIProfile aiProfile, bool8 reveal)
 	assert(rc == 0);
 	assert(selectedId < MAX_MON_MOVES);
 	assert(gBattleMons[1].moves[selectedId] != MOVE_NONE);
+	if (cappedDefense)
+		assert(selectedId != 1 && gBattleMons[1].moves[selectedId] != MOVE_TAILWHIP);
 	assert(!gNewBS->ai.standardPendingValid[1]);
-	if (reveal)
+	if (reveal && !cappedDefense)
 	{
 		assert(selectedId == 2 && gBattleMons[1].moves[selectedId] == MOVE_WATERGUN);
 		assert(moveInfo->moves[2] == MOVE_WATERGUN);
@@ -817,6 +823,49 @@ static void OpeningOakLabWitness(enum TrainerAIProfile aiProfile, bool8 reveal)
 	assert(moveInfo->moves[sEmittedPosition] == gBattleMons[1].moves[selectedId]);
 	assert(gChosenMovesByBanks[1] == gBattleMons[1].moves[selectedId]);
 	assert(!OpponentAI_TestLastBoundedFallback);
+	assert(OpponentAI_DispatchTrace.rawProfile == sRawTrainerAIProfile);
+	assert(OpponentAI_DispatchTrace.profile == aiProfile);
+	assert(OpponentAI_DispatchTrace.trainerId == TRAINER_RIVAL_OAKS_LAB_SQUIRTLE);
+	assert(OpponentAI_DispatchTrace.battleFlags == BATTLE_TYPE_TRAINER);
+	assert(OpponentAI_DispatchTrace.exclusionBits == 0);
+	assert(!OpponentAI_DispatchTrace.raid && !OpponentAI_DispatchTrace.inverse
+		&& !OpponentAI_DispatchTrace.frontierTrainer);
+	assert(OpponentAI_DispatchTrace.standardSupported ==
+		(aiProfile == TRAINER_AI_PROFILE_STANDARD));
+	assert(OpponentAI_DispatchTrace.ironmonSupported ==
+		(aiProfile == TRAINER_AI_PROFILE_IRONMON_SMART));
+	assert(OpponentAI_DispatchTrace.activeBattler == 1);
+	assert(OpponentAI_DispatchTrace.bankAttacker == 1);
+	assert(OpponentAI_DispatchTrace.bankTarget == 0);
+	assert(OpponentAI_DispatchTrace.publicPlayerSpecies ==
+		(reveal ? SPECIES_CHARMANDER : SPECIES_NONE));
+	assert(OpponentAI_DispatchTrace.publicOpponentSpecies ==
+		(reveal ? SPECIES_SQUIRTLE : SPECIES_NONE));
+	assert(OpponentAI_DispatchTrace.defenseStage ==
+		(cappedDefense ? STAT_STAGE_MIN : 6));
+	for (i = 0; i < MAX_MON_MOVES; ++i)
+		assert(OpponentAI_DispatchTrace.moves[i] == expectedTrainerMoves[i]);
+	assert(OpponentAI_DispatchTrace.adapter ==
+		(aiProfile == TRAINER_AI_PROFILE_STANDARD ? 1 : 2));
+	assert(OpponentAI_DispatchTrace.policyRc == 0);
+	assert(OpponentAI_DispatchTrace.selectedSlot == selectedId);
+	assert(OpponentAI_DispatchTrace.selectedMove == gBattleMons[1].moves[selectedId]);
+	assert(OpponentAI_DispatchTrace.emittedSlot == sEmittedPosition);
+	assert(OpponentAI_DispatchTrace.emittedMove == moveInfo->moves[sEmittedPosition]);
+	printf("Oak outer dispatch: raw=%u profile=%u trainer=%u flags=%08x exclusions=%08x support=%u/%u banks=%u/%u/%u public=%u/%u defense=%u moves=%u/%u/%u/%u adapter=%u rc=%d selected=%u/%u emitted=%u/%u\n",
+		OpponentAI_DispatchTrace.rawProfile, OpponentAI_DispatchTrace.profile,
+		OpponentAI_DispatchTrace.trainerId, OpponentAI_DispatchTrace.battleFlags,
+		OpponentAI_DispatchTrace.exclusionBits, OpponentAI_DispatchTrace.standardSupported,
+		OpponentAI_DispatchTrace.ironmonSupported, OpponentAI_DispatchTrace.activeBattler,
+		OpponentAI_DispatchTrace.bankAttacker, OpponentAI_DispatchTrace.bankTarget,
+		OpponentAI_DispatchTrace.publicPlayerSpecies,
+		OpponentAI_DispatchTrace.publicOpponentSpecies,
+		OpponentAI_DispatchTrace.defenseStage,
+		OpponentAI_DispatchTrace.moves[0], OpponentAI_DispatchTrace.moves[1],
+		OpponentAI_DispatchTrace.moves[2], OpponentAI_DispatchTrace.moves[3],
+		OpponentAI_DispatchTrace.adapter, OpponentAI_DispatchTrace.policyRc,
+		OpponentAI_DispatchTrace.selectedSlot, OpponentAI_DispatchTrace.selectedMove,
+		OpponentAI_DispatchTrace.emittedSlot, OpponentAI_DispatchTrace.emittedMove);
 	if (aiProfile == TRAINER_AI_PROFILE_STANDARD)
 	{
 		assert(StandardAI_TestLastPolicyRc == STANDARD_POLICY_OK);
@@ -833,8 +882,62 @@ static void OpeningOakLabWitness(enum TrainerAIProfile aiProfile, bool8 reveal)
 		moveInfo->moves[sEmittedPosition], gNewBS->ai.standardPendingValid[1]);
 }
 
+#ifdef TRAINER_AI_RUNTIME_DISPATCH_TRACE
+static void OakDispatchMarkerMatrix(void)
+{
+	static const u16 moves[MAX_MON_MOVES] =
+		{MOVE_TACKLE, MOVE_TAILWHIP, MOVE_WATERGUN, MOVE_NONE};
+	const enum TrainerAIProfile profiles[] = {
+		TRAINER_AI_PROFILE_STANDARD, TRAINER_AI_PROFILE_IRONMON_SMART,
+		TRAINER_AI_PROFILE_NORMAL};
+	const u16 publicSpecies[] = {SPECIES_CHARMANDER, SPECIES_NONE, SPECIES_SQUIRTLE};
+	u8 p, excluded, identity, turn;
+	for (p = 0; p < ARRAY_COUNT(profiles); ++p)
+	for (excluded = 0; excluded < 2; ++excluded)
+	for (identity = 0; identity < ARRAY_COUNT(publicSpecies); ++identity)
+	{
+		u8 expected[3];
+		ConfigureSourceWitness(TRAINER_RIVAL_OAKS_LAB_SQUIRTLE, profiles[p],
+			SPECIES_SQUIRTLE, 5, 0, moves, TYPE_WATER, TYPE_WATER);
+		RunPublicRevealLifecycle();
+		gNewBS->ai.standardDisplayedSpecies[0] = publicSpecies[identity];
+		gBattleTypeFlags = BATTLE_TYPE_TRAINER
+			| (excluded ? BATTLE_TYPE_OAK_TUTORIAL : 0);
+		expected[0] = excluded ? 1 : p == 0 ? 0 : p == 1 ? 2 : 1;
+		expected[1] = p == 0 ? 0 : p == 1 ? 2 : 1;
+		expected[2] = identity == 0 ? 2 : identity == 1 ? 0 : 1;
+		for (turn = 0; turn < 3; ++turn)
+		{
+			u32 battleRng = gRngValue, battleRng2 = gRng2Value;
+			u32 standardRng = gNewBS->ai.standardPolicyRng[1];
+			u32 ironmonRng = gNewBS->ai.ironmonPolicyRng[1];
+			gBattleResults.battleTurnCounter = turn;
+			gActiveBattler = 1;
+			sEmitCount = sOpponentCompleted = 0;
+			OpponentHandleChooseMove();
+			assert(sEmitCount == 1 && sOpponentCompleted == 1);
+			assert(sEmittedPosition == expected[turn]);
+			assert(OpponentAI_DispatchTrace.adapter == 3);
+			assert(OpponentAI_DispatchTrace.emittedSlot == expected[turn]);
+			assert(OpponentAI_DispatchTrace.emittedMove == moves[expected[turn]]);
+			assert(gRngValue == battleRng && gRng2Value == battleRng2);
+			assert(gNewBS->ai.standardPolicyRng[1] == standardRng);
+			assert(gNewBS->ai.ironmonPolicyRng[1] == ironmonRng);
+		}
+		printf("Oak marker profile=%u excluded=%u public=%u slots=%u/%u/%u\n",
+			profiles[p], excluded, publicSpecies[identity],
+			expected[0], expected[1], expected[2]);
+	}
+	puts("Oak dispatch marker 18-state matrix: PASS");
+}
+#endif
+
 int main(void)
 {
+#ifdef TRAINER_AI_RUNTIME_DISPATCH_TRACE
+	OakDispatchMarkerMatrix();
+	return 0;
+#else
 	static const u16 weedleMoves[MAX_MON_MOVES] = {
 		MOVE_POISONSTING, MOVE_STRINGSHOT, MOVE_NONE, MOVE_NONE};
 	const enum TrainerAIProfile profiles[] = {
@@ -846,8 +949,9 @@ int main(void)
 	FailureFallbackWitnesses();
 	for (p = 0; p < ARRAY_COUNT(profiles); ++p)
 	{
-		OpeningOakLabWitness(profiles[p], TRUE);
-		OpeningOakLabWitness(profiles[p], FALSE);
+		OpeningOakLabWitness(profiles[p], TRUE, FALSE);
+		OpeningOakLabWitness(profiles[p], FALSE, FALSE);
+		OpeningOakLabWitness(profiles[p], TRUE, TRUE);
 	}
 	for (p = 0; p < ARRAY_COUNT(profiles); ++p)
 	{
@@ -865,4 +969,5 @@ int main(void)
 	}
 	puts("production controller/fallback witnesses: PASS");
 	return 0;
+#endif
 }
