@@ -176,18 +176,56 @@ def check_diagnostic_preprocessing():
     require("//#define TRAINER_AI_RUNTIME_DISPATCH_TRACE" in config
             and not re.search(r"(?m)^#define TRAINER_AI_RUNTIME_DISPATCH_TRACE\b", config),
             "temporary marker enabled in the default configuration")
+    require("//#define TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE" in config
+            and not re.search(r"(?m)^#define TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE\b", config),
+            "capped Tail Whip probe enabled in the default configuration")
     require("CheckMoveLimitations(bank, 0, 0xFF)" in controller,
             "marker no longer checks all normal move restrictions")
+    probe = controller.split("static bool8 OpponentHandleOakCappedTailWhipProbe(", 1)[1].split(
+        "\nstatic bool8 OpponentNormalizeSupportedMoveInfo(struct ChooseMoveStruct *moveInfo,\n", 1)[0]
+    for required in ("TRAINER_RIVAL_OAKS_LAB_SQUIRTLE", "SPECIES_SQUIRTLE",
+                     "MOVE_TACKLE", "MOVE_TAILWHIP", "MOVE_WATERGUN", "MOVE_NONE",
+                     "gBattleTypeFlags != BATTLE_TYPE_TRAINER"):
+        require(required in probe, "capped probe eligibility lost: " + required)
+    require(probe.index("statStages[STAT_STAGE_DEF - 1] <= STAT_STAGE_MIN")
+            < probe.index("CheckMoveLimitations(bank, 0, 0xFF)"),
+            "probe must fall through at the actual Defense floor before legal-move handling")
+    require("gBattleResults.battleTurnCounter" not in probe,
+            "capped Tail Whip probe must not use a fixed turn count")
+    require(probe.index("gBattleMons[bank].pp[slot]")
+            < probe.index("EmitMoveChosen(1, slot"),
+            "probe must check PP before emitting Tail Whip")
+    require("AIRandom(" not in probe and "Random(" not in probe
+            and "PolicyChoose(" not in probe and "ChooseMoveOrAction(" not in probe,
+            "forced setup must not call normal policy RNG or choice")
+    require("move = gBattleMons[bank].moves[slot]" in probe
+            and "gChosenMovesByBanks[bank] = move" in probe
+            and "OpponentBufferExecCompleted();" in probe,
+            "probe must emit its legal own move through the controller buffer")
+    require(controller.index("if (OpponentHandleOakCappedTailWhipProbe(moveInfo))")
+            < controller.index("if (OpponentHandleSupportedAIMoveChoice(moveInfo))"),
+            "probe must fall through to the ordinary supported dispatch")
     command = ["cc", "-E", "-P", "-Iinclude", "-I.",
                "src/battle_controller_opponent.c"]
     normal = subprocess.check_output(command, cwd=ROOT, text=True)
     diagnostic = subprocess.check_output(command[:1] +
         ["-DTRAINER_AI_RUNTIME_DISPATCH_TRACE"] + command[1:], cwd=ROOT, text=True)
+    capped_probe = subprocess.check_output(command[:1] +
+        ["-DTRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE"] + command[1:],
+        cwd=ROOT, text=True)
     require("OpponentHandleOakDispatchMarker" not in normal,
             "marker is present in release preprocessed source")
+    require("OpponentHandleOakCappedTailWhipProbe" not in normal,
+            "capped Tail Whip probe is present in release preprocessed source")
     require("OpponentHandleOakDispatchMarker" in diagnostic,
             "marker absent from diagnostic preprocessed source")
-    print("diagnostic switch: disabled by default; release preprocessing omits marker; diagnostic preprocessing includes marker: PASS")
+    require("OpponentHandleOakCappedTailWhipProbe" not in diagnostic,
+            "capped probe leaked into the three-turn marker build")
+    require("OpponentHandleOakCappedTailWhipProbe" in capped_probe,
+            "capped Tail Whip probe absent from its diagnostic build")
+    require("OpponentHandleOakDispatchMarker" not in capped_probe,
+            "three-turn marker leaked into the capped probe build")
+    print("diagnostic switches: disabled by default; release preprocessing omits both; each diagnostic build contains only its selected path: PASS")
 
 
 def main():

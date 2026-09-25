@@ -24,6 +24,10 @@
 #include "../include/new/terastallization.h"
 #include "../include/new/util.h"
 
+#if defined(TRAINER_AI_RUNTIME_DISPATCH_TRACE) && defined(TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE)
+#error Oak runtime diagnostic modes must be enabled separately.
+#endif
+
 /*
 battle_controller_opponent.c
 	handles the functions responsible for the user moving between battle menus, choosing moves, etc.
@@ -140,6 +144,58 @@ static bool8 OpponentHandleOakDispatchMarker(struct ChooseMoveStruct *moveInfo)
 	EmitMoveChosen(1, slot, gBankTarget, 0, 0, 0, FALSE, 0);
 #ifdef CFRU_AI_TEST_TRACE
 	OpponentAI_DispatchTrace.adapter = 3;
+	OpponentAI_DispatchTrace.selectedSlot = slot;
+	OpponentAI_DispatchTrace.selectedMove = move;
+	OpponentAI_DispatchTrace.emittedSlot = slot;
+	OpponentAI_DispatchTrace.emittedMove = move;
+#endif
+	OpponentBufferExecCompleted();
+	return TRUE;
+}
+#endif
+
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+static bool8 OpponentNormalizeSupportedMoveInfo(struct ChooseMoveStruct *moveInfo, u8 bank);
+/* Setup ends at the actual public target Defense floor. The next decision
+ * reaches the ordinary profile dispatch with no probe-side state mutation. */
+static bool8 OpponentHandleOakCappedTailWhipProbe(struct ChooseMoveStruct *moveInfo)
+{
+	u8 bank = gActiveBattler;
+	u8 slot = 1;
+	u8 target;
+	u16 move;
+
+	if (gTrainerBattleOpponent_A != TRAINER_RIVAL_OAKS_LAB_SQUIRTLE
+		|| !(gBattleTypeFlags & BATTLE_TYPE_TRAINER)
+		|| (gBattleTypeFlags & (BATTLE_TYPE_DOUBLE | BATTLE_TYPE_LINK
+			| BATTLE_TYPE_MULTI | BATTLE_TYPE_TWO_OPPONENTS))
+		|| gBattleTypeFlags != BATTLE_TYPE_TRAINER
+		|| bank >= MAX_BATTLERS_COUNT || SIDE(bank) != B_SIDE_OPPONENT
+		|| gNewBS == NULL || gBattleMons[bank].species != SPECIES_SQUIRTLE
+		|| gBattleMons[bank].moves[0] != MOVE_TACKLE
+		|| gBattleMons[bank].moves[1] != MOVE_TAILWHIP
+		|| gBattleMons[bank].moves[2] != MOVE_WATERGUN
+		|| gBattleMons[bank].moves[3] != MOVE_NONE)
+		return FALSE;
+
+	if (gBattleMons[FOE(bank)].statStages[STAT_STAGE_DEF - 1] <= STAT_STAGE_MIN)
+		return FALSE;
+	if (!gBattleMons[bank].pp[slot]
+		|| (CheckMoveLimitations(bank, 0, 0xFF) & gBitTable[slot]))
+		return FALSE;
+
+	OpponentNormalizeSupportedMoveInfo(moveInfo, bank);
+	move = gBattleMons[bank].moves[slot];
+	target = gBattleMoves[move].target;
+	gBankAttacker = bank;
+	gBankTarget = target & (MOVE_TARGET_USER | MOVE_TARGET_USER_OR_PARTNER)
+		? bank : FOE(bank);
+	gBattleStruct->chosenMovePositions[bank] = slot;
+	gBattleStruct->moveTarget[bank] = gBankTarget;
+	gChosenMovesByBanks[bank] = move;
+	EmitMoveChosen(1, slot, gBankTarget, 0, 0, 0, FALSE, 0);
+#ifdef CFRU_AI_TEST_TRACE
+	OpponentAI_DispatchTrace.adapter = 4;
 	OpponentAI_DispatchTrace.selectedSlot = slot;
 	OpponentAI_DispatchTrace.selectedMove = move;
 	OpponentAI_DispatchTrace.emittedSlot = slot;
@@ -276,6 +332,10 @@ void OpponentHandleChooseMove(void)
 #endif
 #ifdef TRAINER_AI_RUNTIME_DISPATCH_TRACE
 	if (OpponentHandleOakDispatchMarker(moveInfo))
+		return;
+#endif
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+	if (OpponentHandleOakCappedTailWhipProbe(moveInfo))
 		return;
 #endif
 	if (OpponentHandleSupportedAIMoveChoice(moveInfo))

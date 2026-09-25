@@ -40,6 +40,7 @@ static u8 sEmittedPosition;
 static u8 sEmittedTarget;
 static u8 sOpponentCompleted;
 static u16 sRawTrainerAIProfile;
+static u8 sMoveLimitationMask;
 static struct AI_ThinkingStruct sThinking;
 static struct BattleScriptsStack sAIScriptsStack;
 static u16 sLastPreparedString;
@@ -73,7 +74,7 @@ void OpponentBufferExecCompleted(void)
 u32 ControllerTestGetAIFlags(void) { return 0; }
 u16 AIRandom(void) { return 1; }
 u8 CheckMoveLimitations(u8 bank, u8 move, u8 flags)
-{ (void)bank; (void)move; (void)flags; return 0; }
+{ (void)bank; (void)move; (void)flags; return sMoveLimitationMask; }
 u8 AdjustMoveLimitationFlagsForAI(u8 bank) { (void)bank; return 0; }
 u32 GetAIFlagsInBattleFrontier(u8 bank) { (void)bank; return 0; }
 bool8 IsBluePrimalSpecies(u16 species) { (void)species; return FALSE; }
@@ -300,6 +301,7 @@ static void ConfigureSourceWitness(u16 trainerId, enum TrainerAIProfile aiProfil
 	const struct BaseStats* playerBase;
 	const struct BaseStats* trainerBase;
 	Reset();
+	sMoveLimitationMask = 0;
 	sPreparedStringCount = 0;
 	for (i = 0; i < MAX_BATTLERS_COUNT; ++i)
 		newBattle.ai.standardDisplayedSpecies[i] = SPECIES_NONE;
@@ -932,9 +934,156 @@ static void OakDispatchMarkerMatrix(void)
 }
 #endif
 
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+static void ConfigureOakCappedProbe(enum TrainerAIProfile aiProfile)
+{
+	static const u16 expectedMoves[MAX_MON_MOVES] =
+		{MOVE_TACKLE, MOVE_TAILWHIP, MOVE_WATERGUN, MOVE_NONE};
+	const struct BaseStats *playerBase;
+	u16 trainerMoves[MAX_MON_MOVES], playerMoves[MAX_MON_MOVES];
+	u8 i;
+
+	DeriveSourceInitialMoveset(SPECIES_SQUIRTLE, 5, trainerMoves);
+	DeriveSourceInitialMoveset(SPECIES_CHARMANDER, 5, playerMoves);
+	for (i = 0; i < MAX_MON_MOVES; ++i)
+		assert(trainerMoves[i] == expectedMoves[i]);
+	ConfigureSourceWitness(TRAINER_RIVAL_OAKS_LAB_SQUIRTLE, aiProfile,
+		SPECIES_SQUIRTLE, 5, 0, trainerMoves, TYPE_WATER, TYPE_WATER);
+	playerBase = &testBaseStats[SPECIES_CHARMANDER];
+	SetWitnessMon(0, SPECIES_CHARMANDER, 5,
+		SourceWitnessHp(playerBase->baseHP, 31, 5),
+		SourceWitnessStat(playerBase->baseAttack, 31, 5),
+		SourceWitnessStat(playerBase->baseDefense, 31, 5),
+		SourceWitnessStat(playerBase->baseSpAttack, 31, 5),
+		SourceWitnessStat(playerBase->baseSpDefense, 31, 5),
+		SourceWitnessStat(playerBase->baseSpeed, 31, 5),
+		TYPE_FIRE, TYPE_FIRE, playerMoves);
+	SetControllerMoves(1);
+	RunPublicRevealLifecycle();
+	gActiveBattler = gBankAttacker = 1;
+	gBankTarget = 0;
+	assert(gNewBS->ai.standardDisplayedSpecies[0] == SPECIES_CHARMANDER);
+	assert(gBattleTypeFlags == BATTLE_TYPE_TRAINER);
+	assert(StandardAI_IsSupportedBattle() ==
+		(aiProfile == TRAINER_AI_PROFILE_STANDARD));
+	assert(IronmonAI_IsSupportedBattle() ==
+		(aiProfile == TRAINER_AI_PROFILE_IRONMON_SMART));
+}
+
+static void OakCappedProbeDecision(enum TrainerAIProfile aiProfile, u8 stage,
+	bool8 forced)
+{
+	struct ChooseMoveStruct *moveInfo = (struct ChooseMoveStruct *)&gBattleBufferA[1][4];
+	u32 battleRng = gRngValue, battleRng2 = gRng2Value;
+	u32 standardRng = gNewBS->ai.standardPolicyRng[1];
+	u32 ironmonRng = gNewBS->ai.ironmonPolicyRng[1];
+	u8 slot;
+
+	gBattleMons[0].statStages[STAT_STAGE_DEF - 1] = stage;
+	sEmitCount = sOpponentCompleted = 0;
+	if (forced)
+		moveInfo->moves[1] = MOVE_TACKLE; /* stale controller view */
+	OpponentHandleChooseMove();
+	assert(sEmitCount == 1 && sOpponentCompleted == 1);
+	assert(OpponentAI_DispatchTrace.defenseStage == stage);
+	assert(OpponentAI_DispatchTrace.profile == aiProfile);
+	assert(OpponentAI_DispatchTrace.publicPlayerSpecies == SPECIES_CHARMANDER);
+	assert(OpponentAI_DispatchTrace.battleFlags == BATTLE_TYPE_TRAINER);
+	slot = sEmittedPosition;
+	assert(slot < MAX_MON_MOVES);
+	assert(gBattleStruct->chosenMovePositions[1] == slot);
+	assert(gBattleStruct->moveTarget[1] == 0 && sEmittedTarget == 0);
+	assert(gChosenMovesByBanks[1] == gBattleMons[1].moves[slot]);
+	assert(moveInfo->moves[slot] == gBattleMons[1].moves[slot]);
+	assert(OpponentAI_DispatchTrace.emittedSlot == slot);
+	assert(OpponentAI_DispatchTrace.emittedMove == moveInfo->moves[slot]);
+	if (forced)
+	{
+		assert(stage > STAT_STAGE_MIN);
+		assert(OpponentAI_DispatchTrace.adapter == 4);
+		assert(slot == 1 && gChosenMovesByBanks[1] == MOVE_TAILWHIP);
+		assert(moveInfo->moves[1] == MOVE_TAILWHIP);
+		assert(OpponentAI_DispatchTrace.policyRc == -1);
+		assert(gRngValue == battleRng && gRng2Value == battleRng2);
+		assert(gNewBS->ai.standardPolicyRng[1] == standardRng);
+		assert(gNewBS->ai.ironmonPolicyRng[1] == ironmonRng);
+	}
+	else
+	{
+		assert(OpponentAI_DispatchTrace.adapter ==
+			(aiProfile == TRAINER_AI_PROFILE_STANDARD ? 1 : 2));
+		assert(OpponentAI_DispatchTrace.policyRc == 0);
+		assert(slot != 1 && gChosenMovesByBanks[1] != MOVE_TAILWHIP);
+		assert(gChosenMovesByBanks[1] == MOVE_TACKLE
+			|| gChosenMovesByBanks[1] == MOVE_WATERGUN);
+	}
+	printf("Oak capped probe profile=%u turn=%u defense=%u adapter=%u slot=%u move=%u\n",
+		aiProfile, gBattleResults.battleTurnCounter, stage,
+		OpponentAI_DispatchTrace.adapter, slot, gChosenMovesByBanks[1]);
+}
+
+static void OakCappedTailWhipProbeMatrix(void)
+{
+	const enum TrainerAIProfile profiles[] = {
+		TRAINER_AI_PROFILE_STANDARD, TRAINER_AI_PROFILE_IRONMON_SMART};
+	const u8 stages[] = {6, 5, 5, 1, STAT_STAGE_MIN};
+	u8 p, i;
+	for (p = 0; p < ARRAY_COUNT(profiles); ++p)
+	{
+		ConfigureOakCappedProbe(profiles[p]);
+		for (i = 0; i < ARRAY_COUNT(stages); ++i)
+		{
+			gBattleResults.battleTurnCounter = i;
+			OakCappedProbeDecision(profiles[p], stages[i],
+				stages[i] > STAT_STAGE_MIN);
+		}
+		/* An already capped first decision must use the normal profile path. */
+		ConfigureOakCappedProbe(profiles[p]);
+		OakCappedProbeDecision(profiles[p], STAT_STAGE_MIN, FALSE);
+		/* A legal-move guard failure must also leave setup to production AI. */
+		ConfigureOakCappedProbe(profiles[p]);
+		gBattleMons[1].pp[1] = 0;
+		OakCappedProbeDecision(profiles[p], 6, FALSE);
+		ConfigureOakCappedProbe(profiles[p]);
+		sMoveLimitationMask = gBitTable[1];
+		OakCappedProbeDecision(profiles[p], 6, FALSE);
+		/* The probe must never force a move in a different trainer or mode. */
+		ConfigureOakCappedProbe(profiles[p]);
+		gTrainerBattleOpponent_A = TRAINER_RIVAL_CERULEAN_SQUIRTLE;
+		sEmitCount = sOpponentCompleted = 0;
+		OpponentHandleChooseMove();
+		assert(OpponentAI_DispatchTrace.adapter != 4);
+		assert(sEmitCount == 1 && sOpponentCompleted == 1);
+		ConfigureOakCappedProbe(profiles[p]);
+		gBattleMons[1].moves[1] = MOVE_GROWL;
+		SetControllerMoves(1);
+		sEmitCount = sOpponentCompleted = 0;
+		OpponentHandleChooseMove();
+		assert(OpponentAI_DispatchTrace.adapter != 4);
+		assert(sEmitCount == 1 && sOpponentCompleted == 1);
+		ConfigureOakCappedProbe(profiles[p]);
+		gBattleTypeFlags |= BATTLE_TYPE_OAK_TUTORIAL;
+		sEmitCount = sOpponentCompleted = 0;
+		OpponentHandleChooseMove();
+		assert(OpponentAI_DispatchTrace.adapter != 4);
+		assert(sEmitCount == 0 && sOpponentCompleted == 0);
+		ConfigureOakCappedProbe(profiles[p]);
+		gBattleTypeFlags |= BATTLE_TYPE_MOCK_BATTLE;
+		sEmitCount = sOpponentCompleted = 0;
+		OpponentHandleChooseMove();
+		assert(OpponentAI_DispatchTrace.adapter != 4);
+		assert(sEmitCount == 0 && sOpponentCompleted == 0);
+	}
+	puts("Oak capped Tail Whip probe and normal dispatch transition: PASS");
+}
+#endif
+
 int main(void)
 {
-#ifdef TRAINER_AI_RUNTIME_DISPATCH_TRACE
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+	OakCappedTailWhipProbeMatrix();
+	return 0;
+#elif defined(TRAINER_AI_RUNTIME_DISPATCH_TRACE)
 	OakDispatchMarkerMatrix();
 	return 0;
 #else
