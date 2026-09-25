@@ -41,7 +41,7 @@ extern u8* gFemaleFrontierNamesTable[];
  * Snapshot the same Illusion-aware species shown by that text on the first
  * send-out and every replacement. The sprite-coordinate hook is an additional
  * producer, but its animation timing is not the AI lifecycle contract. */
-static void StandardAI_RecordPublicSendoutSpecies(u8 bank)
+void StandardAI_RecordPublicSendoutSpecies(u8 bank)
 {
 	if (gNewBS != NULL && bank < MAX_BATTLERS_COUNT)
 		gNewBS->ai.standardDisplayedSpecies[bank] =

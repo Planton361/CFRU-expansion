@@ -7,6 +7,7 @@
 #include "../../src/defines.h"
 #include "../../src/defines_battle.h"
 #include "../../include/constants/items.h"
+#include "../../include/new/frontier.h"
 #undef gBaseStats
 #undef gBitTable
 #undef gTrainerBattleOpponent_A
@@ -65,7 +66,20 @@ u8 ItemId_GetHoldEffect(u16 item) { (void)item; return 0; }
 u8 CheckGrounding(u8 bank) { assert(bank == 1); return GROUNDED; }
 bool8 IsRaidBattle(void) { return FALSE; }
 bool8 IsInverseBattle(void) { return FALSE; }
-bool8 IsFrontierTrainerId(u16 trainer) { (void)trainer; return FALSE; }
+bool8 IsFrontierTrainerId(u16 trainer)
+{
+	switch (trainer)
+	{
+	case BATTLE_TOWER_TID:
+	case BATTLE_TOWER_SPECIAL_TID:
+	case FRONTIER_BRAIN_TID:
+	case BATTLE_FACILITY_MULTI_TRAINER_TID:
+	case RAID_BATTLE_MULTI_TRAINER_TID:
+		return TRUE;
+	default:
+		return FALSE;
+	}
+}
 bool8 FlagGet(u16 id)
 {
 	switch (id)

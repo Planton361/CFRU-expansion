@@ -11,7 +11,7 @@
 
 **RUNTIME_SOURCE_MISMATCH_BLOCKER**
 
-The controller/policy handoff defect described below was reproduced through the production source path and repaired. On source-owned early-trainer states, the accepted policy returns Water Gun for Rival Squirtle and Rock Tomb for Brock Onix, and both moves are emitted at their matching controller positions. Thus the accepted source witnesses do not reproduce the latest #498 runtime failure (Rival Tackle, Brock Tackle, Sandshrew Scratch, Weedle Poison Sting). The exact runtime state that produced that report was not available for an allowed source-host reproduction. This change does not claim that the runtime failure is resolved or accepted.
+The latent policy/controller slot-0 coercion defect described below remains repaired. The primary witness is now the exact Oak's Lab Rival Squirtle at level 5 with its source-generated default moves. With the production public-reveal helper run in the audited opening-battle order, both Standard and Ironmon Smart choose and emit Water Gun from slot 2. Deliberately omitting that reveal reproduces Tackle from slot 0 for both profiles, but source order guarantees the player send-out reveal before the first opponent AI choice. The omitted-reveal state is therefore diagnostic, not a valid opening-battle state. No valid source-owned opening state reproduces the reported #498 runtime failure; no runtime correction or runtime acceptance is claimed.
 
 ## Revision and boundary
 
@@ -23,6 +23,7 @@ The controller/policy handoff defect described below was reproduced through the 
   - include/new/ai_standard.h
   - include/new/ai_standard_policy.h
   - include/new/battle_controller_opponent.h
+  - include/new/battle_strings.h
   - src/Battle_AI/ai_ironmon.c
   - src/Battle_AI/ai_ironmon_policy.c
   - src/Battle_AI/ai_standard.c
@@ -33,6 +34,7 @@ The controller/policy handoff defect described below was reproduced through the 
   - scripts/tests/audit_ai_controller_fallback.py
   - scripts/tests/controller_fallback_host.c
   - scripts/tests/run_ai_controller_fallback_tests.py
+  - src/battle_strings.c
   - docs/testing/trainer-ai-runtime-slot0-fallback-2026-09-25.md
 - The user-provided merge identity for PR #54 is accepted head f0cf999a1f7277e02870044b605a3f31045a0141 and merge fa83aae29818434cca6813be28f509b04c5dd68b. The merge is one commit above its parents and its tree is identical to the accepted head. The component start SHA is exactly the merge SHA.
 - Final branch SHA, PR URL, and the exact changed-path list are included in the Workspace #529 handoff after the evidence commit is pushed.
@@ -63,7 +65,77 @@ No policy balance or ranking rule changed. Standard epsilon remains 8; Ironmon e
 
 IronmonPolicyChoose returns 0, -1, or -2 for the tested success, validation-error, and no-admitted-action cases. Its bounded response builder reports -3 for an invalid/duplicate response candidate; the test names this separately rather than attributing it to IronmonPolicyChoose.
 
-## Source-owned trainer states and production handoff
+## Primary Fresh-New-Game Oak's Lab witness
+
+The primary Rival binding is `TRAINER_RIVAL_OAKS_LAB_SQUIRTLE` (trainer ID 326), mapped in `src/Tables/trainer_data.c` to `sParty_TrainerRivalOaksLabSquirtle` with `TrainerMonNoItemDefaultMoves`. The current `src/Tables/trainer_parties.h` row is level 5, species Squirtle, and has no custom `.moves` field. The workspace DPE component pin is `22ffa27ad09cfacbca841d90e6cbe31e6f9b7fdc`.
+
+The controller host compiles the actual `GiveBoxMonInitialMoveset` implementation from `src/learn_move.c` and the actual `gLevelUpLearnsets` table from `src/Tables/level_up_learnsets.c`. Its bounded box-mon storage stubs feed the real production `GiveMoveToBoxMon`. The host disables the optional learnset-randomizer compile branch to model the fresh New Game default. The exact trainer row's species and level are inputs; the fixture does not hand-enter moves. The derived source order is asserted as:
+
+| Slot | Move ID | Move |
+|---:|---:|---|
+| 0 | 33 | Tackle |
+| 1 | 39 | Tail Whip |
+| 2 | 55 | Water Gun |
+| 3 | 0 | None |
+
+The level-5 Charmander player starter is derived through the same function as `[Growl, Scratch, Ember, None]`. The deterministic witness uses the source stat formula with trainer Rival IV 25, player IV 31, zero EVs, and neutral nature inputs; it is a source-owned controller state, not a claim about a particular randomized runtime stat roll.
+
+### Public-reveal lifecycle
+
+`controller_fallback_host.c::SetWitnessMon()` no longer assigns `standardDisplayedSpecies`. The exact Oak witness starts with `standardDisplayedSpecies[playerBank] == SPECIES_NONE` and public types unavailable. It then invokes the actual production `PrepareStringBattle(STRINGID_INTROSENDOUT, bank)` for opponent bank 1 and player bank 0. Bounded `EmitPrintString` and `MarkBufferBankForExecution` stubs capture the public string handoff. Because the complete `BufferStringBattle` function is coupled to the whole engine, the host executes the same exported `StandardAI_RecordPublicSendoutSpecies` helper called by its retained production `STRINGID_INTROSENDOUT` case. The source audit verifies that both the intro and `STRINGID_SWITCHINMON` call sites remain intact and pass their production bank values.
+
+Before reveal, displayed player species is 0 (`SPECIES_NONE`) and public type availability is 0. After the reveal helper, displayed player species is 4 (Charmander), public type availability is 1 with type IDs `[10, 10, 25]`; the opponent's display record is Squirtle. The helper calls `GetMonData(GetIllusionPartyData(bank), MON_DATA_SPECIES, NULL)`, so the value follows the Illusion-aware appearance. The only other production write is the sprite species hook, which records the visible/transform species. No intervening source path clears the public record before first action selection.
+
+### Revealed production decision traces
+
+Both profiles run the real `OpponentHandleChooseMove -> BattleAI_SetupAIData -> Standard/Ironmon ChooseMoveOrAction -> EmitMoveChosen` handoff. After reveal, both `gBattleMons[1].moves[0..3]` and controller `moveInfo->moves[0..3]` are `[33, 39, 55, 0]`. The battle flags are `0x00000008` (`BATTLE_TYPE_TRAINER`); `IsRaidBattle`, `IsInverseBattle`, and the source-accurate `IsFrontierTrainerId(326)` are false. There are four policy observations; Ironmon has one response row (ID 65535, weight 1).
+
+| Profile | Raw / resolved | Standard supported | Ironmon supported | Candidate (slot / move) | Legal | Damage | Utility | Floor | Admission reason | Near-best | Unknown productive | Admitted |
+|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Standard | 7 / enum 6 | 1 | 0 | 0 / Tackle | 1 | 3 | 12 | 0 | 1 | 0 | 0 | — |
+| Standard | 7 / enum 6 | 1 | 0 | 1 / Tail Whip | 1 | 0 | 7 | 0 | 1 | 0 | 0 | — |
+| Standard | 7 / enum 6 | 1 | 0 | 2 / Water Gun | 1 | 11 | 44 | 0 | 1 | 1 | 0 | — |
+| Standard | 7 / enum 6 | 1 | 0 | 3 / None | 0 | 0 | 0 | 1 | 1 | 0 | 0 | — |
+| Ironmon Smart | 8 / enum 7 | 0 | 1 | 0 / Tackle | 1 | 3 | 14 | 0 | 0 | 0 | 0 | 1 |
+| Ironmon Smart | 8 / enum 7 | 0 | 1 | 1 / Tail Whip | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| Ironmon Smart | 8 / enum 7 | 0 | 1 | 2 / Water Gun | 1 | 11 | 54 | 0 | 0 | 1 | 0 | 1 |
+| Ironmon Smart | 8 / enum 7 | 0 | 1 | 3 / None | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 0 |
+
+For Ironmon, admission reason and `admitted` are separate outputs. In both profiles the policy return code is 0, `selected_id=2`, pending state is clear, returned position is 2, emitted position is 2, and final emitted move ID is 55 (Water Gun). There is no adapter fallback on the revealed path, and controller buffer parity passes.
+
+### Negative omitted-reveal witness
+
+The negative witness reuses the same Oak trainer row, level 5, derived moves, player state, and ordinary Trainer Singles flags, but intentionally skips the intro string/reveal producer. Displayed player species remains `SPECIES_NONE`, public types remain unavailable, and controller/battle move arrays remain equal to `[33, 39, 55, 0]`.
+
+| Profile | Candidate (slot / move) | Legal | Damage | Utility | Floor | Admission reason | Near-best | `unknown_potentially_productive` | Admitted |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Standard | 0 / Tackle | 1 | 0 | 0 | 0 | 1 | 1 | 1 | — |
+| Standard | 1 / Tail Whip | 1 | 0 | 0 | 128 | 128 | 0 | 0 | — |
+| Standard | 2 / Water Gun | 1 | 0 | 0 | 0 | 1 | 1 | 1 | — |
+| Standard | 3 / None | 0 | 0 | 0 | 1 | 1 | 0 | 0 | — |
+| Ironmon Smart | 0 / Tackle | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 1 |
+| Ironmon Smart | 1 / Tail Whip | 1 | 0 | 0 | 128 | 128 | 0 | 0 | 0 |
+| Ironmon Smart | 2 / Water Gun | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 1 |
+| Ironmon Smart | 3 / None | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 0 |
+
+Both policy return codes are 0. Each profile selects ID 0; pending state remains clear; returned position, emitted position, and final move are slot 0 / Tackle ID 33. Standard and Ironmon each make one selection draw. This exactly reproduces the Tackle/slot-0-like symptom when public identity is omitted. It is not a policy error or adapter fallback: both policies validly tie the unknown Tackle and Water Gun candidates, then their accepted RNG selection chooses slot 0.
+
+### Actual opening-battle ordering disposition
+
+The source-owned ordering audit used the workspace's read-only `pret-pokefirered` reference at `e060ab955b5dc9ac1c4904c2cd141683615cf477`, alongside the CFRU hook table and current CFRU `src/overworld.c`:
+
+1. The Pallet Town event binds `trainerbattle_earlyrival TRAINER_RIVAL_OAKS_LAB_SQUIRTLE`.
+2. The CFRU `BattleSetup_StartTrainerBattle` hook initializes this fresh New Game battle as `BATTLE_TYPE_TRAINER`. `TUTORIAL_BATTLES` is disabled. `InitEventData` clears saved flags during `NewGameInitData`; no source sets `FLAG_ACTIVATE_TUTORIAL` before this encounter, so the optional Oak tutorial bit is not added. The unhooked base early-rival routine's `BATTLE_TYPE_FIRST_BATTLE` behavior is not the active CFRU setup path.
+3. Normal single-player controller setup maps battler bank 0 to `B_POSITION_PLAYER_LEFT` and bank 1 to `B_POSITION_OPPONENT_LEFT`. `GetBattlerAtPosition` resolves those exact bank IDs.
+4. `BattleIntroPrintOpponentSendsOut` calls `PrepareStringBattle(STRINGID_INTROSENDOUT, opponent-left)`. It proceeds through the opponent send-out animation and Pokédex step, then `BattleIntroPrintPlayerSendsOut` calls the same string for player-left.
+5. Production `PrepareStringBattle` sets `gActiveBattler = bank`. The opponent print-string controller calls `BufferStringBattle(*stringId)`; its retained `STRINGID_INTROSENDOUT` case records `gActiveBattler` through the Illusion-aware helper. The player record is therefore written to bank 0. The only subsequent writer records the visible sprite/transform identity.
+6. The player send-out animation transitions to `TryDoEventsBeforeFirstTurn`, then `HandleTurnActionSelectionState`. Its opponent move request reaches the hooked `OpponentHandleChooseMove`. Thus the public producer cannot run after the first opponent AI choice on this source path.
+
+The positive and negative witnesses establish the cause of the slot-0-like result under an unknown public species. The negative state is impossible on the audited fresh-New-Game opening path because the public reveal runs first. The exact revealed witness instead selects/emits Water Gun for Standard and Ironmon Smart. The earlier Cerulean Rival level-18 custom-move witness remains only a secondary regression; it is not the runtime-equivalent opening witness. With no valid source-owned state reproducing the latest #498 failure, the disposition remains **RUNTIME_SOURCE_MISMATCH_BLOCKER** pending external runtime-state/source reconciliation.
+
+## Secondary early-trainer states and production handoff
+
+The host suite also retains these secondary early-trainer witnesses. The exact Oak's Lab case above is the primary Fresh-New-Game Rival witness.
 
 The host suite calls the actual supported outer OpponentHandleChooseMove route, then BattleAI_SetupAIData, the dispatched Standard/Ironmon ChooseMoveOrAction adapter, and EmitMoveChosen. Trainer party, profile mapping, early move order, controller flow, and level-up defaults are source-derived. The witness stat inputs use trainer-class IVs from source tables (Rival 25, Leader 31, Camper 5, Bug Catcher 1), zero EVs, neutral nature inputs, and the existing source stat formula. This is a deterministic source witness, not a claim that it recreates the user’s randomized runtime stats.
 

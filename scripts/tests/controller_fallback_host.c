@@ -12,6 +12,9 @@
 #include "../../src/Tables/trainer_parties.h"
 #include "../../include/new/ai_master.h"
 #include "../../include/new/battle_controller_opponent.h"
+#include "../../include/new/battle_strings.h"
+#include "../../include/new/learn_move.h"
+#include "../../include/battle_string_ids.h"
 #include "../../include/new/move_menu.h"
 #include "../../include/new/species_tables.h"
 
@@ -28,6 +31,7 @@ extern int IronmonAI_TestPolicyRcOverride;
 extern u8 IronmonAI_TestSelectedIdOverride;
 extern u8 OpponentAI_TestLastBufferMismatch;
 extern u8 OpponentAI_TestLastBoundedFallback;
+extern bool8 StandardAI_GetPublicTypes(u8 foe, u8 types[3]);
 
 u8 gBattleBufferA[MAX_BATTLERS_COUNT][0x200];
 static u8 sEmitCount;
@@ -37,6 +41,14 @@ static u8 sOpponentCompleted;
 static u16 sRawTrainerAIProfile;
 static struct AI_ThinkingStruct sThinking;
 static struct BattleScriptsStack sAIScriptsStack;
+static u16 sLastPreparedString;
+static u8 sLastPreparedBank;
+static u8 sPreparedStringCount;
+static struct BoxPokemon sInitialMovesetBox;
+static u16 sInitialMovesetSpecies;
+static u8 sInitialMovesetLevel;
+static u16 sGeneratedInitialMoves[MAX_MON_MOVES];
+static u8 sGeneratedInitialMoveCount;
 
 void EmitMoveChosen(u8 bufferId, u8 chosenMoveIndex, u8 target, u8 megaState,
 	u8 ultraState, u8 zMoveState, u8 dynamaxState, u8 teraState)
@@ -72,9 +84,73 @@ u16 VarGet(u16 variable)
 u8 gAbsentBattlerFlags;
 const u32 gBitTable[] = {1, 2, 4, 8};
 const struct Trainer gTrainers[1024] = {
-	[TRAINER_RIVAL_CERULEAN_SQUIRTLE] = {.aiFlags = AI_SCRIPT_CHECK_BAD_MOVE}
+	[TRAINER_RIVAL_CERULEAN_SQUIRTLE] = {.aiFlags = AI_SCRIPT_CHECK_BAD_MOVE},
+	[TRAINER_RIVAL_OAKS_LAB_SQUIRTLE] = {
+		.aiFlags = AI_SCRIPT_CHECK_BAD_MOVE | AI_SCRIPT_CHECK_GOOD_MOVE | AI_SCRIPT_SEMI_SMART
+	}
 };
 const struct SpecialSpeciesFlags gSpecialSpeciesFlags[NUM_SPECIES] = {{0}};
+
+struct Pokemon *GetIllusionPartyData(u8 bank)
+{
+	assert(bank < MAX_BATTLERS_COUNT);
+	return SIDE(bank) == B_SIDE_PLAYER
+		? &gPlayerParty[gBattlerPartyIndexes[bank]]
+		: &gEnemyParty[gBattlerPartyIndexes[bank]];
+}
+
+u32 GetMonData(const struct Pokemon *mon, s32 field, const void *data)
+{
+	(void)data;
+	assert(field == MON_DATA_SPECIES);
+	return mon->species;
+}
+
+void EmitPrintString(u8 bufferId, u16 stringId)
+{
+	assert(bufferId == 0);
+	sLastPreparedString = stringId;
+	++sPreparedStringCount;
+}
+
+void MarkBufferBankForExecution(u8 bank)
+{
+	sLastPreparedBank = bank;
+}
+
+u32 GetBoxMonData(struct BoxPokemon *boxMon, s32 field, u8 *data)
+{
+	(void)data;
+	assert(boxMon == &sInitialMovesetBox);
+	if (field == MON_DATA_SPECIES)
+		return sInitialMovesetSpecies;
+	if (field >= MON_DATA_MOVE1 && field <= MON_DATA_MOVE4)
+		return sGeneratedInitialMoves[field - MON_DATA_MOVE1];
+	if (field >= MON_DATA_PP1 && field <= MON_DATA_PP4)
+		return 0;
+	assert(FALSE);
+	return 0;
+}
+
+void SetBoxMonData(struct BoxPokemon *boxMon, s32 field, const void *data)
+{
+	assert(boxMon == &sInitialMovesetBox);
+	if (field >= MON_DATA_MOVE1 && field <= MON_DATA_MOVE4)
+	{
+		sGeneratedInitialMoves[field - MON_DATA_MOVE1] = *(const u16 *)data;
+		++sGeneratedInitialMoveCount;
+		return;
+	}
+	if (field >= MON_DATA_PP1 && field <= MON_DATA_PP4)
+		return;
+	assert(FALSE);
+}
+
+u8 GetLevelFromBoxMonExp(struct BoxPokemon *boxMon)
+{
+	assert(boxMon == &sInitialMovesetBox);
+	return sInitialMovesetLevel;
+}
 
 static void SetControllerMoves(u8 bank)
 {
@@ -135,7 +211,6 @@ static void SetWitnessMon(u8 bank, u16 species, u8 level, u16 hp, u16 attack,
 	gBattleMons[bank].type1 = type1;
 	gBattleMons[bank].type2 = type2;
 	gBattleMons[bank].type3 = NUMBER_OF_MON_TYPES;
-	newBattle.ai.standardDisplayedSpecies[bank] = species;
 	for (i = 0; i < MAX_MON_MOVES; ++i)
 	{
 		gBattleMons[bank].moves[i] = moves[i];
@@ -172,11 +247,45 @@ static u8 SourceTrainerIV(u16 trainerId)
 	switch (trainerId)
 	{
 	case TRAINER_RIVAL_CERULEAN_SQUIRTLE: return 25; // CLASS_RIVAL
+	case TRAINER_RIVAL_OAKS_LAB_SQUIRTLE: return 25; // CLASS_RIVAL
 	case TRAINER_LEADER_BROCK: return 31; // CLASS_LEADER
 	case TRAINER_CAMPER_LIAM: return 5; // CLASS_CAMPER
 	case TRAINER_BUG_CATCHER_RICK: return 1; // CLASS_BUG_CATCHER
 	default: assert(FALSE); return 0;
 	}
+}
+
+static void DeriveSourceInitialMoveset(u16 species, u8 level,
+	u16 moves[MAX_MON_MOVES])
+{
+	u8 i;
+	sInitialMovesetSpecies = species;
+	sInitialMovesetLevel = level;
+	sGeneratedInitialMoveCount = 0;
+	memset(sGeneratedInitialMoves, 0, sizeof(sGeneratedInitialMoves));
+	GiveBoxMonInitialMoveset(&sInitialMovesetBox);
+	for (i = 0; i < MAX_MON_MOVES; ++i)
+		moves[i] = i < sGeneratedInitialMoveCount
+			? sGeneratedInitialMoves[i] : MOVE_NONE;
+}
+
+/* BufferStringBattle is too engine-coupled for a useful host translation
+ * unit. This bounded path calls the production PrepareStringBattle, then the
+ * exact exported helper invoked by its retained STRINGID_INTROSENDOUT case. */
+static void RunIntroSendoutReveal(u8 bank)
+{
+	PrepareStringBattle(STRINGID_INTROSENDOUT, bank);
+	assert(gActiveBattler == bank);
+	assert(sLastPreparedString == STRINGID_INTROSENDOUT);
+	assert(sLastPreparedBank == bank);
+	StandardAI_RecordPublicSendoutSpecies(gActiveBattler);
+}
+
+static void RunPublicRevealLifecycle(void)
+{
+	/* BattleIntroPrintOpponentSendsOut precedes BattleIntroPrintPlayerSendsOut. */
+	RunIntroSendoutReveal(1);
+	RunIntroSendoutReveal(0);
 }
 
 static void ConfigureSourceWitness(u16 trainerId, enum TrainerAIProfile aiProfile,
@@ -190,6 +299,9 @@ static void ConfigureSourceWitness(u16 trainerId, enum TrainerAIProfile aiProfil
 	const struct BaseStats* playerBase;
 	const struct BaseStats* trainerBase;
 	Reset();
+	sPreparedStringCount = 0;
+	for (i = 0; i < MAX_BATTLERS_COUNT; ++i)
+		newBattle.ai.standardDisplayedSpecies[i] = SPECIES_NONE;
 	sRawTrainerAIProfile = aiProfile + 1;
 	profile = GetTrainerAIProfileFromRaw();
 	assert(profile == aiProfile);
@@ -226,12 +338,16 @@ static void ConfigureSourceWitness(u16 trainerId, enum TrainerAIProfile aiProfil
 		SourceWitnessStat(trainerBase->baseSpDefense, trainerIV, trainerLevel),
 		SourceWitnessStat(trainerBase->baseSpeed, trainerIV, trainerLevel),
 		trainerType1, trainerType2, trainerMoves);
+	memset(gEnemyParty, 0, sizeof(gEnemyParty));
+	memset(gPlayerParty, 0, sizeof(gPlayerParty));
+	gPlayerParty[0].species = SPECIES_CHARMANDER;
+	gEnemyParty[partyIndex].species = trainerSpecies;
+	gEnemyParty[partyIndex].hp = gEnemyParty[partyIndex].maxHP = trainerHp;
 	for (i = 0; i < MAX_MON_MOVES; ++i)
-		memset(&gEnemyParty[i], 0, sizeof(gEnemyParty[i]));
-	gEnemyParty[0].species = trainerSpecies;
-	gEnemyParty[0].hp = gEnemyParty[0].maxHP = trainerHp;
-	gEnemyParty[1].species = trainerSpecies;
-	gEnemyParty[1].hp = gEnemyParty[1].maxHP = trainerHp;
+	{
+		gEnemyParty[partyIndex].moves[i] = trainerMoves[i];
+		gEnemyParty[partyIndex].pp[i] = trainerMoves[i] == MOVE_NONE ? 0 : 10;
+	}
 	resources.ai = &sThinking;
 	resources.AIScriptsStack = &sAIScriptsStack;
 	resources.battleHistory = (void *)&history;
@@ -243,9 +359,13 @@ static void ConfigureSourceWitness(u16 trainerId, enum TrainerAIProfile aiProfil
 static int TraceCurrentPolicy(const char *name, u8 *selectedId)
 {
 	u8 i;
+	u8 publicTypes[3] = {TYPE_NORMAL, TYPE_NORMAL, TYPE_NORMAL};
+	bool8 publicTypesAvailable = StandardAI_GetPublicTypes(0, publicTypes);
 	int rc;
 	struct ChooseMoveStruct *moveInfo = (struct ChooseMoveStruct *)&gBattleBufferA[1][4];
-	printf("  actors active=%u target=%u own species=%u level=%u hp=%u/%u stats=%u,%u,%u,%u,%u foe species=%u level=%u hp=%u/%u stats=%u,%u,%u,%u,%u raid=%u inverse=%u frontier=%u\n",
+	printf("  public player species bank0=%u types_available=%u types=[%u,%u,%u]; actors active=%u target=%u own species=%u level=%u hp=%u/%u stats=%u,%u,%u,%u,%u foe species=%u level=%u hp=%u/%u stats=%u,%u,%u,%u,%u raid=%u inverse=%u frontier=%u\n",
+		newBattle.ai.standardDisplayedSpecies[0], publicTypesAvailable,
+		publicTypes[0], publicTypes[1], publicTypes[2],
 		gActiveBattler, gBankTarget, gBattleMons[1].species, gBattleMons[1].level,
 		gBattleMons[1].hp, gBattleMons[1].maxHP, gBattleMons[1].attack,
 		gBattleMons[1].defense, gBattleMons[1].spAttack, gBattleMons[1].spDefense,
@@ -322,13 +442,14 @@ static int TraceCurrentPolicy(const char *name, u8 *selectedId)
 			if (c->floor.kind == STANDARD_POLICY_MOVE && c->floor.id < MAX_MON_MOVES
 				&& gBattleMons[1].moves[c->floor.id] != MOVE_NONE)
 				mechanics = StandardAI_ClassifyDamage(gBattleMons[1].moves[c->floor.id]);
-			printf("  candidate id=%u kind=%u legal=%u slot=%u move=%u class=%u reason=%u damage=%u utility=%d floor=%u admission=%u near=%u admitted=%u no_effect=%u floor_future=%d net_faints=%d foe_hp=%d own_hp=%d future=%d entry=%d repeat=%u\n",
+			printf("  candidate id=%u kind=%u legal=%u slot=%u move=%u class=%u reason=%u damage=%u utility=%d floor=%u admission=%u near=%u admitted=%u productive=%u unknown_potentially_productive=%u no_effect=%u floor_future=%d net_faints=%d foe_hp=%d own_hp=%d future=%d entry=%d repeat=%u\n",
 				c->floor.id, c->floor.kind, c->floor.legal,
 				c->floor.id < MAX_MON_MOVES ? c->floor.id : 255,
 				c->floor.id < MAX_MON_MOVES ? gBattleMons[1].moves[c->floor.id] : MOVE_NONE,
 				mechanics.mechanics_class, mechanics.reason,
 				c->floor.expected_damage, d->utility_total, d->reasons,
 				d->reasons, d->near_best, d->ironmon_eligible,
+				c->floor.productive, c->floor.unknown_potentially_productive,
 				c->floor.known_no_effect, c->floor.immediate_future_gain,
 				c->floor.net_faints, c->floor.opponent_hp_fraction_lost,
 				c->floor.own_hp_fraction_lost,
@@ -357,6 +478,8 @@ static void RunSourceWitness(const char *name, u16 trainerId,
 		(struct ChooseMoveStruct *)&gBattleBufferA[1][4];
 	ConfigureSourceWitness(trainerId, aiProfile, species, level, partyIndex,
 		moves, type1, type2);
+	RunPublicRevealLifecycle();
+	gActiveBattler = gBankAttacker = 1;
 	assert(StandardAI_IsSupportedBattle() == (aiProfile == TRAINER_AI_PROFILE_STANDARD));
 	assert(IronmonAI_IsSupportedBattle() == (aiProfile == TRAINER_AI_PROFILE_IRONMON_SMART));
 	rc = TraceCurrentPolicy(name, &selectedId);
@@ -436,9 +559,11 @@ static void ExactPolicyReturnCodes(void)
 	uint8_t responseCount = 0;
 	u32 standardSeed = 1, ironmonSeed = 1;
 	u8 i;
-ConfigureSourceWitness(TRAINER_LEADER_BROCK, TRAINER_AI_PROFILE_STANDARD,
+	ConfigureSourceWitness(TRAINER_LEADER_BROCK, TRAINER_AI_PROFILE_STANDARD,
 		SPECIES_ONIX, 14, 1, sParty_TrainerLeaderBrock[1].moves,
 		TYPE_ROCK, TYPE_GROUND);
+	RunPublicRevealLifecycle();
+	gActiveBattler = gBankAttacker = 1;
 	StandardAI_BuildObservation(1, TRUE, &standard);
 	StandardAI_LoadMemory(1, &memory);
 	assert(StandardPolicyChoose(&standard, &memory, &standardSeed, &standardResult)
@@ -498,6 +623,8 @@ static void RunErrorFallback(const char *name, u16 trainerId,
 	u8 emittedSlot;
 	ConfigureSourceWitness(trainerId, aiProfile, species, level, partyIndex,
 		moves, type1, type2);
+	RunPublicRevealLifecycle();
+	gActiveBattler = gBankAttacker = 1;
 	StandardAI_TestPolicyRcOverride = -2147483647 - 1;
 	StandardAI_TestSelectedIdOverride = 0xFF;
 	IronmonAI_TestPolicyRcOverride = -2147483647 - 1;
@@ -591,6 +718,121 @@ static void FailureFallbackWitnesses(void)
 		IRONMON_POLICY_ERROR, 0xFF, 0, TRUE);
 }
 
+static void OpeningOakLabWitness(enum TrainerAIProfile aiProfile, bool8 reveal)
+{
+	static const u16 expectedTrainerMoves[MAX_MON_MOVES] = {
+		MOVE_TACKLE, MOVE_TAILWHIP, MOVE_WATERGUN, MOVE_NONE
+	};
+	const struct TrainerMonNoItemDefaultMoves *oakMon =
+		&sParty_TrainerRivalOaksLabSquirtle[0];
+	const struct BaseStats *playerBase = &testBaseStats[SPECIES_CHARMANDER];
+	u16 trainerMoves[MAX_MON_MOVES], playerMoves[MAX_MON_MOVES];
+	u8 i;
+	u8 selectedId;
+	int rc;
+	struct ChooseMoveStruct *moveInfo = (struct ChooseMoveStruct *)&gBattleBufferA[1][4];
+	u8 publicTypes[3] = {TYPE_NORMAL, TYPE_NORMAL, TYPE_NORMAL};
+
+	assert(oakMon->lvl == 5 && oakMon->species == SPECIES_SQUIRTLE);
+	DeriveSourceInitialMoveset(oakMon->species, oakMon->lvl, trainerMoves);
+	DeriveSourceInitialMoveset(SPECIES_CHARMANDER, 5, playerMoves);
+	for (i = 0; i < MAX_MON_MOVES; ++i)
+		assert(trainerMoves[i] == expectedTrainerMoves[i]);
+	printf("Oak's Lab source moves: trainer=%u level=%u initial=[%u,%u,%u,%u]; player Charmander level=5 initial=[%u,%u,%u,%u]\n",
+		oakMon->species, oakMon->lvl, trainerMoves[0], trainerMoves[1],
+		trainerMoves[2], trainerMoves[3], playerMoves[0], playerMoves[1],
+		playerMoves[2], playerMoves[3]);
+
+	ConfigureSourceWitness(TRAINER_RIVAL_OAKS_LAB_SQUIRTLE, aiProfile,
+		oakMon->species, oakMon->lvl, 0, trainerMoves,
+		TYPE_WATER, TYPE_WATER);
+	SetWitnessMon(0, SPECIES_CHARMANDER, 5,
+		SourceWitnessHp(playerBase->baseHP, 31, 5),
+		SourceWitnessStat(playerBase->baseAttack, 31, 5),
+		SourceWitnessStat(playerBase->baseDefense, 31, 5),
+		SourceWitnessStat(playerBase->baseSpAttack, 31, 5),
+		SourceWitnessStat(playerBase->baseSpDefense, 31, 5),
+		SourceWitnessStat(playerBase->baseSpeed, 31, 5),
+		TYPE_FIRE, TYPE_FIRE, playerMoves);
+	gPlayerParty[0].species = SPECIES_CHARMANDER;
+	for (i = 0; i < MAX_MON_MOVES; ++i)
+	{
+		gPlayerParty[0].moves[i] = playerMoves[i];
+		gPlayerParty[0].pp[i] = playerMoves[i] == MOVE_NONE ? 0 : 10;
+	}
+	SetControllerMoves(1);
+	assert(gBattleMons[1].moves[0] == MOVE_TACKLE);
+	assert(gBattleMons[1].moves[1] == MOVE_TAILWHIP);
+	assert(gBattleMons[1].moves[2] == MOVE_WATERGUN);
+	assert(gBattleMons[1].moves[3] == MOVE_NONE);
+	assert(gNewBS->ai.standardDisplayedSpecies[0] == SPECIES_NONE);
+	assert(!StandardAI_GetPublicTypes(0, publicTypes));
+	printf("Oak's Lab %s profile=%u raw=%u pre-reveal displayed_species[0]=%u public_types_available=0\n",
+		reveal ? "positive" : "negative/omitted-reveal",
+		aiProfile, sRawTrainerAIProfile,
+		gNewBS->ai.standardDisplayedSpecies[0]);
+
+	if (reveal)
+	{
+		RunPublicRevealLifecycle();
+		assert(sPreparedStringCount == 2);
+		assert(gNewBS->ai.standardDisplayedSpecies[0] == SPECIES_CHARMANDER);
+		assert(gNewBS->ai.standardDisplayedSpecies[1] == SPECIES_SQUIRTLE);
+		assert(StandardAI_GetPublicTypes(0, publicTypes));
+		printf("Oak's Lab public reveal after STRINGID_INTROSENDOUT producer: displayed_species[0]=%u types_available=1 types=[%u,%u,%u] strings=%u\n",
+			gNewBS->ai.standardDisplayedSpecies[0], publicTypes[0],
+			publicTypes[1], publicTypes[2], sPreparedStringCount);
+	}
+	else
+	{
+		assert(sPreparedStringCount == 0);
+		assert(gNewBS->ai.standardDisplayedSpecies[0] == SPECIES_NONE);
+		assert(!StandardAI_GetPublicTypes(0, publicTypes));
+	}
+
+	/* The battle intro has completed; the engine now asks the opponent bank. */
+	gActiveBattler = gBankAttacker = 1;
+	gBankTarget = 0;
+	assert(gBattleTypeFlags == BATTLE_TYPE_TRAINER);
+	assert(!IsRaidBattle() && !IsInverseBattle());
+	assert(!IsFrontierTrainerId(TRAINER_RIVAL_OAKS_LAB_SQUIRTLE));
+	assert(StandardAI_IsSupportedBattle() == (aiProfile == TRAINER_AI_PROFILE_STANDARD));
+	assert(IronmonAI_IsSupportedBattle() == (aiProfile == TRAINER_AI_PROFILE_IRONMON_SMART));
+	rc = TraceCurrentPolicy(reveal
+		? "Oak's Lab Rival Squirtle L5, revealed"
+		: "Oak's Lab Rival Squirtle L5, omitted reveal", &selectedId);
+	assert(rc == 0);
+	assert(selectedId < MAX_MON_MOVES);
+	assert(gBattleMons[1].moves[selectedId] != MOVE_NONE);
+	assert(!gNewBS->ai.standardPendingValid[1]);
+	if (reveal)
+	{
+		assert(selectedId == 2 && gBattleMons[1].moves[selectedId] == MOVE_WATERGUN);
+		assert(moveInfo->moves[2] == MOVE_WATERGUN);
+	}
+	RunHandoff(selectedId, gBattleMons[1].moves[selectedId], 0);
+	assert(gNewBS->ai.standardPendingValid[1] == FALSE);
+	assert(gBattleStruct->chosenMovePositions[1] == selectedId);
+	assert(sEmittedPosition == selectedId);
+	assert(moveInfo->moves[sEmittedPosition] == gBattleMons[1].moves[selectedId]);
+	assert(gChosenMovesByBanks[1] == gBattleMons[1].moves[selectedId]);
+	assert(!OpponentAI_TestLastBoundedFallback);
+	if (aiProfile == TRAINER_AI_PROFILE_STANDARD)
+	{
+		assert(StandardAI_TestLastPolicyRc == STANDARD_POLICY_OK);
+		assert(StandardAI_TestLastSelectedId == selectedId);
+	}
+	else
+	{
+		assert(IronmonAI_TestLastPolicyRc == IRONMON_POLICY_OK);
+		assert(IronmonAI_TestLastSelectedId == selectedId);
+	}
+	printf("Oak's Lab %s production handoff: rc=%d selected_id=%u returned_slot=%u emitted_slot=%u emitted_move=%u pending=%u controller_parity=PASS\n",
+		reveal ? "revealed" : "omitted-reveal", rc, selectedId,
+		gBattleStruct->chosenMovePositions[1], sEmittedPosition,
+		moveInfo->moves[sEmittedPosition], gNewBS->ai.standardPendingValid[1]);
+}
+
 int main(void)
 {
 	static const u16 weedleMoves[MAX_MON_MOVES] = {
@@ -602,6 +844,11 @@ int main(void)
 	ProfileDispatchAndLegacyIsolation();
 	ExactPolicyReturnCodes();
 	FailureFallbackWitnesses();
+	for (p = 0; p < ARRAY_COUNT(profiles); ++p)
+	{
+		OpeningOakLabWitness(profiles[p], TRUE);
+		OpeningOakLabWitness(profiles[p], FALSE);
+	}
 	for (p = 0; p < ARRAY_COUNT(profiles); ++p)
 	{
 		RunSourceWitness("Rival/Cerulean Squirtle vs Charmander", TRAINER_RIVAL_CERULEAN_SQUIRTLE,
