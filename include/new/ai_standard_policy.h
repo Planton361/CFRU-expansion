@@ -18,6 +18,15 @@ enum StandardPolicyActionKind
 	STANDARD_POLICY_SWITCH = 1,
 };
 
+/* Stable, caller-visible result codes returned by StandardPolicyChoose(). */
+enum StandardPolicyStatus
+{
+	STANDARD_POLICY_OK = 0,
+	STANDARD_POLICY_ERROR = -1,
+	STANDARD_POLICY_NO_ADMITTED_ACTION = -2,
+	STANDARD_POLICY_INVALID_CANDIDATE = -3,
+};
+
 /* Effect-family identifiers are adapter-owned facts, not move identifiers. */
 enum StandardPolicyEffectFamily
 {

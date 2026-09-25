@@ -25,6 +25,14 @@
 #define STANDARD_AI_DEFAULT_SEED 0x51A1F512
 #define STANDARD_AI_INT32_MAX 2147483647
 
+#ifdef CFRU_AI_TEST_TRACE
+int StandardAI_TestLastPolicyRc;
+u8 StandardAI_TestLastFailureReason;
+u8 StandardAI_TestLastSelectedId;
+int StandardAI_TestPolicyRcOverride = INT32_MIN;
+u8 StandardAI_TestSelectedIdOverride = 0xFF;
+#endif
+
 /* Badge ownership is private save/progression state. This helper deliberately
  * returns whether the configured public battle context permits a possible
  * player-side boost, never whether the player owns the Badge. Ironmon and the
@@ -1154,6 +1162,40 @@ void StandardAI_BuildObservation(u8 bank, bool8 includeSwitches,
 
 }
 
+u8 StandardAI_ChooseEmergencyMoveSlot(u8 bank)
+{
+	struct StandardPolicyObservation observation;
+	u8 i, firstOccupied = STANDARD_AI_PENDING_NONE;
+	u8 legalNonzero[MAX_MON_MOVES], legalNonzeroCount = 0;
+	u8 legalSlots[MAX_MON_MOVES], legalCount = 0;
+	StandardAI_BuildObservation(bank, FALSE, &observation);
+	for (i = 0; i < observation.count && i < MAX_MON_MOVES; ++i)
+	{
+		const struct StandardPolicyCandidate* candidate = &observation.candidates[i];
+		if (candidate->kind != STANDARD_POLICY_MOVE
+			|| gBattleMons[bank].moves[i] == MOVE_NONE)
+			continue;
+		if (firstOccupied == STANDARD_AI_PENDING_NONE)
+			firstOccupied = i;
+		if (candidate->legal)
+		{
+			legalSlots[legalCount++] = i;
+			if (i != 0)
+				legalNonzero[legalNonzeroCount++] = i;
+		}
+	}
+	/* A failed policy/adapter handoff is not a valid reason to silently emit
+	 * move slot 0. On the emergency-only path, use the first usable nonzero own
+	 * move whenever one exists. No policy or battle RNG is consumed here. */
+	if (legalNonzeroCount != 0)
+		return legalNonzero[0];
+	if (legalCount != 0)
+		return legalSlots[0];
+	/* With no usable PP/slot, return an occupied slot for the engine's existing
+	 * move-limitation/Struggle resolution. No hidden state or legacy AI is read. */
+	return firstOccupied == STANDARD_AI_PENDING_NONE ? 0 : firstOccupied;
+}
+
 bool8 StandardAI_IsSupportedBattle(void)
 {
 	u32 excluded = BATTLE_TYPE_DOUBLE | BATTLE_TYPE_LINK | BATTLE_TYPE_OAK_TUTORIAL
@@ -1204,40 +1246,41 @@ static u8 StandardAI_Choose(bool8 includeSwitches, struct StandardPolicyCandidat
 	struct StandardPolicyResult result;
 	u8 bank = gBankAttacker;
 	u8 i;
+	int policyRc;
 
 	StandardAI_BuildObservation(bank, includeSwitches, &observation);
 	StandardAI_LoadMemory(bank, &memory);
-	if (StandardPolicyChoose(&observation, &memory, StandardAI_GetPolicyRng(bank), &result) != 0)
-		goto FALLBACK_TO_ENGINE;
+	policyRc = StandardPolicyChoose(&observation, &memory, StandardAI_GetPolicyRng(bank), &result);
+#ifdef CFRU_AI_TEST_TRACE
+	if (StandardAI_TestPolicyRcOverride != INT32_MIN)
+		policyRc = StandardAI_TestPolicyRcOverride;
+	if (StandardAI_TestSelectedIdOverride != 0xFF)
+		result.selected_id = StandardAI_TestSelectedIdOverride;
+	StandardAI_TestLastPolicyRc = policyRc;
+	StandardAI_TestLastSelectedId = STANDARD_AI_PENDING_NONE;
+	StandardAI_TestLastFailureReason = policyRc == STANDARD_POLICY_OK
+		? AI_ADAPTER_FAILURE_NONE
+		: policyRc == STANDARD_POLICY_NO_ADMITTED_ACTION
+			? AI_ADAPTER_FAILURE_NO_ADMITTED_ACTION : AI_ADAPTER_FAILURE_POLICY_ERROR;
+#endif
+	if (policyRc != STANDARD_POLICY_OK)
+		return STANDARD_AI_PENDING_NONE;
 	for (i = 0; i < observation.count; ++i)
 	{
 		if (observation.candidates[i].id == result.selected_id)
 		{
 			*selected = observation.candidates[i];
 			StandardAI_StageLastAction(bank, selected);
+#ifdef CFRU_AI_TEST_TRACE
+			StandardAI_TestLastSelectedId = result.selected_id;
+			StandardAI_TestLastFailureReason = AI_ADAPTER_FAILURE_NONE;
+#endif
 			return selected->id;
 		}
 	}
-
-FALLBACK_TO_ENGINE:
-	/*
-	 * The controller still requires a real move-slot index when every
-	 * candidate is unusable; for example, an all-PP-depleted turn.  Return
-	 * the first occupied own slot without staging it in Standard memory; the
-	 * normal engine limitation path can then resolve Struggle or a forced
-	 * action.  This fallback reads only own moves and never submits or predicts
-	 * a player action.
-	 */
-	for (i = 0; i < observation.count; ++i)
-	{
-		if (observation.candidates[i].kind == STANDARD_POLICY_MOVE
-		&& observation.candidates[i].id < MAX_MON_MOVES
-		&& gBattleMons[bank].moves[observation.candidates[i].id] != MOVE_NONE)
-		{
-			*selected = observation.candidates[i];
-			return selected->id;
-		}
-	}
+#ifdef CFRU_AI_TEST_TRACE
+	StandardAI_TestLastFailureReason = AI_ADAPTER_FAILURE_SELECTED_ID_LOOKUP;
+#endif
 	return STANDARD_AI_PENDING_NONE;
 }
 
@@ -1282,7 +1325,19 @@ u8 StandardAI_ChooseMoveOrAction(void)
 		choice = gNewBS->ai.standardPendingAction[bank];
 		gNewBS->ai.standardPendingValid[bank] = FALSE;
 		if (gNewBS->ai.standardPendingKind[bank] == STANDARD_POLICY_SWITCH)
-			return 0;
+		{
+#ifdef CFRU_AI_TEST_TRACE
+			StandardAI_TestLastFailureReason = AI_ADAPTER_FAILURE_PENDING_STATE;
+#endif
+			return STANDARD_AI_PENDING_NONE;
+		}
+		if (choice >= MAX_MON_MOVES || gBattleMons[bank].moves[choice] == MOVE_NONE)
+		{
+#ifdef CFRU_AI_TEST_TRACE
+			StandardAI_TestLastFailureReason = AI_ADAPTER_FAILURE_PENDING_STATE;
+#endif
+			return STANDARD_AI_PENDING_NONE;
+		}
 		gBattleStruct->chosenMovePositions[bank] = choice;
 		gChosenMovesByBanks[bank] = gBattleMons[bank].moves[choice];
 		return choice;
@@ -1290,7 +1345,13 @@ u8 StandardAI_ChooseMoveOrAction(void)
 
 	choice = StandardAI_Choose(FALSE, &selected);
 	if (choice == STANDARD_AI_PENDING_NONE || selected.kind != STANDARD_POLICY_MOVE)
-		return 0;
+	{
+#ifdef CFRU_AI_TEST_TRACE
+		if (choice != STANDARD_AI_PENDING_NONE)
+			StandardAI_TestLastFailureReason = AI_ADAPTER_FAILURE_NON_MOVE_STATE;
+#endif
+		return STANDARD_AI_PENDING_NONE;
+	}
 	gBattleStruct->chosenMovePositions[bank] = choice;
 	gChosenMovesByBanks[bank] = gBattleMons[bank].moves[choice];
 	gBankTarget = FOE(bank);

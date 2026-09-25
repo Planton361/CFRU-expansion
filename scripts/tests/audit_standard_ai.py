@@ -176,8 +176,14 @@ def main() -> int:
     if "8 + 4 * delta" in code or "missingHpFraction / 4" in code:
         fail("generic stage or duplicate recovery bonus restored")
     move_path = controller.split("void OpponentHandleChooseMove(void)", 1)[1].split("//You get 1", 1)[0]
+    supported_move_path = controller.split(
+        "bool8 OpponentHandleSupportedAIMoveChoice", 1)[1].split(
+            "void OpponentHandleChooseMove(void)", 1)[0]
     replacement = controller.split("void OpponentHandleChoosePokemon(void)", 1)[1].split("CalcMostSuitableMonToSwitchInto", 1)[0]
-    if "StandardAI_ChooseMoveOrAction()" not in move_path or "return;" not in move_path:
+    if ("OpponentHandleSupportedAIMoveChoice(moveInfo)" not in move_path
+            or "StandardAI_ChooseMoveOrAction()" not in supported_move_path
+            or "IronmonAI_ChooseMoveOrAction()" not in supported_move_path
+            or "return;" not in move_path):
         fail("Standard controller reaches legacy gimmick prediction")
     if "StandardAI_ChooseReplacement()" not in replacement or "return;" not in replacement:
         fail("Standard replacement reaches legacy matchup selection")

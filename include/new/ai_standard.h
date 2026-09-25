@@ -11,10 +11,25 @@
 bool8 StandardAI_IsSupportedBattle(void);
 void StandardAI_SetupAIData(void);
 u8 StandardAI_ChooseMoveOrAction(void);
+/* Deterministic own-move-only escape used if adapter validation or pending
+ * state cannot provide an action; 0..3 is always bounded to the active set. */
+u8 StandardAI_ChooseEmergencyMoveSlot(u8 bank);
 void StandardAI_TrySwitchOrUseItem(void);
 u8 StandardAI_ChooseReplacement(void);
 void StandardAI_ObservePublicMove(u16 move);
 void StandardAI_ObservePublicAbility(u8 bank, u8 ability);
+
+enum AIAdapterFailureReason
+{
+	AI_ADAPTER_FAILURE_NONE = 0,
+	AI_ADAPTER_FAILURE_POLICY_ERROR,
+	AI_ADAPTER_FAILURE_NO_ADMITTED_ACTION,
+	AI_ADAPTER_FAILURE_SELECTED_ID_LOOKUP,
+	AI_ADAPTER_FAILURE_PENDING_STATE,
+	AI_ADAPTER_FAILURE_NON_MOVE_STATE,
+	AI_ADAPTER_FAILURE_CONTROLLER_BUFFER,
+	AI_ADAPTER_FAILURE_BOUNDED_EMERGENCY,
+};
 
 /* Shared fair-adapter surface used by the distinct Ironmon profile. */
 void StandardAI_BuildObservation(u8 bank, bool8 includeSwitches,

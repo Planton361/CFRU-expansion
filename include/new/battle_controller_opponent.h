@@ -10,6 +10,9 @@
 //Exported Functions
 /*NONE*/
 
+struct ChooseMoveStruct;
+bool8 OpponentHandleSupportedAIMoveChoice(struct ChooseMoveStruct *moveInfo);
+
 //Functions hooked in
 void OpponentHandleChooseMove(void);
 void OpponentHandleDrawTrainerPic(void);

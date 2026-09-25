@@ -39,6 +39,9 @@ u32 gStatuses3[4], gBattleTypeFlags = BATTLE_TYPE_TRAINER, gHitMarker;
 u32 gRngValue, gRng2Value;
 u8 gChosenActionByBank[4];
 static enum TrainerAIProfile profile = TRAINER_AI_PROFILE_STANDARD;
+#ifdef CFRU_AI_CONTROLLER_TEST
+extern enum TrainerAIProfile GetTrainerAIProfileFromRaw(void);
+#endif
 /* Private save/progression harness state. Fair production code must never
  * call FlagGet for these IDs; Badge twins vary this mask to prove that. */
 static u8 testBadgeMask;
@@ -74,7 +77,14 @@ bool8 FlagGet(u16 id)
 	default: return FALSE;
 	}
 }
-enum TrainerAIProfile GetTrainerAIProfile(void) { return profile; }
+enum TrainerAIProfile GetTrainerAIProfile(void)
+{
+#ifdef CFRU_AI_CONTROLLER_TEST
+	return GetTrainerAIProfileFromRaw();
+#else
+	return profile;
+#endif
+}
 void EmitTwoReturnValues(u8 buffer, u8 action, u16 value)
 { (void)buffer; (void)action; (void)value; }
 

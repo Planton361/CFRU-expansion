@@ -20,6 +20,13 @@
  */
 #define IRONMON_AI_PENDING_NONE 0xFF
 #define IRONMON_AI_DEFAULT_SEED 0x1A0B5157
+#ifdef CFRU_AI_TEST_TRACE
+int IronmonAI_TestLastPolicyRc;
+u8 IronmonAI_TestLastFailureReason;
+u8 IronmonAI_TestLastSelectedId;
+int IronmonAI_TestPolicyRcOverride = -2147483647 - 1;
+u8 IronmonAI_TestSelectedIdOverride = 0xFF;
+#endif
 #ifdef OLD_PARALYSIS_SPD_DROP
 #define IRONMON_PARALYSIS_DIVISOR 4
 #else
@@ -709,26 +716,38 @@ static u8 IronmonAI_Choose(bool8 includeSwitches, struct StandardPolicyCandidate
 	struct IronmonPolicyObservation* observation = &sIronmonObservation;
 	struct IronmonPolicyResult* result = &sIronmonResult;
 	u8 bank = gBankAttacker, i;
+	int policyRc;
 	IronmonAI_BuildObservation(bank, includeSwitches, observation);
 	StandardAI_LoadMemory(bank, &memory);
-	if (IronmonPolicyChoose(observation, &memory, IronmonAI_GetPolicyRng(bank), result) != 0)
-		goto FALLBACK_TO_ENGINE;
+	policyRc = IronmonPolicyChoose(observation, &memory, IronmonAI_GetPolicyRng(bank), result);
+#ifdef CFRU_AI_TEST_TRACE
+	if (IronmonAI_TestPolicyRcOverride != -2147483647 - 1)
+		policyRc = IronmonAI_TestPolicyRcOverride;
+	if (IronmonAI_TestSelectedIdOverride != 0xFF)
+		result->selected_id = IronmonAI_TestSelectedIdOverride;
+	IronmonAI_TestLastPolicyRc = policyRc;
+	IronmonAI_TestLastSelectedId = IRONMON_AI_PENDING_NONE;
+	IronmonAI_TestLastFailureReason = policyRc == IRONMON_POLICY_OK
+		? AI_ADAPTER_FAILURE_NONE
+		: policyRc == IRONMON_POLICY_NO_ADMITTED_ACTION
+			? AI_ADAPTER_FAILURE_NO_ADMITTED_ACTION : AI_ADAPTER_FAILURE_POLICY_ERROR;
+#endif
+	if (policyRc != IRONMON_POLICY_OK)
+		return IRONMON_AI_PENDING_NONE;
 	for (i = 0; i < observation->count; ++i)
 		if (observation->candidates[i].floor.id == result->selected_id)
 		{
 			*selected = observation->candidates[i].floor;
 			StandardAI_StageLastAction(bank, selected);
+		#ifdef CFRU_AI_TEST_TRACE
+			IronmonAI_TestLastSelectedId = result->selected_id;
+			IronmonAI_TestLastFailureReason = AI_ADAPTER_FAILURE_NONE;
+		#endif
 			return selected->id;
 		}
-FALLBACK_TO_ENGINE:
-	for (i = 0; i < observation->count; ++i)
-		if (observation->candidates[i].floor.kind == STANDARD_POLICY_MOVE
-			&& observation->candidates[i].floor.id < MAX_MON_MOVES
-			&& gBattleMons[bank].moves[observation->candidates[i].floor.id] != MOVE_NONE)
-		{
-			*selected = observation->candidates[i].floor;
-			return selected->id;
-		}
+#ifdef CFRU_AI_TEST_TRACE
+	IronmonAI_TestLastFailureReason = AI_ADAPTER_FAILURE_SELECTED_ID_LOOKUP;
+#endif
 	return IRONMON_AI_PENDING_NONE;
 }
 
@@ -784,13 +803,27 @@ u8 IronmonAI_ChooseMoveOrAction(void)
 	{
 		choice = gNewBS->ai.standardPendingAction[bank];
 		gNewBS->ai.standardPendingValid[bank] = FALSE;
-		if (gNewBS->ai.standardPendingKind[bank] == STANDARD_POLICY_SWITCH) return 0;
+		if (gNewBS->ai.standardPendingKind[bank] == STANDARD_POLICY_SWITCH
+			|| choice >= MAX_MON_MOVES || gBattleMons[bank].moves[choice] == MOVE_NONE)
+		{
+#ifdef CFRU_AI_TEST_TRACE
+			IronmonAI_TestLastFailureReason = AI_ADAPTER_FAILURE_PENDING_STATE;
+#endif
+			return IRONMON_AI_PENDING_NONE;
+		}
 		gBattleStruct->chosenMovePositions[bank] = choice;
 		gChosenMovesByBanks[bank] = gBattleMons[bank].moves[choice];
 		return choice;
 	}
 	choice = IronmonAI_Choose(FALSE, &selected);
-	if (choice == IRONMON_AI_PENDING_NONE || selected.kind != STANDARD_POLICY_MOVE) return 0;
+	if (choice == IRONMON_AI_PENDING_NONE || selected.kind != STANDARD_POLICY_MOVE)
+	{
+#ifdef CFRU_AI_TEST_TRACE
+		if (choice != IRONMON_AI_PENDING_NONE)
+			IronmonAI_TestLastFailureReason = AI_ADAPTER_FAILURE_NON_MOVE_STATE;
+#endif
+		return IRONMON_AI_PENDING_NONE;
+	}
 	gBattleStruct->chosenMovePositions[bank] = choice;
 	gChosenMovesByBanks[bank] = gBattleMons[bank].moves[choice];
 	gBankTarget = FOE(bank);
