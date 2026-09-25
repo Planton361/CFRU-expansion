@@ -43,7 +43,8 @@ def main() -> int:
         strings = temp / "battle_strings.o"
         learn_move = temp / "learn_move.o"
         learnsets = temp / "level_up_learnsets.o"
-        run(common + host_include + ["-c", "src/Battle_AI/ai_master.c", "-o", str(master)])
+        run(common + host_include + ["-DCFRU_AI_TEST_TRACE", "-c",
+            "src/Battle_AI/ai_master.c", "-o", str(master)])
         run(common + host_include + ["-DCFRU_AI_TEST_TRACE", "-c",
             "src/battle_controller_opponent.c", "-o", str(controller)])
         run(common + host_include + ["-include", str(strings_preamble), "-c",
@@ -75,12 +76,16 @@ def main() -> int:
             *linker, "-o", str(diagnostic_binary)])
         subprocess.run([str(diagnostic_binary)], cwd=ROOT, check=True)
         probe_controller = temp / "battle_controller_opponent_capped_probe.o"
+        probe_master = temp / "ai_master_capped_probe.o"
+        run(common + host_include + ["-DCFRU_AI_TEST_TRACE",
+            "-DTRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE", "-c",
+            "src/Battle_AI/ai_master.c", "-o", str(probe_master)])
         run(common + host_include + ["-DCFRU_AI_TEST_TRACE",
             "-DTRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE", "-c",
             "src/battle_controller_opponent.c", "-o", str(probe_controller)])
         probe_binary = temp / "controller_capped_tailwhip_probe_host"
         run(common + ["-DTRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE",
-            "scripts/tests/controller_fallback_host.c", str(master),
+            "scripts/tests/controller_fallback_host.c", str(probe_master),
             str(probe_controller), str(util), str(strings), str(learn_move),
             str(learnsets), "src/Battle_AI/ai_standard_policy.c",
             "src/Battle_AI/ai_standard_mechanics.c", "src/Battle_AI/ai_ironmon_policy.c",

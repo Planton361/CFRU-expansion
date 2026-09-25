@@ -100,7 +100,18 @@ enum TrainerAIProfile GetTrainerAIProfile(void)
 #endif
 }
 void EmitTwoReturnValues(u8 buffer, u8 action, u16 value)
-{ (void)buffer; (void)action; (void)value; }
+{
+#ifdef CFRU_AI_CONTROLLER_TEST
+	extern u8 ControllerHost_ActionCount, ControllerHost_ActionCode;
+	extern u16 ControllerHost_ActionValue;
+	assert(buffer == 1);
+	++ControllerHost_ActionCount;
+	ControllerHost_ActionCode = action;
+	ControllerHost_ActionValue = value;
+#else
+	(void)buffer; (void)action; (void)value;
+#endif
+}
 
 static void Reset(void)
 {

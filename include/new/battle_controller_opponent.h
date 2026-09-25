@@ -24,6 +24,8 @@ struct OpponentAIDispatchTrace
 	u8 raid, inverse, frontierTrainer;
 	u8 activeBattler, bankAttacker, bankTarget, defenseStage;
 	u8 adapter, selectedSlot, emittedSlot;
+	u8 resolvedBeforeMarker, adapterFailureReason;
+	u8 controllerBufferMismatch, boundedFallback, diagnosticClass;
 };
 extern struct OpponentAIDispatchTrace OpponentAI_DispatchTrace;
 #endif

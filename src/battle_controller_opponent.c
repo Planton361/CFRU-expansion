@@ -27,6 +27,9 @@
 #if defined(TRAINER_AI_RUNTIME_DISPATCH_TRACE) && defined(TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE)
 #error Oak runtime diagnostic modes must be enabled separately.
 #endif
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+static bool8 sOakProbeBoundedFallback;
+#endif
 
 /*
 battle_controller_opponent.c
@@ -43,6 +46,8 @@ u8 OpponentAI_TestLastBoundedFallback;
 struct OpponentAIDispatchTrace OpponentAI_DispatchTrace;
 extern int StandardAI_TestLastPolicyRc;
 extern int IronmonAI_TestLastPolicyRc;
+extern u8 StandardAI_TestLastFailureReason;
+extern u8 IronmonAI_TestLastFailureReason;
 
 static void OpponentAI_CaptureDispatchEntry(void)
 {
@@ -74,6 +79,7 @@ static void OpponentAI_CaptureDispatchEntry(void)
 	trace->bankAttacker = gBankAttacker;
 	trace->bankTarget = gBankTarget;
 	trace->selectedSlot = trace->emittedSlot = 0xFF;
+	trace->resolvedBeforeMarker = 0xFF;
 	trace->policyRc = -1;
 	if (bank >= MAX_BATTLERS_COUNT || gNewBS == NULL)
 		return;
@@ -164,24 +170,12 @@ static bool8 OpponentHandleOakCappedTailWhipProbe(struct ChooseMoveStruct *moveI
 	u8 slot = 1;
 	u8 target;
 	u16 move;
+	struct OakCappedTailWhipProbeState *probe = &gOakCappedTailWhipProbeState;
+	bool8 forcedAction = probe->forcedSetupAction;
+	probe->forcedSetupAction = FALSE;
 
-	if (gTrainerBattleOpponent_A != TRAINER_RIVAL_OAKS_LAB_SQUIRTLE
-		|| !(gBattleTypeFlags & BATTLE_TYPE_TRAINER)
-		|| (gBattleTypeFlags & (BATTLE_TYPE_DOUBLE | BATTLE_TYPE_LINK
-			| BATTLE_TYPE_MULTI | BATTLE_TYPE_TWO_OPPONENTS))
-		|| gBattleTypeFlags != BATTLE_TYPE_TRAINER
-		|| bank >= MAX_BATTLERS_COUNT || SIDE(bank) != B_SIDE_OPPONENT
-		|| gNewBS == NULL || gBattleMons[bank].species != SPECIES_SQUIRTLE
-		|| gBattleMons[bank].moves[0] != MOVE_TACKLE
-		|| gBattleMons[bank].moves[1] != MOVE_TAILWHIP
-		|| gBattleMons[bank].moves[2] != MOVE_WATERGUN
-		|| gBattleMons[bank].moves[3] != MOVE_NONE)
-		return FALSE;
-
-	if (gBattleMons[FOE(bank)].statStages[STAT_STAGE_DEF - 1] <= STAT_STAGE_MIN)
-		return FALSE;
-	if (!gBattleMons[bank].pp[slot]
-		|| (CheckMoveLimitations(bank, 0, 0xFF) & gBitTable[slot]))
+	if (!forcedAction || probe->bank != bank
+		|| !AI_OakCappedTailWhipProbeCanForce())
 		return FALSE;
 
 	OpponentNormalizeSupportedMoveInfo(moveInfo, bank);
@@ -203,6 +197,46 @@ static bool8 OpponentHandleOakCappedTailWhipProbe(struct ChooseMoveStruct *moveI
 #endif
 	OpponentBufferExecCompleted();
 	return TRUE;
+}
+#endif
+
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+/* One capped decision gets a legal own-move code after normal action and move
+ * selection. This changes only the private diagnostic emission, never policy. */
+static u8 OpponentOakProbeClassifyCappedSlot(struct ChooseMoveStruct *moveInfo,
+	u8 bank, u8 rawSlot, u8 resolvedSlot, bool8 bufferMismatch)
+{
+	struct OakCappedTailWhipProbeState *probe = &gOakCappedTailWhipProbeState;
+	bool8 currentSelection;
+	u8 markerSlot, diagnosticClass;
+
+	if (!probe->cappedActionReady || probe->cappedClassified
+		|| probe->bank != bank || probe->actionStage > STAT_STAGE_MIN
+		|| !AI_OakCappedTailWhipProbeExactBattle()
+		|| gBattleMons[FOE(bank)].statStages[STAT_STAGE_DEF - 1] > STAT_STAGE_MIN)
+		return resolvedSlot;
+	probe->cappedActionReady = FALSE;
+	probe->cappedClassified = TRUE;
+	currentSelection = probe->cappedEntryClean && !sOakProbeBoundedFallback
+		&& !bufferMismatch
+		&& rawSlot < MAX_MON_MOVES
+		&& moveInfo->moves[rawSlot] == gBattleMons[bank].moves[rawSlot]
+		&& moveInfo->moves[rawSlot] != MOVE_NONE
+		&& probe->actionLastKind == STANDARD_POLICY_MOVE
+		&& (probe->actionPendingValid
+			? probe->actionLastValid
+				&& probe->actionPendingKind == STANDARD_POLICY_MOVE
+				&& probe->actionPendingSlot == rawSlot
+			: gNewBS->ai.standardLastValid[bank]);
+	markerSlot = !currentSelection ? 0 : rawSlot == 1 ? 1 : 2;
+	diagnosticClass = !currentSelection ? 3 : rawSlot == 1 ? 2 : 1;
+	if (!gBattleMons[bank].pp[markerSlot]
+		|| (CheckMoveLimitations(bank, 0, 0xFF) & gBitTable[markerSlot]))
+		return resolvedSlot;
+#ifdef CFRU_AI_TEST_TRACE
+	OpponentAI_DispatchTrace.diagnosticClass = diagnosticClass;
+#endif
+	return markerSlot;
 }
 #endif
 
@@ -238,6 +272,9 @@ static u8 OpponentResolveSupportedAIMoveSlot(struct ChooseMoveStruct *moveInfo,
 #ifdef CFRU_AI_TEST_TRACE
 		OpponentAI_TestLastBoundedFallback = TRUE;
 #endif
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+		sOakProbeBoundedFallback = TRUE;
+#endif
 	}
 	if (moveInfo->moves[chosenMovePos] != gBattleMons[bank].moves[chosenMovePos])
 	{
@@ -268,8 +305,22 @@ bool8 OpponentHandleSupportedAIMoveChoice(struct ChooseMoveStruct *moveInfo)
 		OpponentAI_DispatchTrace.selectedMove = chosenMovePos < MAX_MON_MOVES
 			? gBattleMons[gActiveBattler].moves[chosenMovePos] : MOVE_NONE;
 #endif
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+		u8 rawChosenMovePos = chosenMovePos;
+		sOakProbeBoundedFallback = FALSE;
+#endif
 		chosenMovePos = OpponentResolveSupportedAIMoveSlot(moveInfo, gActiveBattler,
 			chosenMovePos);
+#ifdef CFRU_AI_TEST_TRACE
+		OpponentAI_DispatchTrace.resolvedBeforeMarker = chosenMovePos;
+		OpponentAI_DispatchTrace.adapterFailureReason = IronmonAI_TestLastFailureReason;
+		OpponentAI_DispatchTrace.controllerBufferMismatch = bufferMismatch;
+		OpponentAI_DispatchTrace.boundedFallback = OpponentAI_TestLastBoundedFallback;
+#endif
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+		chosenMovePos = OpponentOakProbeClassifyCappedSlot(moveInfo,
+			gActiveBattler, rawChosenMovePos, chosenMovePos, bufferMismatch);
+#endif
 		target = gBattleMoves[moveInfo->moves[chosenMovePos]].target;
 		gBankTarget = target & (MOVE_TARGET_USER | MOVE_TARGET_USER_OR_PARTNER)
 			? gActiveBattler : FOE(gActiveBattler);
@@ -302,8 +353,22 @@ bool8 OpponentHandleSupportedAIMoveChoice(struct ChooseMoveStruct *moveInfo)
 		OpponentAI_DispatchTrace.selectedMove = chosenMovePos < MAX_MON_MOVES
 			? gBattleMons[gActiveBattler].moves[chosenMovePos] : MOVE_NONE;
 #endif
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+		u8 rawChosenMovePos = chosenMovePos;
+		sOakProbeBoundedFallback = FALSE;
+#endif
 		chosenMovePos = OpponentResolveSupportedAIMoveSlot(moveInfo, gActiveBattler,
 			chosenMovePos);
+#ifdef CFRU_AI_TEST_TRACE
+		OpponentAI_DispatchTrace.resolvedBeforeMarker = chosenMovePos;
+		OpponentAI_DispatchTrace.adapterFailureReason = StandardAI_TestLastFailureReason;
+		OpponentAI_DispatchTrace.controllerBufferMismatch = bufferMismatch;
+		OpponentAI_DispatchTrace.boundedFallback = OpponentAI_TestLastBoundedFallback;
+#endif
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+		chosenMovePos = OpponentOakProbeClassifyCappedSlot(moveInfo,
+			gActiveBattler, rawChosenMovePos, chosenMovePos, bufferMismatch);
+#endif
 		target = gBattleMoves[moveInfo->moves[chosenMovePos]].target;
 		gBankTarget = target & (MOVE_TARGET_USER | MOVE_TARGET_USER_OR_PARTNER)
 			? gActiveBattler : FOE(gActiveBattler);

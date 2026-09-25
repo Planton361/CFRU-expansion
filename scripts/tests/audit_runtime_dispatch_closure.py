@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source and optional linked-symbol closure for the four R1 runtime hooks.
+"""Source and optional linked-symbol closure for the R1 runtime hooks.
 
 The default mode reads source only. After build.py, pass --linked-object
 build/linked.o to check the very symbol addresses consumed by insert.py.
@@ -20,6 +20,7 @@ EXPECTED = {
     "BattleSetup_StartTrainerBattle": (0x08080464, 0, "src/overworld.c", r"\bvoid BattleSetup_StartTrainerBattle\(void\)"),
     "ExpandedVarsHook": (0x0806E454, 1, "assembly/hooks/general_hooks.s", r"(?m)^ExpandedVarsHook:"),
     "BufferStringBattle": (0x080D7274, 1, "src/battle_strings.c", r"\bvoid BufferStringBattle\(u16 stringID\)"),
+    "AI_TrySwitchOrUseItem": (0x08039C84, 0, "src/Battle_AI/ai_master.c", r"\bvoid AI_TrySwitchOrUseItem\(void\)"),
 }
 EXCLUDED = {
     "DOUBLE", "LINK", "OAK_TUTORIAL", "MULTI", "SAFARI", "ROAMER",
@@ -87,7 +88,7 @@ def check_source(inserter):
     require(set(inserter.REQUIRED_RUNTIME_HOOKS) == set(EXPECTED)
             and "Required runtime hook symbol missing" in source,
             "required missing symbols are no longer fatal")
-    print("four required hook sites, production symbols, parser and Thumb encoding: PASS")
+    print("four original hooks plus action-phase hook, symbols, parser and Thumb encoding: PASS")
 
 
 def check_oak_flags():
@@ -173,6 +174,7 @@ def check_linked_symbols(inserter, path):
 def check_diagnostic_preprocessing():
     config = (ROOT / "src/config.h").read_text()
     controller = (ROOT / "src/battle_controller_opponent.c").read_text()
+    master = (ROOT / "src/Battle_AI/ai_master.c").read_text()
     require("//#define TRAINER_AI_RUNTIME_DISPATCH_TRACE" in config
             and not re.search(r"(?m)^#define TRAINER_AI_RUNTIME_DISPATCH_TRACE\b", config),
             "temporary marker enabled in the default configuration")
@@ -180,23 +182,46 @@ def check_diagnostic_preprocessing():
             and not re.search(r"(?m)^#define TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE\b", config),
             "capped Tail Whip probe enabled in the default configuration")
     require("CheckMoveLimitations(bank, 0, 0xFF)" in controller,
-            "marker no longer checks all normal move restrictions")
+            "original marker no longer checks normal move restrictions")
     probe = controller.split("static bool8 OpponentHandleOakCappedTailWhipProbe(", 1)[1].split(
         "\nstatic bool8 OpponentNormalizeSupportedMoveInfo(struct ChooseMoveStruct *moveInfo,\n", 1)[0]
+    eligibility = master.split("bool8 AI_OakCappedTailWhipProbeExactBattle(void)", 1)[1].split(
+        "\nbool8 AI_OakCappedTailWhipProbeCanForce(void)", 1)[0]
     for required in ("TRAINER_RIVAL_OAKS_LAB_SQUIRTLE", "SPECIES_SQUIRTLE",
                      "MOVE_TACKLE", "MOVE_TAILWHIP", "MOVE_WATERGUN", "MOVE_NONE",
-                     "gBattleTypeFlags != BATTLE_TYPE_TRAINER"):
-        require(required in probe, "capped probe eligibility lost: " + required)
-    require(probe.index("statStages[STAT_STAGE_DEF - 1] <= STAT_STAGE_MIN")
-            < probe.index("CheckMoveLimitations(bank, 0, 0xFF)"),
-            "probe must fall through at the actual Defense floor before legal-move handling")
-    require("gBattleResults.battleTurnCounter" not in probe,
+                     "gBattleTypeFlags == BATTLE_TYPE_TRAINER"):
+        require(required in eligibility, "capped probe eligibility lost: " + required)
+    force = master.split("bool8 AI_OakCappedTailWhipProbeCanForce(void)", 1)[1].split(
+        "\nstatic void AI_OakCappedTailWhipProbeRecordAction(void)", 1)[0]
+    require("statStages[STAT_STAGE_DEF - 1] > STAT_STAGE_MIN" in force
+            and "gBattleMons[bank].pp[1] != 0" in force
+            and "CheckMoveLimitations(bank, 0, 0xFF) & gBitTable[1]" in force,
+            "action/move setup must share actual-stage and legal Tail Whip gate")
+    action = master.split("void AI_TrySwitchOrUseItem(void)", 1)[1]
+    require(action.index("if (AI_OakCappedTailWhipProbeCanForce()")
+            < action.index("if (IronmonAI_IsSupportedBattle())")
+            < action.index("if (StandardAI_IsSupportedBattle())"),
+            "probe must bypass fair action-phase selection before staging")
+    setup = action.split("if (AI_OakCappedTailWhipProbeCanForce()", 1)[1].split(
+        "if (probe->actionStage <= STAT_STAGE_MIN", 1)[0]
+    require("EmitTwoReturnValues(1, ACTION_USE_MOVE" in setup
+            and "probe->forcedSetupAction = TRUE" in setup
+            and "return;" in setup
+            and "Choose(" not in setup and "standardPendingValid[bank] = TRUE" not in setup
+            and "standardLastValid[bank] = TRUE" not in setup,
+            "forced action setup must emit USE_MOVE without policy staging")
+    require("probe->cappedEntryClean = !gNewBS->ai.standardPendingValid[bank]" in action
+            and "AI_OakCappedTailWhipProbeRecordAction();" in action,
+            "capped turn must observe clean entry and normal action result")
+    require("forcedAction = probe->forcedSetupAction" in probe
+            and "probe->forcedSetupAction = FALSE" in probe
+            and "AI_OakCappedTailWhipProbeCanForce()" in probe,
+            "move setup must consume its own action-phase authorization")
+    require("gBattleResults.battleTurnCounter" not in force + probe,
             "capped Tail Whip probe must not use a fixed turn count")
-    require(probe.index("gBattleMons[bank].pp[slot]")
-            < probe.index("EmitMoveChosen(1, slot"),
-            "probe must check PP before emitting Tail Whip")
-    require("AIRandom(" not in probe and "Random(" not in probe
-            and "PolicyChoose(" not in probe and "ChooseMoveOrAction(" not in probe,
+    require("AIRandom(" not in force + probe and "Random(" not in force + probe
+            and "PolicyChoose(" not in force + probe
+            and "ChooseMoveOrAction(" not in force + probe,
             "forced setup must not call normal policy RNG or choice")
     require("move = gBattleMons[bank].moves[slot]" in probe
             and "gChosenMovesByBanks[bank] = move" in probe
@@ -205,27 +230,54 @@ def check_diagnostic_preprocessing():
     require(controller.index("if (OpponentHandleOakCappedTailWhipProbe(moveInfo))")
             < controller.index("if (OpponentHandleSupportedAIMoveChoice(moveInfo))"),
             "probe must fall through to the ordinary supported dispatch")
-    command = ["cc", "-E", "-P", "-Iinclude", "-I.",
-               "src/battle_controller_opponent.c"]
-    normal = subprocess.check_output(command, cwd=ROOT, text=True)
-    diagnostic = subprocess.check_output(command[:1] +
-        ["-DTRAINER_AI_RUNTIME_DISPATCH_TRACE"] + command[1:], cwd=ROOT, text=True)
-    capped_probe = subprocess.check_output(command[:1] +
-        ["-DTRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE"] + command[1:],
-        cwd=ROOT, text=True)
+    classify = controller.split("static u8 OpponentOakProbeClassifyCappedSlot(", 1)[1].split(
+        "\nstatic bool8 OpponentNormalizeSupportedMoveInfo(struct ChooseMoveStruct *moveInfo,\n", 1)[0]
+    require("!sOakProbeBoundedFallback" in classify
+            and "probe->actionPendingSlot == rawSlot" in classify
+            and "markerSlot = !currentSelection ? 0 : rawSlot == 1 ? 1 : 2" in classify
+            and "CheckMoveLimitations(bank, 0, 0xFF) & gBitTable[markerSlot]" in classify,
+            "capped marker must separate valid slot 1 from bounded emergency")
+    command = ["cc", "-E", "-P", "-Iinclude", "-I."]
+    def preprocess(source, define=None):
+        return subprocess.check_output(command + ([f"-D{define}"] if define else [])
+                                       + [source], cwd=ROOT, text=True)
+    normal = preprocess("src/battle_controller_opponent.c")
+    normal_master = preprocess("src/Battle_AI/ai_master.c")
+    diagnostic = preprocess("src/battle_controller_opponent.c",
+                            "TRAINER_AI_RUNTIME_DISPATCH_TRACE")
+    diagnostic_master = preprocess("src/Battle_AI/ai_master.c",
+                                   "TRAINER_AI_RUNTIME_DISPATCH_TRACE")
+    capped_probe = preprocess("src/battle_controller_opponent.c",
+                              "TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE")
+    capped_master = preprocess("src/Battle_AI/ai_master.c",
+                               "TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE")
     require("OpponentHandleOakDispatchMarker" not in normal,
             "marker is present in release preprocessed source")
     require("OpponentHandleOakCappedTailWhipProbe" not in normal,
             "capped Tail Whip probe is present in release preprocessed source")
+    require("AI_OakCappedTailWhipProbeCanForce" not in normal_master,
+            "action-phase probe is present in release preprocessed source")
     require("OpponentHandleOakDispatchMarker" in diagnostic,
             "marker absent from diagnostic preprocessed source")
     require("OpponentHandleOakCappedTailWhipProbe" not in diagnostic,
             "capped probe leaked into the three-turn marker build")
+    require("AI_OakCappedTailWhipProbeCanForce" not in diagnostic_master,
+            "action probe leaked into the three-turn marker build")
     require("OpponentHandleOakCappedTailWhipProbe" in capped_probe,
             "capped Tail Whip probe absent from its diagnostic build")
     require("OpponentHandleOakDispatchMarker" not in capped_probe,
             "three-turn marker leaked into the capped probe build")
-    print("diagnostic switches: disabled by default; release preprocessing omits both; each diagnostic build contains only its selected path: PASS")
+    require("AI_OakCappedTailWhipProbeCanForce" in capped_master
+            and "gOakCappedTailWhipProbeState" in capped_master,
+            "capped action-phase probe absent from its diagnostic build")
+    both = subprocess.run(command + ["-DTRAINER_AI_RUNTIME_DISPATCH_TRACE",
+        "-DTRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE",
+        "src/battle_controller_opponent.c"], cwd=ROOT, text=True,
+        capture_output=True)
+    require(both.returncode != 0
+            and "Oak runtime diagnostic modes must be enabled separately" in both.stderr,
+            "enabling both diagnostic switches must fail compilation")
+    print("diagnostic switches: release omits both; capped action/move paths and three-turn marker stay isolated: PASS")
 
 
 def main():

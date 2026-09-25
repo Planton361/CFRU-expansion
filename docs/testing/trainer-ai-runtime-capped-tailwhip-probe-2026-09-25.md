@@ -1,5 +1,12 @@
 # R1 Oak capped Tail Whip probe — Workspace #532 extension
 
+**2026-09-26 correction:** The first capped private result was Tail Whip, but
+the interpretation below was confounded by action-phase pending/last-action
+staging before this probe's move-phase interception. The corrected full-lifecycle
+contract and evidence are in
+[trainer-ai-runtime-full-lifecycle-2026-09-26.md](trainer-ai-runtime-full-lifecycle-2026-09-26.md).
+The original three-turn marker and its evidence remain unchanged.
+
 ## Runtime fact and disposition
 
 The user supplied a private result for the original three-turn marker on PR #56 head `936fd1dce2c3ad830ca8b3f47fd164aacd5bf7d6`: menu profile **Ironmon Smart**, then **Water Gun / Water Gun / Water Gun**. Under the unchanged marker contract, this confirms `IronmonAI_IsSupportedBattle() == TRUE`, `GetTrainerAIProfile() == TRAINER_AI_PROFILE_IRONMON_SMART`, and public player species Charmander for those decisions. Three forced Water Guns KO Charmander, so that experiment cannot reach a fourth decision. This supersedes the earlier evidence file's statement that these private values were unobserved; the earlier file and its marker remain unchanged.
@@ -16,14 +23,14 @@ On each eligible opponent decision, the probe reads the **actual target battle D
 
 At `STAT_STAGE_MIN`, the function returns **before** move-limit checks, normalization, buffer writes, policy calls, or controller emission. That same opponent decision proceeds into `OpponentHandleSupportedAIMoveChoice` and its normal Ironmon/Standard profile route. The first such decision is the witness. Neither diagnostic changes policy weights, epsilon, damage, status utility, Tail Whip scoring, or Legacy Smart behavior.
 
-## Reading the private probe result
+## Historical reading rule — superseded by the full-lifecycle probe
 
 The setup phase should show Tail Whip only while the player's displayed Defense stage can still fall. Do not infer the cap from a fixed number of turns; wait until the game shows further Defense reduction is impossible. Then record **the first opponent move after the stage is already at minimum at decision entry**:
 
 | First normal decision at minimum Defense | Interpretation |
 | --- | --- |
-| Tail Whip | The real normal fair runtime path can select capped Tail Whip. The cause is downstream of the already confirmed hook/support/profile/public-identity checks; capture the normal dispatch and policy state. |
-| Tackle or Water Gun | Once the fair policy owns the capped decision, it rejects Tail Whip. The original release loop depends on an earlier lifecycle/state condition or state perturbed before steady-state dispatch. |
+| Tail Whip | **No longer a valid policy conclusion.** Stale action-phase pending state or bounded emergency slot 1 can also emit Tail Whip. |
+| Tackle or Water Gun | The old probe did not control action-phase staging, so this observation alone would also be incomplete. |
 
 The user's original **Water Gun / Water Gun / Water Gun** result belongs to the first marker and does not predict the second probe's capped decision. A new diagnostic build and runtime observation are still required; the host witness does not substitute for them.
 

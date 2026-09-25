@@ -41,7 +41,7 @@ BYTE_REPLACEMENT = 'bytereplacement'
 HOOKS = 'hooks'
 REQUIRED_RUNTIME_HOOKS = frozenset({
     'OpponentHandleChooseMove', 'BattleSetup_StartTrainerBattle',
-    'ExpandedVarsHook', 'BufferStringBattle',
+    'ExpandedVarsHook', 'BufferStringBattle', 'AI_TrySwitchOrUseItem',
 })
 REPOINTS = 'repoints'
 GENERATED_REPOINTS = 'generatedrepoints'

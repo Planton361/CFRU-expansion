@@ -35,6 +35,8 @@ extern bool8 StandardAI_GetPublicTypes(u8 foe, u8 types[3]);
 
 u8 gBattleBufferA[MAX_BATTLERS_COUNT][0x200];
 struct BattleResults gBattleResults;
+u8 ControllerHost_ActionCount, ControllerHost_ActionCode;
+u16 ControllerHost_ActionValue;
 static u8 sEmitCount;
 static u8 sEmittedPosition;
 static u8 sEmittedTarget;
@@ -934,8 +936,7 @@ static void OakDispatchMarkerMatrix(void)
 }
 #endif
 
-#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
-static void ConfigureOakCappedProbe(enum TrainerAIProfile aiProfile)
+static void ConfigureOakLifecycleWitness(enum TrainerAIProfile aiProfile)
 {
 	static const u16 expectedMoves[MAX_MON_MOVES] =
 		{MOVE_TACKLE, MOVE_TAILWHIP, MOVE_WATERGUN, MOVE_NONE};
@@ -949,6 +950,7 @@ static void ConfigureOakCappedProbe(enum TrainerAIProfile aiProfile)
 		assert(trainerMoves[i] == expectedMoves[i]);
 	ConfigureSourceWitness(TRAINER_RIVAL_OAKS_LAB_SQUIRTLE, aiProfile,
 		SPECIES_SQUIRTLE, 5, 0, trainerMoves, TYPE_WATER, TYPE_WATER);
+	gBattleResults.battleTurnCounter = 0;
 	playerBase = &testBaseStats[SPECIES_CHARMANDER];
 	SetWitnessMon(0, SPECIES_CHARMANDER, 5,
 		SourceWitnessHp(playerBase->baseHP, 31, 5),
@@ -970,6 +972,127 @@ static void ConfigureOakCappedProbe(enum TrainerAIProfile aiProfile)
 		(aiProfile == TRAINER_AI_PROFILE_IRONMON_SMART));
 }
 
+static void OakFullLifecycleReleaseWitness(enum TrainerAIProfile aiProfile,
+	bool8 cappedDefense)
+{
+	u8 bank = 1, actionSelected, actionFailure;
+	int actionPolicyRc;
+	u32 battleRng, battleRng2, standardRng, ironmonRng;
+	ConfigureOakLifecycleWitness(aiProfile);
+	if (cappedDefense)
+		gBattleMons[0].statStages[STAT_STAGE_DEF - 1] = STAT_STAGE_MIN;
+	gBattleResults.battleTurnCounter = 0;
+	assert(!gNewBS->ai.standardPendingValid[bank]);
+	assert(!gNewBS->ai.standardLastValid[bank]);
+	battleRng = gRngValue;
+	battleRng2 = gRng2Value;
+	standardRng = gNewBS->ai.standardPolicyRng[bank];
+	ironmonRng = gNewBS->ai.ironmonPolicyRng[bank];
+	ControllerHost_ActionCount = 0;
+	AI_TrySwitchOrUseItem();
+	assert(ControllerHost_ActionCount == 1);
+	assert(ControllerHost_ActionCode == ACTION_USE_MOVE);
+	assert(ControllerHost_ActionValue == (bank ^ BIT_SIDE) << 8);
+	assert(gNewBS->ai.standardPendingValid[bank]);
+	assert(gNewBS->ai.standardPendingKind[bank] == STANDARD_POLICY_MOVE);
+	assert(gNewBS->ai.standardLastValid[bank]);
+	actionSelected = aiProfile == TRAINER_AI_PROFILE_STANDARD
+		? StandardAI_TestLastSelectedId : IronmonAI_TestLastSelectedId;
+	actionPolicyRc = aiProfile == TRAINER_AI_PROFILE_STANDARD
+		? StandardAI_TestLastPolicyRc : IronmonAI_TestLastPolicyRc;
+	actionFailure = aiProfile == TRAINER_AI_PROFILE_STANDARD
+		? StandardAI_TestLastFailureReason : IronmonAI_TestLastFailureReason;
+	assert(actionPolicyRc == 0 && actionFailure == AI_ADAPTER_FAILURE_NONE);
+	assert(actionSelected == gNewBS->ai.standardPendingAction[bank]);
+	assert(actionSelected == (cappedDefense ? 0 : 2));
+	assert(gBattleMons[bank].moves[actionSelected] != MOVE_TAILWHIP);
+	sEmitCount = sOpponentCompleted = 0;
+	OpponentHandleChooseMove();
+	assert(sEmitCount == 1 && sOpponentCompleted == 1);
+	assert(!gNewBS->ai.standardPendingValid[bank]);
+	assert(OpponentAI_DispatchTrace.adapter ==
+		(aiProfile == TRAINER_AI_PROFILE_STANDARD ? 1 : 2));
+	assert(OpponentAI_DispatchTrace.defenseStage ==
+		(cappedDefense ? STAT_STAGE_MIN : 6));
+	assert(OpponentAI_DispatchTrace.selectedSlot == actionSelected);
+	assert(OpponentAI_DispatchTrace.emittedSlot == actionSelected);
+	assert(sEmittedPosition == actionSelected);
+	assert(gChosenMovesByBanks[bank] == gBattleMons[bank].moves[actionSelected]);
+	assert(!OpponentAI_TestLastBufferMismatch);
+	assert(!OpponentAI_TestLastBoundedFallback);
+	assert((aiProfile == TRAINER_AI_PROFILE_STANDARD
+		? StandardAI_TestLastFailureReason : IronmonAI_TestLastFailureReason)
+		== AI_ADAPTER_FAILURE_NONE);
+	assert(gRngValue == battleRng && gRng2Value == battleRng2);
+	printf("Oak full lifecycle profile=%u defense=%u support=%u/%u pending=0->%u/%u/%u->0 last=0->%u action=%u rc=%d selected_id=%u failure=%u raw=%u buffer_mismatch=%u bounded=%u resolved=%u emitted=%u/%u rng_battle=%08x/%08x->%08x/%08x rng_policy=%08x/%08x->%08x/%08x\n",
+		aiProfile, cappedDefense ? STAT_STAGE_MIN : 6,
+		StandardAI_IsSupportedBattle(), IronmonAI_IsSupportedBattle(),
+		TRUE, STANDARD_POLICY_MOVE, actionSelected,
+		gNewBS->ai.standardLastValid[bank], ControllerHost_ActionCode,
+		actionPolicyRc, actionSelected, actionFailure,
+		OpponentAI_DispatchTrace.selectedSlot,
+		OpponentAI_TestLastBufferMismatch, OpponentAI_TestLastBoundedFallback,
+		OpponentAI_DispatchTrace.emittedSlot, sEmittedPosition,
+		gChosenMovesByBanks[bank], battleRng, battleRng2, gRngValue,
+		gRng2Value, standardRng, ironmonRng,
+		gNewBS->ai.standardPolicyRng[bank], gNewBS->ai.ironmonPolicyRng[bank]);
+}
+
+static void OakEmergencySlotOneReleaseWitnesses(void)
+{
+	const enum TrainerAIProfile profiles[] = {
+		TRAINER_AI_PROFILE_STANDARD, TRAINER_AI_PROFILE_IRONMON_SMART};
+	u8 p, failure;
+	for (p = 0; p < ARRAY_COUNT(profiles); ++p)
+	for (failure = AI_ADAPTER_FAILURE_POLICY_ERROR;
+		failure <= AI_ADAPTER_FAILURE_SELECTED_ID_LOOKUP; ++failure)
+	{
+		ConfigureOakLifecycleWitness(profiles[p]);
+		gBattleMons[0].statStages[STAT_STAGE_DEF - 1] = STAT_STAGE_MIN;
+		assert(StandardAI_ChooseEmergencyMoveSlot(1) == 1);
+		if (profiles[p] == TRAINER_AI_PROFILE_STANDARD)
+		{
+			StandardAI_TestPolicyRcOverride = failure == AI_ADAPTER_FAILURE_POLICY_ERROR
+				? STANDARD_POLICY_ERROR : failure == AI_ADAPTER_FAILURE_NO_ADMITTED_ACTION
+					? STANDARD_POLICY_NO_ADMITTED_ACTION : STANDARD_POLICY_OK;
+			if (failure == AI_ADAPTER_FAILURE_SELECTED_ID_LOOKUP)
+				StandardAI_TestSelectedIdOverride = 0xFE;
+		}
+		else
+		{
+			IronmonAI_TestPolicyRcOverride = failure == AI_ADAPTER_FAILURE_POLICY_ERROR
+				? IRONMON_POLICY_ERROR : failure == AI_ADAPTER_FAILURE_NO_ADMITTED_ACTION
+					? IRONMON_POLICY_NO_ADMITTED_ACTION : IRONMON_POLICY_OK;
+			if (failure == AI_ADAPTER_FAILURE_SELECTED_ID_LOOKUP)
+				IronmonAI_TestSelectedIdOverride = 0xFE;
+		}
+		ControllerHost_ActionCount = 0;
+		AI_TrySwitchOrUseItem();
+		assert(ControllerHost_ActionCount == 1
+			&& ControllerHost_ActionCode == ACTION_USE_MOVE);
+		assert(!gNewBS->ai.standardPendingValid[1]);
+		assert(!gNewBS->ai.standardLastValid[1]);
+		sEmitCount = sOpponentCompleted = 0;
+		OpponentHandleChooseMove();
+		assert(sEmitCount == 1 && sOpponentCompleted == 1);
+		assert(OpponentAI_DispatchTrace.selectedSlot >= MAX_MON_MOVES);
+		assert(OpponentAI_DispatchTrace.resolvedBeforeMarker == 1);
+		assert(OpponentAI_DispatchTrace.adapterFailureReason == failure);
+		assert(OpponentAI_DispatchTrace.boundedFallback);
+		assert(sEmittedPosition == 1 && gChosenMovesByBanks[1] == MOVE_TAILWHIP);
+		assert(gBattleStruct->chosenMovePositions[1] == 1);
+		printf("Oak release emergency profile=%u failure=%u raw=%u resolved=1 emitted=1/%u\n",
+			profiles[p], failure, OpponentAI_DispatchTrace.selectedSlot,
+			gChosenMovesByBanks[1]);
+		StandardAI_TestPolicyRcOverride = -2147483647 - 1;
+		StandardAI_TestSelectedIdOverride = 0xFF;
+		IronmonAI_TestPolicyRcOverride = -2147483647 - 1;
+		IronmonAI_TestSelectedIdOverride = 0xFF;
+	}
+	puts("Oak #529 bounded emergency slot 1 under release controller: PASS");
+}
+
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
 static void OakCappedProbeDecision(enum TrainerAIProfile aiProfile, u8 stage,
 	bool8 forced)
 {
@@ -977,9 +1100,55 @@ static void OakCappedProbeDecision(enum TrainerAIProfile aiProfile, u8 stage,
 	u32 battleRng = gRngValue, battleRng2 = gRng2Value;
 	u32 standardRng = gNewBS->ai.standardPolicyRng[1];
 	u32 ironmonRng = gNewBS->ai.ironmonPolicyRng[1];
-	u8 slot;
+	int standardRcBefore = StandardAI_TestLastPolicyRc;
+	int ironmonRcBefore = IronmonAI_TestLastPolicyRc;
+	u8 standardIdBefore = StandardAI_TestLastSelectedId;
+	u8 ironmonIdBefore = IronmonAI_TestLastSelectedId;
+	u8 slot, actionSelected = 0xFF;
+	int actionRc = -1;
 
 	gBattleMons[0].statStages[STAT_STAGE_DEF - 1] = stage;
+	assert(!gNewBS->ai.standardPendingValid[1]);
+	assert(!gNewBS->ai.standardLastValid[1]);
+	ControllerHost_ActionCount = 0;
+	AI_TrySwitchOrUseItem();
+	assert(ControllerHost_ActionCount == 1);
+	assert(ControllerHost_ActionCode == ACTION_USE_MOVE);
+	assert(ControllerHost_ActionValue == (1 ^ BIT_SIDE) << 8);
+	assert(gOakCappedTailWhipProbeState.actionStage == stage);
+	assert(gOakCappedTailWhipProbeState.forcedSetupAction == forced);
+	if (forced)
+	{
+		assert(!gNewBS->ai.standardPendingValid[1]);
+		assert(!gNewBS->ai.standardLastValid[1]);
+		assert(gRngValue == battleRng && gRng2Value == battleRng2);
+		assert(gNewBS->ai.standardPolicyRng[1] == standardRng);
+		assert(gNewBS->ai.ironmonPolicyRng[1] == ironmonRng);
+		assert(StandardAI_TestLastPolicyRc == standardRcBefore);
+		assert(IronmonAI_TestLastPolicyRc == ironmonRcBefore);
+		assert(StandardAI_TestLastSelectedId == standardIdBefore);
+		assert(IronmonAI_TestLastSelectedId == ironmonIdBefore);
+	}
+	else
+	{
+		assert(gNewBS->ai.standardPendingValid[1]);
+		assert(gNewBS->ai.standardPendingKind[1] == STANDARD_POLICY_MOVE);
+		assert(gNewBS->ai.standardLastValid[1]);
+		actionSelected = aiProfile == TRAINER_AI_PROFILE_STANDARD
+			? StandardAI_TestLastSelectedId : IronmonAI_TestLastSelectedId;
+		actionRc = aiProfile == TRAINER_AI_PROFILE_STANDARD
+			? StandardAI_TestLastPolicyRc : IronmonAI_TestLastPolicyRc;
+		assert(actionRc == 0 && actionSelected == gNewBS->ai.standardPendingAction[1]);
+		if (stage == STAT_STAGE_MIN)
+		{
+			assert(gOakCappedTailWhipProbeState.cappedEntryClean);
+			assert(gOakCappedTailWhipProbeState.cappedActionReady);
+			assert(gOakCappedTailWhipProbeState.actionPendingValid);
+			assert(gOakCappedTailWhipProbeState.actionLastValid);
+			assert(gOakCappedTailWhipProbeState.actionLastKind == STANDARD_POLICY_MOVE);
+			assert(gOakCappedTailWhipProbeState.actionPendingSlot == actionSelected);
+		}
+	}
 	sEmitCount = sOpponentCompleted = 0;
 	if (forced)
 		moveInfo->moves[1] = MOVE_TACKLE; /* stale controller view */
@@ -1004,6 +1173,8 @@ static void OakCappedProbeDecision(enum TrainerAIProfile aiProfile, u8 stage,
 		assert(slot == 1 && gChosenMovesByBanks[1] == MOVE_TAILWHIP);
 		assert(moveInfo->moves[1] == MOVE_TAILWHIP);
 		assert(OpponentAI_DispatchTrace.policyRc == -1);
+		assert(!gNewBS->ai.standardPendingValid[1]);
+		assert(!gNewBS->ai.standardLastValid[1]);
 		assert(gRngValue == battleRng && gRng2Value == battleRng2);
 		assert(gNewBS->ai.standardPolicyRng[1] == standardRng);
 		assert(gNewBS->ai.ironmonPolicyRng[1] == ironmonRng);
@@ -1013,13 +1184,39 @@ static void OakCappedProbeDecision(enum TrainerAIProfile aiProfile, u8 stage,
 		assert(OpponentAI_DispatchTrace.adapter ==
 			(aiProfile == TRAINER_AI_PROFILE_STANDARD ? 1 : 2));
 		assert(OpponentAI_DispatchTrace.policyRc == 0);
+		assert(!gNewBS->ai.standardPendingValid[1]);
+		assert(OpponentAI_DispatchTrace.selectedSlot == actionSelected);
+		assert(OpponentAI_DispatchTrace.resolvedBeforeMarker == actionSelected);
+		assert(OpponentAI_DispatchTrace.adapterFailureReason == AI_ADAPTER_FAILURE_NONE);
+		assert(!OpponentAI_DispatchTrace.controllerBufferMismatch);
+		assert(!OpponentAI_DispatchTrace.boundedFallback);
+		if (stage == STAT_STAGE_MIN)
+		{
+			assert(OpponentAI_DispatchTrace.diagnosticClass == 1);
+			assert(slot == 2 && gChosenMovesByBanks[1] == MOVE_WATERGUN);
+		}
+		else
+			assert(OpponentAI_DispatchTrace.diagnosticClass == 0);
 		assert(slot != 1 && gChosenMovesByBanks[1] != MOVE_TAILWHIP);
 		assert(gChosenMovesByBanks[1] == MOVE_TACKLE
 			|| gChosenMovesByBanks[1] == MOVE_WATERGUN);
 	}
-	printf("Oak capped probe profile=%u turn=%u defense=%u adapter=%u slot=%u move=%u\n",
+	printf("Oak capped probe profile=%u turn=%u defense=%u action=%u pending=%u/%u/%u last=%u action_rc=%d selected_id=%u adapter=%u move_rc=%d failure=%u raw=%u buffer_mismatch=%u bounded=%u resolved=%u class=%u emitted=%u/%u rng_battle=%08x/%08x->%08x/%08x rng_policy=%08x/%08x->%08x/%08x\n",
 		aiProfile, gBattleResults.battleTurnCounter, stage,
-		OpponentAI_DispatchTrace.adapter, slot, gChosenMovesByBanks[1]);
+		ControllerHost_ActionCode, gOakCappedTailWhipProbeState.actionPendingValid,
+		gOakCappedTailWhipProbeState.actionPendingKind,
+		gOakCappedTailWhipProbeState.actionPendingSlot,
+		gOakCappedTailWhipProbeState.actionLastValid, actionRc, actionSelected,
+		OpponentAI_DispatchTrace.adapter, OpponentAI_DispatchTrace.policyRc,
+		OpponentAI_DispatchTrace.adapterFailureReason,
+		OpponentAI_DispatchTrace.selectedSlot,
+		OpponentAI_DispatchTrace.controllerBufferMismatch,
+		OpponentAI_DispatchTrace.boundedFallback,
+		OpponentAI_DispatchTrace.resolvedBeforeMarker,
+		OpponentAI_DispatchTrace.diagnosticClass,
+		slot, gChosenMovesByBanks[1], battleRng, battleRng2,
+		gRngValue, gRng2Value, standardRng, ironmonRng,
+		gNewBS->ai.standardPolicyRng[1], gNewBS->ai.ironmonPolicyRng[1]);
 }
 
 static void OakCappedTailWhipProbeMatrix(void)
@@ -1030,7 +1227,7 @@ static void OakCappedTailWhipProbeMatrix(void)
 	u8 p, i;
 	for (p = 0; p < ARRAY_COUNT(profiles); ++p)
 	{
-		ConfigureOakCappedProbe(profiles[p]);
+		ConfigureOakLifecycleWitness(profiles[p]);
 		for (i = 0; i < ARRAY_COUNT(stages); ++i)
 		{
 			gBattleResults.battleTurnCounter = i;
@@ -1038,36 +1235,42 @@ static void OakCappedTailWhipProbeMatrix(void)
 				stages[i] > STAT_STAGE_MIN);
 		}
 		/* An already capped first decision must use the normal profile path. */
-		ConfigureOakCappedProbe(profiles[p]);
+		ConfigureOakLifecycleWitness(profiles[p]);
 		OakCappedProbeDecision(profiles[p], STAT_STAGE_MIN, FALSE);
 		/* A legal-move guard failure must also leave setup to production AI. */
-		ConfigureOakCappedProbe(profiles[p]);
+		ConfigureOakLifecycleWitness(profiles[p]);
 		gBattleMons[1].pp[1] = 0;
 		OakCappedProbeDecision(profiles[p], 6, FALSE);
-		ConfigureOakCappedProbe(profiles[p]);
+		ConfigureOakLifecycleWitness(profiles[p]);
 		sMoveLimitationMask = gBitTable[1];
 		OakCappedProbeDecision(profiles[p], 6, FALSE);
 		/* The probe must never force a move in a different trainer or mode. */
-		ConfigureOakCappedProbe(profiles[p]);
+		ConfigureOakLifecycleWitness(profiles[p]);
 		gTrainerBattleOpponent_A = TRAINER_RIVAL_CERULEAN_SQUIRTLE;
+		ControllerHost_ActionCount = 0;
+		AI_TrySwitchOrUseItem();
+		assert(ControllerHost_ActionCount == 1);
 		sEmitCount = sOpponentCompleted = 0;
 		OpponentHandleChooseMove();
 		assert(OpponentAI_DispatchTrace.adapter != 4);
 		assert(sEmitCount == 1 && sOpponentCompleted == 1);
-		ConfigureOakCappedProbe(profiles[p]);
+		ConfigureOakLifecycleWitness(profiles[p]);
 		gBattleMons[1].moves[1] = MOVE_GROWL;
 		SetControllerMoves(1);
+		ControllerHost_ActionCount = 0;
+		AI_TrySwitchOrUseItem();
+		assert(ControllerHost_ActionCount == 1);
 		sEmitCount = sOpponentCompleted = 0;
 		OpponentHandleChooseMove();
 		assert(OpponentAI_DispatchTrace.adapter != 4);
 		assert(sEmitCount == 1 && sOpponentCompleted == 1);
-		ConfigureOakCappedProbe(profiles[p]);
+		ConfigureOakLifecycleWitness(profiles[p]);
 		gBattleTypeFlags |= BATTLE_TYPE_OAK_TUTORIAL;
 		sEmitCount = sOpponentCompleted = 0;
 		OpponentHandleChooseMove();
 		assert(OpponentAI_DispatchTrace.adapter != 4);
 		assert(sEmitCount == 0 && sOpponentCompleted == 0);
-		ConfigureOakCappedProbe(profiles[p]);
+		ConfigureOakLifecycleWitness(profiles[p]);
 		gBattleTypeFlags |= BATTLE_TYPE_MOCK_BATTLE;
 		sEmitCount = sOpponentCompleted = 0;
 		OpponentHandleChooseMove();
@@ -1076,12 +1279,108 @@ static void OakCappedTailWhipProbeMatrix(void)
 	}
 	puts("Oak capped Tail Whip probe and normal dispatch transition: PASS");
 }
+
+static void OakCappedProbeClassificationMatrix(void)
+{
+	const enum TrainerAIProfile profiles[] = {
+		TRAINER_AI_PROFILE_STANDARD, TRAINER_AI_PROFILE_IRONMON_SMART};
+	u8 p, caseId;
+	for (p = 0; p < ARRAY_COUNT(profiles); ++p)
+	for (caseId = 0; caseId < 7; ++caseId)
+	{
+		u8 expectedFailure = caseId == 0 ? AI_ADAPTER_FAILURE_NONE
+			: caseId == 1 ? AI_ADAPTER_FAILURE_POLICY_ERROR
+			: caseId == 2 ? AI_ADAPTER_FAILURE_NO_ADMITTED_ACTION
+			: caseId == 3 ? AI_ADAPTER_FAILURE_SELECTED_ID_LOOKUP
+			: caseId == 4 ? AI_ADAPTER_FAILURE_PENDING_STATE
+			: AI_ADAPTER_FAILURE_NONE;
+		u8 expectedClass = caseId == 0 ? 2 : 3;
+		u8 expectedSlot = caseId == 0 ? 1 : 0;
+		ConfigureOakLifecycleWitness(profiles[p]);
+		gBattleMons[0].statStages[STAT_STAGE_DEF - 1] = STAT_STAGE_MIN;
+		if (caseId == 5)
+		{
+			/* A valid slot-1 pending value inherited from an earlier turn is
+			 * not a fresh capped action choice. */
+			gNewBS->ai.standardPendingValid[1] = TRUE;
+			gNewBS->ai.standardPendingKind[1] = STANDARD_POLICY_MOVE;
+			gNewBS->ai.standardPendingAction[1] = 1;
+			gNewBS->ai.standardLastValid[1] = TRUE;
+			StandardAI_TestLastFailureReason = AI_ADAPTER_FAILURE_NONE;
+			IronmonAI_TestLastFailureReason = AI_ADAPTER_FAILURE_NONE;
+		}
+		if (caseId == 0 || caseId == 3)
+		{
+			if (profiles[p] == TRAINER_AI_PROFILE_STANDARD)
+				StandardAI_TestSelectedIdOverride = caseId == 0 ? 1 : 0xFE;
+			else
+				IronmonAI_TestSelectedIdOverride = caseId == 0 ? 1 : 0xFE;
+		}
+		if (caseId == 1 || caseId == 2)
+		{
+			int rc = caseId == 1 ? -1 : -2;
+			if (profiles[p] == TRAINER_AI_PROFILE_STANDARD)
+				StandardAI_TestPolicyRcOverride = rc;
+			else
+				IronmonAI_TestPolicyRcOverride = rc;
+		}
+		ControllerHost_ActionCount = 0;
+		AI_TrySwitchOrUseItem();
+		assert(ControllerHost_ActionCount == 1
+			&& ControllerHost_ActionCode == ACTION_USE_MOVE);
+		assert(gOakCappedTailWhipProbeState.cappedEntryClean == (caseId != 5));
+		assert(gOakCappedTailWhipProbeState.cappedActionReady);
+		if (caseId == 4)
+		{
+			assert(gNewBS->ai.standardPendingValid[1]);
+			gNewBS->ai.standardPendingAction[1] = 0xFF;
+		}
+		if (caseId == 6)
+			((struct ChooseMoveStruct *)&gBattleBufferA[1][4])->moves[0] = MOVE_WATERGUN;
+		sEmitCount = sOpponentCompleted = 0;
+		OpponentHandleChooseMove();
+		assert(sEmitCount == 1 && sOpponentCompleted == 1);
+		assert(OpponentAI_DispatchTrace.adapterFailureReason == expectedFailure);
+		assert(OpponentAI_DispatchTrace.diagnosticClass == expectedClass);
+		assert(OpponentAI_DispatchTrace.boundedFallback ==
+			(caseId >= 1 && caseId <= 4));
+		assert(OpponentAI_DispatchTrace.controllerBufferMismatch == (caseId == 6));
+		assert(OpponentAI_DispatchTrace.resolvedBeforeMarker == (caseId == 6 ? 0 : 1));
+		assert(sEmittedPosition == expectedSlot);
+		assert(gChosenMovesByBanks[1] ==
+			(caseId == 0 ? MOVE_TAILWHIP : MOVE_TACKLE));
+		assert(OpponentAI_DispatchTrace.selectedSlot ==
+			(caseId == 0 || caseId == 5 ? 1 : caseId == 6 ? 0 : 0xFF));
+		printf("Oak capped class profile=%u case=%u action_pending=%u/%u/%u action_last=%u action_rc=%d selected_id=%u move_rc=%d failure=%u raw=%u bounded=%u resolved=%u class=%u emitted=%u/%u\n",
+			profiles[p], caseId,
+			gOakCappedTailWhipProbeState.actionPendingValid,
+			gOakCappedTailWhipProbeState.actionPendingKind,
+			gOakCappedTailWhipProbeState.actionPendingSlot,
+			gOakCappedTailWhipProbeState.actionLastValid,
+			profiles[p] == TRAINER_AI_PROFILE_STANDARD
+				? StandardAI_TestLastPolicyRc : IronmonAI_TestLastPolicyRc,
+			profiles[p] == TRAINER_AI_PROFILE_STANDARD
+				? StandardAI_TestLastSelectedId : IronmonAI_TestLastSelectedId,
+			OpponentAI_DispatchTrace.policyRc, expectedFailure,
+			OpponentAI_DispatchTrace.selectedSlot,
+			OpponentAI_DispatchTrace.boundedFallback,
+			OpponentAI_DispatchTrace.resolvedBeforeMarker,
+			OpponentAI_DispatchTrace.diagnosticClass,
+			sEmittedPosition, gChosenMovesByBanks[1]);
+		StandardAI_TestPolicyRcOverride = -2147483647 - 1;
+		StandardAI_TestSelectedIdOverride = 0xFF;
+		IronmonAI_TestPolicyRcOverride = -2147483647 - 1;
+		IronmonAI_TestSelectedIdOverride = 0xFF;
+	}
+	puts("Oak capped current-slot/failure marker classification: PASS");
+}
 #endif
 
 int main(void)
 {
 #ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
 	OakCappedTailWhipProbeMatrix();
+	OakCappedProbeClassificationMatrix();
 	return 0;
 #elif defined(TRAINER_AI_RUNTIME_DISPATCH_TRACE)
 	OakDispatchMarkerMatrix();
@@ -1096,8 +1395,11 @@ int main(void)
 	ProfileDispatchAndLegacyIsolation();
 	ExactPolicyReturnCodes();
 	FailureFallbackWitnesses();
+	OakEmergencySlotOneReleaseWitnesses();
 	for (p = 0; p < ARRAY_COUNT(profiles); ++p)
 	{
+		OakFullLifecycleReleaseWitness(profiles[p], FALSE);
+		OakFullLifecycleReleaseWitness(profiles[p], TRUE);
 		OpeningOakLabWitness(profiles[p], TRUE, FALSE);
 		OpeningOakLabWitness(profiles[p], FALSE, FALSE);
 		OpeningOakLabWitness(profiles[p], TRUE, TRUE);
