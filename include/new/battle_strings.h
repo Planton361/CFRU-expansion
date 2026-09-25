@@ -10,6 +10,7 @@
 //Exported Functions
 void PrepareStringBattle(u16 stringId, u8 bank);
 void BufferStringBattle(u16 stringID);
+void StandardAI_RecordPublicSendoutSpecies(u8 bank);
 const u8* GetAbilityName(const u8 ability, const u16 species);
 void CopyAbilityName(u8* dst, const u8 ability, const u16 species);
 

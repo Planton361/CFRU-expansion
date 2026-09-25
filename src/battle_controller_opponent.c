@@ -33,17 +33,68 @@ battle_controller_opponent.c
 static void TryRechoosePartnerMove(u16 chosenMove);
 static bool8 OpponentProfileReplacementIndexIsUsable(u8 chosenMonId);
 static u8 LoadCorrectTrainerPicId(void);
+#ifdef CFRU_AI_TEST_TRACE
+u8 OpponentAI_TestLastBufferMismatch;
+u8 OpponentAI_TestLastBoundedFallback;
+#endif
 
-void OpponentHandleChooseMove(void)
+static bool8 OpponentNormalizeSupportedMoveInfo(struct ChooseMoveStruct *moveInfo,
+	u8 bank)
+{
+	u8 i;
+	for (i = 0; i < MAX_MON_MOVES; ++i)
+		if (moveInfo->moves[i] != gBattleMons[bank].moves[i])
+		{
+			u8 j;
+			/* The fair adapters rank gBattleMons slots. Restore the controller's
+			 * local view from that same authoritative own-move array before any
+			 * slot index is emitted. */
+			for (j = 0; j < MAX_MON_MOVES; ++j)
+				moveInfo->moves[j] = gBattleMons[bank].moves[j];
+			return TRUE;
+		}
+	return FALSE;
+}
+
+static u8 OpponentResolveSupportedAIMoveSlot(struct ChooseMoveStruct *moveInfo,
+	u8 bank, u8 chosenMovePos)
+{
+	if (chosenMovePos >= MAX_MON_MOVES
+		|| moveInfo->moves[chosenMovePos] != gBattleMons[bank].moves[chosenMovePos]
+		|| moveInfo->moves[chosenMovePos] == MOVE_NONE)
+	{
+		/* Do not turn a sentinel/non-move/slot mismatch into literal slot 0.
+		 * Ask the source adapter for a bounded own-move emergency slot; when no
+		 * move is legal it returns an occupied slot for engine Struggle logic. */
+		chosenMovePos = StandardAI_ChooseEmergencyMoveSlot(bank);
+#ifdef CFRU_AI_TEST_TRACE
+		OpponentAI_TestLastBoundedFallback = TRUE;
+#endif
+	}
+	if (moveInfo->moves[chosenMovePos] != gBattleMons[bank].moves[chosenMovePos])
+	{
+		u8 i;
+		for (i = 0; i < MAX_MON_MOVES; ++i)
+			moveInfo->moves[i] = gBattleMons[bank].moves[i];
+	}
+	return chosenMovePos;
+}
+
+bool8 OpponentHandleSupportedAIMoveChoice(struct ChooseMoveStruct *moveInfo)
 {
 	u8 chosenMovePos;
-	struct ChooseMoveStruct* moveInfo = (struct ChooseMoveStruct*)(&gBattleBufferA[gActiveBattler][4]);
-
 	if (IronmonAI_IsSupportedBattle())
 	{
 		u8 target;
+		bool8 bufferMismatch = OpponentNormalizeSupportedMoveInfo(moveInfo, gActiveBattler);
+#ifdef CFRU_AI_TEST_TRACE
+		OpponentAI_TestLastBufferMismatch = bufferMismatch;
+		OpponentAI_TestLastBoundedFallback = FALSE;
+#endif
 		BattleAI_SetupAIData(0xF);
 		chosenMovePos = IronmonAI_ChooseMoveOrAction();
+		chosenMovePos = OpponentResolveSupportedAIMoveSlot(moveInfo, gActiveBattler,
+			chosenMovePos);
 		target = gBattleMoves[moveInfo->moves[chosenMovePos]].target;
 		gBankTarget = target & (MOVE_TARGET_USER | MOVE_TARGET_USER_OR_PARTNER)
 			? gActiveBattler : FOE(gActiveBattler);
@@ -52,26 +103,48 @@ void OpponentHandleChooseMove(void)
 		gChosenMovesByBanks[gActiveBattler] = moveInfo->moves[chosenMovePos];
 		EmitMoveChosen(1, chosenMovePos, gBankTarget, 0, 0, 0, FALSE, 0);
 		OpponentBufferExecCompleted();
-		return;
+		return TRUE;
 	}
 
 	if (StandardAI_IsSupportedBattle())
 	{
 		u8 target;
+		bool8 bufferMismatch = OpponentNormalizeSupportedMoveInfo(moveInfo, gActiveBattler);
+#ifdef CFRU_AI_TEST_TRACE
+		OpponentAI_TestLastBufferMismatch = bufferMismatch;
+		OpponentAI_TestLastBoundedFallback = FALSE;
+#endif
 		BattleAI_SetupAIData(0xF);
 		chosenMovePos = StandardAI_ChooseMoveOrAction();
+		chosenMovePos = OpponentResolveSupportedAIMoveSlot(moveInfo, gActiveBattler,
+			chosenMovePos);
 		target = gBattleMoves[moveInfo->moves[chosenMovePos]].target;
 		gBankTarget = target & (MOVE_TARGET_USER | MOVE_TARGET_USER_OR_PARTNER)
 			? gActiveBattler : FOE(gActiveBattler);
 		gBattleStruct->chosenMovePositions[gActiveBattler] = chosenMovePos;
 		gBattleStruct->moveTarget[gActiveBattler] = gBankTarget;
 		gChosenMovesByBanks[gActiveBattler] = moveInfo->moves[chosenMovePos];
-		/* Do not re-enter legacy prediction-based gimmick or partner logic
-		 * after the fair policy has chosen its ordinary-single action. */
+		/* Keep fair profiles out of legacy prediction and gimmick routing. */
 		EmitMoveChosen(1, chosenMovePos, gBankTarget, 0, 0, 0, FALSE, 0);
 		OpponentBufferExecCompleted();
-		return;
+		return TRUE;
 	}
+
+	return FALSE;
+}
+
+void OpponentHandleChooseMove(void)
+{
+	u8 chosenMovePos;
+	struct ChooseMoveStruct* moveInfo = (struct ChooseMoveStruct*)(&gBattleBufferA[gActiveBattler][4]);
+	if (OpponentHandleSupportedAIMoveChoice(moveInfo))
+		return;
+
+#ifdef CFRU_AI_TEST_TRACE
+	/* The host suite tests the exact supported outer route. Unsupported-profile
+	 * routing is separately exercised without pulling all legacy controller I/O. */
+	return;
+#else
 
 	if ((gBattleTypeFlags & (BATTLE_TYPE_TRAINER | BATTLE_TYPE_OAK_TUTORIAL | BATTLE_TYPE_SAFARI | BATTLE_TYPE_ROAMER))
 	#ifdef FLAG_SMART_WILD
@@ -202,6 +275,7 @@ void OpponentHandleChooseMove(void)
 
 		OpponentBufferExecCompleted();
 	}
+#endif
 }
 
 #define STATE_BEFORE_ACTION_CHOSEN 0

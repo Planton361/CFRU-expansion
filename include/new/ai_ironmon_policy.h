@@ -15,6 +15,16 @@
 #define IRONMON_POLICY_UNKNOWN_RESPONSE 0xFFFF
 #define IRONMON_POLICY_MAX_RESPONSE_WEIGHT 1048576u
 
+/* Stable, caller-visible result codes returned by IronmonPolicyChoose().
+ * INVALID_CANDIDATE is also used by the bounded response builder. */
+enum IronmonPolicyStatus
+{
+	IRONMON_POLICY_OK = 0,
+	IRONMON_POLICY_ERROR = -1,
+	IRONMON_POLICY_NO_ADMITTED_ACTION = -2,
+	IRONMON_POLICY_INVALID_CANDIDATE = -3,
+};
+
 enum IronmonPolicyRepeatReason
 {
 	IRONMON_REPEAT_NONE = 0,

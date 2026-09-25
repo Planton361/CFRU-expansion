@@ -7,6 +7,7 @@
 #include "../../src/defines.h"
 #include "../../src/defines_battle.h"
 #include "../../include/constants/items.h"
+#include "../../include/new/frontier.h"
 #undef gBaseStats
 #undef gBitTable
 #undef gTrainerBattleOpponent_A
@@ -39,6 +40,9 @@ u32 gStatuses3[4], gBattleTypeFlags = BATTLE_TYPE_TRAINER, gHitMarker;
 u32 gRngValue, gRng2Value;
 u8 gChosenActionByBank[4];
 static enum TrainerAIProfile profile = TRAINER_AI_PROFILE_STANDARD;
+#ifdef CFRU_AI_CONTROLLER_TEST
+extern enum TrainerAIProfile GetTrainerAIProfileFromRaw(void);
+#endif
 /* Private save/progression harness state. Fair production code must never
  * call FlagGet for these IDs; Badge twins vary this mask to prove that. */
 static u8 testBadgeMask;
@@ -62,7 +66,20 @@ u8 ItemId_GetHoldEffect(u16 item) { (void)item; return 0; }
 u8 CheckGrounding(u8 bank) { assert(bank == 1); return GROUNDED; }
 bool8 IsRaidBattle(void) { return FALSE; }
 bool8 IsInverseBattle(void) { return FALSE; }
-bool8 IsFrontierTrainerId(u16 trainer) { (void)trainer; return FALSE; }
+bool8 IsFrontierTrainerId(u16 trainer)
+{
+	switch (trainer)
+	{
+	case BATTLE_TOWER_TID:
+	case BATTLE_TOWER_SPECIAL_TID:
+	case FRONTIER_BRAIN_TID:
+	case BATTLE_FACILITY_MULTI_TRAINER_TID:
+	case RAID_BATTLE_MULTI_TRAINER_TID:
+		return TRUE;
+	default:
+		return FALSE;
+	}
+}
 bool8 FlagGet(u16 id)
 {
 	switch (id)
@@ -74,7 +91,14 @@ bool8 FlagGet(u16 id)
 	default: return FALSE;
 	}
 }
-enum TrainerAIProfile GetTrainerAIProfile(void) { return profile; }
+enum TrainerAIProfile GetTrainerAIProfile(void)
+{
+#ifdef CFRU_AI_CONTROLLER_TEST
+	return GetTrainerAIProfileFromRaw();
+#else
+	return profile;
+#endif
+}
 void EmitTwoReturnValues(u8 buffer, u8 action, u16 value)
 { (void)buffer; (void)action; (void)value; }
 
