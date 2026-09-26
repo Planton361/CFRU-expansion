@@ -9,13 +9,14 @@ floor and policies. It does not mutate host policy or accepted digests.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKSPACE = ROOT.parents[1]
+WORKSPACE = Path(os.environ.get("CFRU_WORKSPACE_ROOT", ROOT.parents[1]))
 sys.path.insert(0, str(WORKSPACE / "07_scripts"))
 
 from ai_policy.floor import apply_common_floor  # noqa: E402

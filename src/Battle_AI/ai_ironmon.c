@@ -34,9 +34,7 @@ u8 IronmonAI_TestSelectedIdOverride = 0xFF;
 #endif
 
 /* The bounded 9x8 observation is too large for the battle callback stack.
- * One non-reentrant ordinary-singles decision uses this EWRAM scratch. */
-static EWRAM_DATA struct IronmonPolicyObservation sIronmonObservation;
-static EWRAM_DATA struct IronmonPolicyResult sIronmonResult;
+ * gNewBS owns the scratch in the existing battle-lifetime heap allocation. */
 
 struct IronmonIncoming
 {
@@ -713,8 +711,8 @@ void IronmonAI_SetupAIData(void)
 static u8 IronmonAI_Choose(bool8 includeSwitches, struct StandardPolicyCandidate* selected)
 {
 	struct StandardPolicyMemory memory;
-	struct IronmonPolicyObservation* observation = &sIronmonObservation;
-	struct IronmonPolicyResult* result = &sIronmonResult;
+	struct IronmonPolicyObservation* observation = &gNewBS->ironmonObservation;
+	struct IronmonPolicyResult* result = &gNewBS->ironmonResult;
 	u8 bank = gBankAttacker, i;
 	int policyRc;
 	IronmonAI_BuildObservation(bank, includeSwitches, observation);
@@ -754,8 +752,8 @@ static u8 IronmonAI_Choose(bool8 includeSwitches, struct StandardPolicyCandidate
 u8 IronmonAI_ChooseReplacement(void)
 {
 	struct StandardPolicyMemory memory;
-	struct IronmonPolicyObservation* observation = &sIronmonObservation;
-	struct IronmonPolicyResult* result = &sIronmonResult;
+	struct IronmonPolicyObservation* observation = &gNewBS->ironmonObservation;
+	struct IronmonPolicyResult* result = &gNewBS->ironmonResult;
 	u8 bank = gActiveBattler, i;
 	IronmonAI_BuildObservation(bank, TRUE, observation);
 	StandardAI_LoadMemory(bank, &memory);

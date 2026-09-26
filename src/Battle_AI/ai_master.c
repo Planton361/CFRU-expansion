@@ -967,19 +967,108 @@ static void BattleAI_DoAIProcessing(struct AIScript* aiScriptData)
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+bool8 AI_OakCappedTailWhipProbeExactBattle(void)
+{
+	u8 bank = gActiveBattler;
+	return gTrainerBattleOpponent_A == TRAINER_RIVAL_OAKS_LAB_SQUIRTLE
+		&& gBattleTypeFlags == BATTLE_TYPE_TRAINER
+		&& bank < MAX_BATTLERS_COUNT && SIDE(bank) == B_SIDE_OPPONENT
+		&& gNewBS != NULL && gBattleMons[bank].species == SPECIES_SQUIRTLE
+		&& gBattleMons[bank].moves[0] == MOVE_TACKLE
+		&& gBattleMons[bank].moves[1] == MOVE_TAILWHIP
+		&& gBattleMons[bank].moves[2] == MOVE_WATERGUN
+		&& gBattleMons[bank].moves[3] == MOVE_NONE;
+}
+
+bool8 AI_OakCappedTailWhipProbeCanForce(void)
+{
+	u8 bank = gActiveBattler;
+	return AI_OakCappedTailWhipProbeExactBattle()
+		&& gBattleMons[FOE(bank)].statStages[STAT_STAGE_DEF - 1] > STAT_STAGE_MIN
+		&& gBattleMons[bank].pp[1] != 0
+		&& !(CheckMoveLimitations(bank, 0, 0xFF) & gBitTable[1]);
+}
+
+static void AI_OakCappedTailWhipProbeRecordAction(void)
+{
+	u8 bank = gActiveBattler;
+	struct OakCappedTailWhipProbeState *state;
+	if (gNewBS == NULL)
+		return;
+	state = &gOakCappedTailWhipProbeState;
+	if (!state->cappedActionReady || state->bank != bank)
+		return;
+	state->actionPendingValid = gNewBS->ai.standardPendingValid[bank];
+	state->actionPendingKind = gNewBS->ai.standardPendingKind[bank];
+	state->actionPendingSlot = gNewBS->ai.standardPendingAction[bank];
+	state->actionLastValid = gNewBS->ai.standardLastValid[bank];
+	state->actionLastKind = gNewBS->ai.standardLastKind[bank];
+}
+#endif
+
 void AI_TrySwitchOrUseItem(void)
 {
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+	if (gNewBS != NULL)
+	{
+		struct OakCappedTailWhipProbeState *probe = &gOakCappedTailWhipProbeState;
+		probe->forcedSetupAction = FALSE;
+		probe->cappedActionReady = FALSE;
+		probe->cappedEntryClean = FALSE;
+		probe->actionPendingValid = FALSE;
+		probe->actionPendingKind = 0;
+		probe->actionPendingSlot = 0xFF;
+		probe->actionLastValid = FALSE;
+		probe->actionLastKind = 0xFF;
+		if (AI_OakCappedTailWhipProbeExactBattle())
+		{
+			u8 bank = gActiveBattler;
+			probe->bank = bank;
+			probe->actionStage = gBattleMons[FOE(bank)].statStages[STAT_STAGE_DEF - 1];
+			if (gBattleResults.battleTurnCounter == 0)
+				probe->cappedClassified = FALSE;
+			if (AI_OakCappedTailWhipProbeCanForce()
+				&& !gNewBS->ai.standardPendingValid[bank]
+				&& !gNewBS->ai.standardLastValid[bank])
+			{
+				probe->forcedSetupAction = TRUE;
+				gBankAttacker = bank;
+				gBankTarget = FOE(bank);
+				EmitTwoReturnValues(1, ACTION_USE_MOVE, (bank ^ BIT_SIDE) << 8);
+				return;
+			}
+			if (probe->actionStage <= STAT_STAGE_MIN && !probe->cappedClassified)
+			{
+				probe->cappedActionReady = TRUE;
+				probe->cappedEntryClean = !gNewBS->ai.standardPendingValid[bank]
+					&& !gNewBS->ai.standardLastValid[bank];
+			}
+		}
+	}
+#endif
 	if (IronmonAI_IsSupportedBattle())
 	{
 		IronmonAI_TrySwitchOrUseItem();
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+		AI_OakCappedTailWhipProbeRecordAction();
+#endif
 		return;
 	}
 	if (StandardAI_IsSupportedBattle())
 	{
 		StandardAI_TrySwitchOrUseItem();
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+		AI_OakCappedTailWhipProbeRecordAction();
+#endif
 		return;
 	}
 
+#ifdef CFRU_AI_TEST_TRACE
+	/* This host links the real fair action route without the unrelated legacy
+	 * item/switch engine. Production preprocessing keeps the full path below. */
+	return;
+#else
 	struct Pokemon* party;
 	u8 battlerIn1, battlerIn2;
 	u8 firstId, lastId;
@@ -1059,6 +1148,7 @@ void AI_TrySwitchOrUseItem(void)
 DONT_THINK:
 	//mgba_printf(MGBA_LOG_INFO, "AI thinking complete.");
 	EmitTwoReturnValues(1, ACTION_USE_MOVE, (gActiveBattler ^ BIT_SIDE) << 8);
+#endif
 }
 
 void CalculateAIPredictions(void)

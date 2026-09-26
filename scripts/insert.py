@@ -39,6 +39,10 @@ else:  # Linux, OSX, etc.
 OUTPUT = 'build/output.bin'
 BYTE_REPLACEMENT = 'bytereplacement'
 HOOKS = 'hooks'
+REQUIRED_RUNTIME_HOOKS = frozenset({
+    'OpponentHandleChooseMove', 'BattleSetup_StartTrainerBattle',
+    'ExpandedVarsHook', 'BufferStringBattle', 'AI_TrySwitchOrUseItem',
+})
 REPOINTS = 'repoints'
 GENERATED_REPOINTS = 'generatedrepoints'
 REPOINT_ALL = 'repointall'
@@ -1837,6 +1841,9 @@ def TryProcessConditionalCompilation(line: str, definesDict: dict, conditionals:
 def main():
     from check_hidden_item_sparkle import check_source_contract
     check_source_contract()
+    subprocess.run([sys.executable, 'scripts/tests/audit_ai_writable_state.py',
+                    '--linked-object', 'build/linked.o', '--output-bin', OUTPUT],
+                   check=True)
     startTime = datetime.now()
 
     try:
@@ -2046,6 +2053,8 @@ def main():
                     try:
                         code = table[symbol]
                     except KeyError:
+                        if symbol in REQUIRED_RUNTIME_HOOKS:
+                            raise ValueError('Required runtime hook symbol missing: ' + symbol)
                         print('Symbol missing:', symbol)
                         continue
 

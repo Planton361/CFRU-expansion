@@ -17,9 +17,10 @@ static const u32 testBitTable[] = {1, 2, 4, 8};
 #define gBaseStats testBaseStats
 #define gBitTable testBitTable
 #include "../../src/Battle_AI/ai_standard.c"
-#undef EWRAM_DATA
-#define EWRAM_DATA
 #include "../../src/Battle_AI/ai_ironmon.c"
+/* Keep legacy witness spelling pointed at battle-owned scratch, not globals. */
+#define sIronmonObservation (gNewBS->ironmonObservation)
+#define sIronmonResult (gNewBS->ironmonResult)
 
 struct BattlePokemon gBattleMons[4];
 struct DisableStruct gDisableStructs[4];
@@ -100,7 +101,18 @@ enum TrainerAIProfile GetTrainerAIProfile(void)
 #endif
 }
 void EmitTwoReturnValues(u8 buffer, u8 action, u16 value)
-{ (void)buffer; (void)action; (void)value; }
+{
+#ifdef CFRU_AI_CONTROLLER_TEST
+	extern u8 ControllerHost_ActionCount, ControllerHost_ActionCode;
+	extern u16 ControllerHost_ActionValue;
+	assert(buffer == 1);
+	++ControllerHost_ActionCount;
+	ControllerHost_ActionCode = action;
+	ControllerHost_ActionValue = value;
+#else
+	(void)buffer; (void)action; (void)value;
+#endif
+}
 
 static void Reset(void)
 {

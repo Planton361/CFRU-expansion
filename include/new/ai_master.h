@@ -28,6 +28,11 @@ void PickRaidBossRepeatedMove(u8 moveLimitations);
 //Functions Hooked In
 void BattleAI_HandleItemUseBeforeAISetup(void);
 void AI_TrySwitchOrUseItem(void);
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+#define gOakCappedTailWhipProbeState (gNewBS->oakCappedTailWhipProbeState)
+bool8 AI_OakCappedTailWhipProbeExactBattle(void);
+bool8 AI_OakCappedTailWhipProbeCanForce(void);
+#endif
 bool8 HasSuperEffectiveMoveAgainstOpponents(bool8 noRng);
 bool8 FindMonWithFlagsAndSuperEffective(u8 flags, u8 moduloPercent);
 
