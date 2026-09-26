@@ -13,6 +13,7 @@
 #include "battle_gfx_sfx_util.h"
 #include "link.h"
 #include "../src/config.h"
+#include "new/ai_ironmon_policy.h"
 
 /*
     Banks are a name given to what could be called a 'battlerId' or 'monControllerId'.
@@ -740,6 +741,17 @@ struct BattleStruct
 
 extern struct BattleStruct* gBattleStruct;
 
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+struct OakCappedTailWhipProbeState
+{
+	u8 bank, actionStage;
+	bool8 forcedSetupAction, cappedActionReady, cappedClassified;
+	bool8 cappedEntryClean, actionPendingValid, actionLastValid;
+	u8 actionPendingKind, actionPendingSlot, actionLastKind;
+	bool8 boundedFallback;
+};
+#endif
+
 struct NewBattleStruct
 {
 	//Field Counters
@@ -1126,6 +1138,13 @@ struct NewBattleStruct
 	} ai;
 
 	struct Pokemon** foePartyBackup; //Pointer to dynamically allocated memory
+	/* The Ironmon policy's large mutable values belong to the existing
+	 * battle-lifetime heap allocation, never to linked ROM sections. */
+	struct IronmonPolicyObservation ironmonObservation;
+	struct IronmonPolicyResult ironmonResult;
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+	struct OakCappedTailWhipProbeState oakCappedTailWhipProbeState;
+#endif
 };
 
 extern struct NewBattleStruct* gNewBS; //0x203E038

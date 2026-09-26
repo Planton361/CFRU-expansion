@@ -1,5 +1,11 @@
 # R1 Oak capped Tail Whip probe — Workspace #532 extension
 
+**Later root-cause finding:** The approved private ARM link at head
+`d9c226fde353741dd38b7239fa81eae7504ee666` put this probe's mutable
+state in 0x09 ROM. Its capped Tail Whip result cannot classify the policy.
+The repair and ARM gate are recorded in
+[trainer-ai-runtime-writable-state-2026-09-26.md](trainer-ai-runtime-writable-state-2026-09-26.md).
+
 **2026-09-26 correction:** The first capped private result was Tail Whip, but
 the interpretation below was confounded by action-phase pending/last-action
 staging before this probe's move-phase interception. The corrected full-lifecycle

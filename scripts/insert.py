@@ -1841,6 +1841,9 @@ def TryProcessConditionalCompilation(line: str, definesDict: dict, conditionals:
 def main():
     from check_hidden_item_sparkle import check_source_contract
     check_source_contract()
+    subprocess.run([sys.executable, 'scripts/tests/audit_ai_writable_state.py',
+                    '--linked-object', 'build/linked.o', '--output-bin', OUTPUT],
+                   check=True)
     startTime = datetime.now()
 
     try:

@@ -1004,6 +1004,12 @@ static void OakFullLifecycleReleaseWitness(enum TrainerAIProfile aiProfile,
 		? StandardAI_TestLastFailureReason : IronmonAI_TestLastFailureReason;
 	assert(actionPolicyRc == 0 && actionFailure == AI_ADAPTER_FAILURE_NONE);
 	assert(actionSelected == gNewBS->ai.standardPendingAction[bank]);
+	if (aiProfile == TRAINER_AI_PROFILE_IRONMON_SMART)
+	{
+		assert(gNewBS->ironmonObservation.count > 0
+			&& gNewBS->ironmonObservation.count <= IRONMON_POLICY_MAX_CANDIDATES);
+		assert(gNewBS->ironmonResult.selected_id == actionSelected);
+	}
 	assert(actionSelected == (cappedDefense ? 0 : 2));
 	assert(gBattleMons[bank].moves[actionSelected] != MOVE_TAILWHIP);
 	sEmitCount = sOpponentCompleted = 0;
@@ -1128,6 +1134,8 @@ static void OakCappedProbeDecision(enum TrainerAIProfile aiProfile, u8 stage,
 		assert(IronmonAI_TestLastPolicyRc == ironmonRcBefore);
 		assert(StandardAI_TestLastSelectedId == standardIdBefore);
 		assert(IronmonAI_TestLastSelectedId == ironmonIdBefore);
+		assert(gNewBS->ironmonObservation.count == 0);
+		assert(gNewBS->ironmonResult.selected_id == 0);
 	}
 	else
 	{
@@ -1139,6 +1147,12 @@ static void OakCappedProbeDecision(enum TrainerAIProfile aiProfile, u8 stage,
 		actionRc = aiProfile == TRAINER_AI_PROFILE_STANDARD
 			? StandardAI_TestLastPolicyRc : IronmonAI_TestLastPolicyRc;
 		assert(actionRc == 0 && actionSelected == gNewBS->ai.standardPendingAction[1]);
+		if (aiProfile == TRAINER_AI_PROFILE_IRONMON_SMART)
+		{
+			assert(gNewBS->ironmonObservation.count > 0
+				&& gNewBS->ironmonObservation.count <= IRONMON_POLICY_MAX_CANDIDATES);
+			assert(gNewBS->ironmonResult.selected_id == actionSelected);
+		}
 		if (stage == STAT_STAGE_MIN)
 		{
 			assert(gOakCappedTailWhipProbeState.cappedEntryClean);

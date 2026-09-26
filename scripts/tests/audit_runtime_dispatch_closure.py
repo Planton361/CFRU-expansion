@@ -255,20 +255,22 @@ def check_diagnostic_preprocessing():
             "marker is present in release preprocessed source")
     require("OpponentHandleOakCappedTailWhipProbe" not in normal,
             "capped Tail Whip probe is present in release preprocessed source")
-    require("AI_OakCappedTailWhipProbeCanForce" not in normal_master,
+    require("AI_OakCappedTailWhipProbeCanForce" not in normal_master
+            and "oakCappedTailWhipProbeState" not in normal_master,
             "action-phase probe is present in release preprocessed source")
     require("OpponentHandleOakDispatchMarker" in diagnostic,
             "marker absent from diagnostic preprocessed source")
     require("OpponentHandleOakCappedTailWhipProbe" not in diagnostic,
             "capped probe leaked into the three-turn marker build")
-    require("AI_OakCappedTailWhipProbeCanForce" not in diagnostic_master,
+    require("AI_OakCappedTailWhipProbeCanForce" not in diagnostic_master
+            and "oakCappedTailWhipProbeState" not in diagnostic_master,
             "action probe leaked into the three-turn marker build")
     require("OpponentHandleOakCappedTailWhipProbe" in capped_probe,
             "capped Tail Whip probe absent from its diagnostic build")
     require("OpponentHandleOakDispatchMarker" not in capped_probe,
             "three-turn marker leaked into the capped probe build")
     require("AI_OakCappedTailWhipProbeCanForce" in capped_master
-            and "gOakCappedTailWhipProbeState" in capped_master,
+            and "oakCappedTailWhipProbeState" in capped_master,
             "capped action-phase probe absent from its diagnostic build")
     both = subprocess.run(command + ["-DTRAINER_AI_RUNTIME_DISPATCH_TRACE",
         "-DTRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE",

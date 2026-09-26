@@ -6,6 +6,7 @@
 #include "../../include/new/ai_standard_policy.h"
 #include "../../include/new/ai_standard_mechanics.h"
 #include "../../include/new/ai_ironmon_policy.h"
+#include "../../include/malloc.h"
 
 _Static_assert(offsetof(struct NewBattleStruct, ai.standardMemoryStageAfter)
 	+ sizeof(((struct NewBattleStruct*)0)->ai.standardMemoryStageAfter)
@@ -32,6 +33,31 @@ _Static_assert(sizeof(struct StandardMechanicsInput) == 34,
 	"possible Badge defense flag must remain source-owned mechanics state");
 _Static_assert(sizeof(struct BattlePokemon) == 0x58, "BattlePokemon ABI");
 _Static_assert(sizeof(struct BattleMove) == 0xC, "BattleMove ABI");
+_Static_assert(sizeof(struct IronmonPolicyObservation) == 0x72C,
+	"Ironmon observation scratch size changed");
+_Static_assert(sizeof(struct IronmonPolicyResult) == 0x130,
+	"Ironmon result scratch size changed");
+_Static_assert(offsetof(struct NewBattleStruct, ironmonObservation) % 4 == 0
+	&& offsetof(struct NewBattleStruct, ironmonResult) % 4 == 0,
+	"Ironmon battle scratch must be word-aligned");
+_Static_assert(offsetof(struct NewBattleStruct, ironmonResult)
+	>= offsetof(struct NewBattleStruct, ironmonObservation)
+		+ sizeof(struct IronmonPolicyObservation),
+	"Ironmon battle scratch objects overlap");
+_Static_assert(offsetof(struct NewBattleStruct, ironmonResult)
+	+ sizeof(struct IronmonPolicyResult) <= sizeof(struct NewBattleStruct),
+	"Ironmon battle scratch exceeds its managed allocation");
+_Static_assert(sizeof(struct NewBattleStruct) < HEAP_SIZE,
+	"battle allocation exceeds the source-owned heap");
+#ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
+_Static_assert(offsetof(struct NewBattleStruct, oakCappedTailWhipProbeState)
+	>= offsetof(struct NewBattleStruct, ironmonResult)
+		+ sizeof(struct IronmonPolicyResult),
+	"diagnostic state overlaps release scratch");
+_Static_assert(offsetof(struct NewBattleStruct, oakCappedTailWhipProbeState)
+	+ sizeof(struct OakCappedTailWhipProbeState) <= sizeof(struct NewBattleStruct),
+	"diagnostic state exceeds the managed allocation");
+#endif
 #ifdef __arm__
 _Static_assert(sizeof(struct BattleStruct) == 0x200, "ARM BattleStruct ABI");
 #endif
@@ -51,5 +77,11 @@ int main(void)
 		sizeof(struct IronmonPolicyCandidate), sizeof(struct IronmonPolicyObservation),
 		sizeof(struct IronmonPolicyResult), sizeof(struct IronmonPolicyResponse),
 		sizeof(struct IronmonPolicyBranch));
+	printf("Managed AI scratch: heap=0x02000000..0x0201C000 allocation=%zu observation=+0x%zX/0x%zX result=+0x%zX/0x%zX; save delta=0\n",
+		sizeof(struct NewBattleStruct),
+		offsetof(struct NewBattleStruct, ironmonObservation),
+		sizeof(struct IronmonPolicyObservation),
+		offsetof(struct NewBattleStruct, ironmonResult),
+		sizeof(struct IronmonPolicyResult));
 	return 0;
 }

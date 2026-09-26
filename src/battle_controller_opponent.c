@@ -28,7 +28,7 @@
 #error Oak runtime diagnostic modes must be enabled separately.
 #endif
 #ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
-static bool8 sOakProbeBoundedFallback;
+#define sOakProbeBoundedFallback (gNewBS->oakCappedTailWhipProbeState.boundedFallback)
 #endif
 
 /*
@@ -170,8 +170,12 @@ static bool8 OpponentHandleOakCappedTailWhipProbe(struct ChooseMoveStruct *moveI
 	u8 slot = 1;
 	u8 target;
 	u16 move;
-	struct OakCappedTailWhipProbeState *probe = &gOakCappedTailWhipProbeState;
-	bool8 forcedAction = probe->forcedSetupAction;
+	struct OakCappedTailWhipProbeState *probe;
+	bool8 forcedAction;
+	if (gNewBS == NULL)
+		return FALSE;
+	probe = &gOakCappedTailWhipProbeState;
+	forcedAction = probe->forcedSetupAction;
 	probe->forcedSetupAction = FALSE;
 
 	if (!forcedAction || probe->bank != bank
@@ -206,10 +210,13 @@ static bool8 OpponentHandleOakCappedTailWhipProbe(struct ChooseMoveStruct *moveI
 static u8 OpponentOakProbeClassifyCappedSlot(struct ChooseMoveStruct *moveInfo,
 	u8 bank, u8 rawSlot, u8 resolvedSlot, bool8 bufferMismatch)
 {
-	struct OakCappedTailWhipProbeState *probe = &gOakCappedTailWhipProbeState;
+	struct OakCappedTailWhipProbeState *probe;
 	bool8 currentSelection;
 	u8 markerSlot, diagnosticClass;
 
+	if (gNewBS == NULL)
+		return resolvedSlot;
+	probe = &gOakCappedTailWhipProbeState;
 	if (!probe->cappedActionReady || probe->cappedClassified
 		|| probe->bank != bank || probe->actionStage > STAT_STAGE_MIN
 		|| !AI_OakCappedTailWhipProbeExactBattle()

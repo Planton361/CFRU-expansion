@@ -1,5 +1,14 @@
 # R1 Oak fair-AI full-lifecycle probe — Workspace #532
 
+**Later root-cause finding:** The approved private ARM link at PR head
+`d9c226fde353741dd38b7239fa81eae7504ee666` placed the Ironmon policy's
+mutable observation/result in 0x09 ROM and this probe's mutable state in ROM
+`.text`. The pre-fix capped Tail Whip is therefore invalid as a policy
+classifier even with the corrected lifecycle. See
+[trainer-ai-runtime-writable-state-2026-09-26.md](trainer-ai-runtime-writable-state-2026-09-26.md)
+for the same-branch source repair and its remaining ARM/private gate. The
+original three-turn marker and its evidence remain unchanged.
+
 ## Revision-bound finding
 
 The private run of `TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE` at CFRU PR #56 head `8e6ce4c3bfd93a858f06a1eaf74c6386ae399920` used Ironmon Smart and forced Tail Whip until target Defense was at `STAT_STAGE_MIN`. The first visible move with Defense already at minimum was **Tail Whip**. [CONTROL review 5323296547](https://github.com/Planton361/CFRU-expansion/pull/56#pullrequestreview-5323296547) and [Workspace #532 comment 5840541870](https://github.com/Planton361/firered-gen9-randomizer-workspace/issues/532#issuecomment-5840541870) classify this as **diagnostic-confounded**. It does not prove that the capped Ironmon policy selected Tail Whip.

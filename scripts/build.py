@@ -457,6 +457,8 @@ def main():
         # Link and extract raw binary
         linked = LinkObjects(itertools.chain.from_iterable(objects))
         Objcopy(linked)
+        RunCommand([sys.executable, 'scripts/tests/audit_ai_writable_state.py',
+                    '--linked-object', linked, '--output-bin', 'build/output.bin'])
 
     except Exception as e:
         print("There was an error compiling the engine: {}".format(e))

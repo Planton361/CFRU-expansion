@@ -112,6 +112,13 @@ def main() -> int:
             "scripts/tests/standard_ai_layout_host.c", "-o", str(layout_binary),
         ])
         subprocess.run([str(layout_binary)], cwd=ROOT, check=True)
+        diagnostic_layout_binary = Path(directory) / "standard_ai_diagnostic_layout_host"
+        run([
+            "cc", "-std=gnu99", "-Wno-unknown-attributes", "-Iinclude",
+            "-DTRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE",
+            "scripts/tests/standard_ai_layout_host.c", "-o", str(diagnostic_layout_binary),
+        ])
+        subprocess.run([str(diagnostic_layout_binary)], cwd=ROOT, check=True)
     print("standard AI source tests: PASS")
     if args.arm_cc:
         base = "8bc8c38210ddba0b05c933dbda06cb4539254c7a"

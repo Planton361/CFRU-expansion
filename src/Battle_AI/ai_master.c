@@ -968,8 +968,6 @@ static void BattleAI_DoAIProcessing(struct AIScript* aiScriptData)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
-struct OakCappedTailWhipProbeState gOakCappedTailWhipProbeState;
-
 bool8 AI_OakCappedTailWhipProbeExactBattle(void)
 {
 	u8 bank = gActiveBattler;
@@ -995,7 +993,10 @@ bool8 AI_OakCappedTailWhipProbeCanForce(void)
 static void AI_OakCappedTailWhipProbeRecordAction(void)
 {
 	u8 bank = gActiveBattler;
-	struct OakCappedTailWhipProbeState *state = &gOakCappedTailWhipProbeState;
+	struct OakCappedTailWhipProbeState *state;
+	if (gNewBS == NULL)
+		return;
+	state = &gOakCappedTailWhipProbeState;
 	if (!state->cappedActionReady || state->bank != bank)
 		return;
 	state->actionPendingValid = gNewBS->ai.standardPendingValid[bank];
@@ -1009,37 +1010,40 @@ static void AI_OakCappedTailWhipProbeRecordAction(void)
 void AI_TrySwitchOrUseItem(void)
 {
 #ifdef TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE
-	struct OakCappedTailWhipProbeState *probe = &gOakCappedTailWhipProbeState;
-	probe->forcedSetupAction = FALSE;
-	probe->cappedActionReady = FALSE;
-	probe->cappedEntryClean = FALSE;
-	probe->actionPendingValid = FALSE;
-	probe->actionPendingKind = 0;
-	probe->actionPendingSlot = 0xFF;
-	probe->actionLastValid = FALSE;
-	probe->actionLastKind = 0xFF;
-	if (AI_OakCappedTailWhipProbeExactBattle())
+	if (gNewBS != NULL)
 	{
-		u8 bank = gActiveBattler;
-		probe->bank = bank;
-		probe->actionStage = gBattleMons[FOE(bank)].statStages[STAT_STAGE_DEF - 1];
-		if (gBattleResults.battleTurnCounter == 0)
-			probe->cappedClassified = FALSE;
-		if (AI_OakCappedTailWhipProbeCanForce()
-			&& !gNewBS->ai.standardPendingValid[bank]
-			&& !gNewBS->ai.standardLastValid[bank])
+		struct OakCappedTailWhipProbeState *probe = &gOakCappedTailWhipProbeState;
+		probe->forcedSetupAction = FALSE;
+		probe->cappedActionReady = FALSE;
+		probe->cappedEntryClean = FALSE;
+		probe->actionPendingValid = FALSE;
+		probe->actionPendingKind = 0;
+		probe->actionPendingSlot = 0xFF;
+		probe->actionLastValid = FALSE;
+		probe->actionLastKind = 0xFF;
+		if (AI_OakCappedTailWhipProbeExactBattle())
 		{
-			probe->forcedSetupAction = TRUE;
-			gBankAttacker = bank;
-			gBankTarget = FOE(bank);
-			EmitTwoReturnValues(1, ACTION_USE_MOVE, (bank ^ BIT_SIDE) << 8);
-			return;
-		}
-		if (probe->actionStage <= STAT_STAGE_MIN && !probe->cappedClassified)
-		{
-			probe->cappedActionReady = TRUE;
-			probe->cappedEntryClean = !gNewBS->ai.standardPendingValid[bank]
-				&& !gNewBS->ai.standardLastValid[bank];
+			u8 bank = gActiveBattler;
+			probe->bank = bank;
+			probe->actionStage = gBattleMons[FOE(bank)].statStages[STAT_STAGE_DEF - 1];
+			if (gBattleResults.battleTurnCounter == 0)
+				probe->cappedClassified = FALSE;
+			if (AI_OakCappedTailWhipProbeCanForce()
+				&& !gNewBS->ai.standardPendingValid[bank]
+				&& !gNewBS->ai.standardLastValid[bank])
+			{
+				probe->forcedSetupAction = TRUE;
+				gBankAttacker = bank;
+				gBankTarget = FOE(bank);
+				EmitTwoReturnValues(1, ACTION_USE_MOVE, (bank ^ BIT_SIDE) << 8);
+				return;
+			}
+			if (probe->actionStage <= STAT_STAGE_MIN && !probe->cappedClassified)
+			{
+				probe->cappedActionReady = TRUE;
+				probe->cappedEntryClean = !gNewBS->ai.standardPendingValid[bank]
+					&& !gNewBS->ai.standardLastValid[bank];
+			}
 		}
 	}
 #endif

@@ -17,9 +17,10 @@ static const u32 testBitTable[] = {1, 2, 4, 8};
 #define gBaseStats testBaseStats
 #define gBitTable testBitTable
 #include "../../src/Battle_AI/ai_standard.c"
-#undef EWRAM_DATA
-#define EWRAM_DATA
 #include "../../src/Battle_AI/ai_ironmon.c"
+/* Keep legacy witness spelling pointed at battle-owned scratch, not globals. */
+#define sIronmonObservation (gNewBS->ironmonObservation)
+#define sIronmonResult (gNewBS->ironmonResult)
 
 struct BattlePokemon gBattleMons[4];
 struct DisableStruct gDisableStructs[4];
