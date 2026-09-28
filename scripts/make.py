@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
+import ast
+import json
 import os
+import re
 import shutil
 import sys
 
@@ -64,13 +67,89 @@ def ChangeFileLine(filePath: str, lineToChange: int, replacement: str):
         file.write(copy)
 
 
-def EditLinker(offset: int):
-    ChangeFileLine("linker.ld", 4, "\t\trom     : ORIGIN = (0x08000000 + " + hex(offset) + "), LENGTH = 32M\n")
+def _SourceOffset(source: str, line: int, byteColumn: int) -> int:
+    lines = source.splitlines(keepends=True)
+    if line < 1 or line > len(lines):
+        raise ValueError("Assignment source position is outside the file")
+
+    prefix = "".join(lines[:line - 1])
+    bytePrefix = lines[line - 1].encode('utf-8')[:byteColumn]
+    try:
+        characterPrefix = bytePrefix.decode('utf-8')
+    except UnicodeDecodeError as error:
+        raise ValueError("Assignment source position is not on a UTF-8 boundary") from error
+    return len(prefix) + len(characterPrefix)
 
 
-def EditInsert(offset: int):
-    ChangeFileLine("./scripts/insert.py", 10, "OFFSET_TO_PUT = " + hex(offset) + '\n')
-    ChangeFileLine("./scripts/insert.py", 11, 'SOURCE_ROM = "' + ROM_NAME + '"\n')
+def UpdatePythonAssignments(filePath: str, replacements: dict):
+    with open(filePath, 'r', encoding='utf-8', newline='') as file:
+        source = file.read()
+
+    tree = ast.parse(source, filename=filePath)
+    assignmentNodes = {name: [] for name in replacements}
+    for statement in tree.body:
+        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+            continue
+        target = statement.targets[0]
+        if isinstance(target, ast.Name) and target.id in assignmentNodes:
+            assignmentNodes[target.id].append(statement.value)
+
+    spans = []
+    for name, replacement in replacements.items():
+        matches = assignmentNodes[name]
+        if len(matches) != 1:
+            raise ValueError("Expected exactly one top-level assignment to {}; found {}".format(name, len(matches)))
+        expression = matches[0]
+        if not hasattr(expression, 'end_lineno') or not hasattr(expression, 'end_col_offset'):
+            raise ValueError("Python runtime cannot locate the assignment expression for " + name)
+        start = _SourceOffset(source, expression.lineno, expression.col_offset)
+        end = _SourceOffset(source, expression.end_lineno, expression.end_col_offset)
+        spans.append((start, end, replacement))
+
+    updated = source
+    for start, end, replacement in sorted(spans, reverse=True):
+        updated = updated[:start] + replacement + updated[end:]
+    ast.parse(updated, filename=filePath)
+
+    with open(filePath, 'w', encoding='utf-8', newline='') as file:
+        file.write(updated)
+
+
+def UpdateLinkerRomOrigin(filePath: str, offset: int):
+    with open(filePath, 'r', encoding='utf-8', newline='') as file:
+        source = file.read()
+
+    pattern = re.compile(
+        r"(?m)^(?P<prefix>[ \t]*rom[ \t]*:[ \t]*ORIGIN[ \t]*=[ \t]*)"
+        r"(?P<expression>[^,\r\n]+?)(?P<spacing>[ \t]*)"
+        r"(?P<suffix>,[ \t]*LENGTH[ \t]*=[ \t]*32M[ \t]*(?:\#.*)?)"
+        r"(?P<newline>\r?\n|\Z)"
+    )
+    matches = list(pattern.finditer(source))
+    if len(matches) != 1:
+        raise ValueError("Expected exactly one rom ORIGIN region in {}; found {}".format(filePath, len(matches)))
+
+    match = matches[0]
+    expression = match.group('expression').strip()
+    if re.fullmatch(r"\(\s*0x08000000\s*\+\s*0[xX][0-9a-fA-F]+\s*\)", expression) is None:
+        raise ValueError("The rom ORIGIN expression in {} is not the expected FireRed offset form".format(filePath))
+
+    replacement = (match.group('prefix') + "(0x08000000 + " + hex(offset) + ")"
+                   + match.group('spacing') + match.group('suffix') + match.group('newline'))
+    updated = source[:match.start()] + replacement + source[match.end():]
+    with open(filePath, 'w', encoding='utf-8', newline='') as file:
+        file.write(updated)
+
+
+def EditLinker(offset: int, filePath: str = "linker.ld"):
+    UpdateLinkerRomOrigin(filePath, offset)
+
+
+def EditInsert(offset: int, filePath: str = "./scripts/insert.py"):
+    UpdatePythonAssignments(filePath, {
+        "OFFSET_TO_PUT": hex(offset),
+        "SOURCE_ROM": json.dumps(ROM_NAME),
+    })
 
 
 def BuildCode():
@@ -120,4 +199,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
