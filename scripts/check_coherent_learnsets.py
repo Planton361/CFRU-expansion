@@ -13,6 +13,10 @@ REFERENCE = "b1156ff19204e48089e2384eb2c9c1a8004f57ce"
 TABLE = "src/Tables/level_up_learnsets.c"
 MANIFEST = "docs/coherent-learnsets-provenance.json"
 BLOCK = re.compile(r"static const struct LevelUpMove (s\w+)\[\] = \{.*?\};", re.S)
+CONFIG_DIAGNOSTIC_COMMENTS = {
+    "//#define TRAINER_AI_RUNTIME_DISPATCH_TRACE // Temporary Oak's-Lab three-turn move marker; enable only for a private diagnostic build.",
+    "//#define TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE // Temporary Oak's-Lab Defense-floor probe; enable only for a private diagnostic build.",
+}
 BINDINGS = {
     "SPECIES_PIKACHU_COSPLAY": "sPikachuCosplayLevelUpLearnset",
     "SPECIES_PIKACHU_LIBRE": "sPikachuCosplayLevelUpLearnset",
@@ -68,12 +72,27 @@ def validate_source(before, after, record):
             "text outside approved tables/pointer rows changed")
 
 
+def validate_config(before, after):
+    """Ignore only the two known disabled diagnostic comments added after BASE."""
+    normalized = []
+    seen = set()
+    for line in after.splitlines(keepends=True):
+        content = line.rstrip("\r\n")
+        if content in CONFIG_DIAGNOSTIC_COMMENTS:
+            require(content not in seen, "duplicate disabled diagnostic comment: " + content)
+            seen.add(content)
+            continue
+        normalized.append(line)
+    require("".join(normalized) == before, "engine/layout/config changed: src/config.h")
+
+
 def check_source_contract():
     record = json.loads((ROOT / MANIFEST).read_text())
     validate_source(baseline(TABLE), (ROOT / TABLE).read_text(), record)
     for path in ("src/learn_move.c", "include/new/learn_move.h", "include/pokemon.h",
-                 "include/constants/moves.h", "include/constants/species.h", "src/config.h"):
+                 "include/constants/moves.h", "include/constants/species.h"):
         require((ROOT / path).read_text() == baseline(path), "engine/layout/config changed: " + path)
+    validate_config(baseline("src/config.h"), (ROOT / "src/config.h").read_text())
     print("PASS: 820 exact table replacements, 2 new form tables, 7 rebindings, 1 existing-ID null-pointer repair; engine unchanged")
 
 
@@ -177,6 +196,24 @@ def check_rejections():
             continue
         raise AssertionError("unapproved edit accepted")
     print("PASS: invalid rows, outside edits, shared-pointer regressions and null-pointer regression rejected")
+
+    baseline_config = baseline("src/config.h")
+    current_config = (ROOT / "src/config.h").read_text()
+    config_cases = [
+        current_config.replace("//#define TRAINER_AI_RUNTIME_DISPATCH_TRACE", "#define TRAINER_AI_RUNTIME_DISPATCH_TRACE", 1),
+        current_config + "\n#define UNAPPROVED_LEARNSET_CONFIG_CHANGE\n",
+        current_config + "\n" + next(iter(CONFIG_DIAGNOSTIC_COMMENTS)) + "\n",
+        current_config.replace("private diagnostic build.", "different diagnostic behavior.", 1),
+    ]
+    for modified in config_cases:
+        require(modified != current_config, "config mutation fixture failed to modify source")
+        try:
+            validate_config(baseline_config, modified)
+        except ValueError:
+            continue
+        raise AssertionError("unapproved src/config.h mutation accepted")
+    validate_config(baseline_config, baseline_config)
+    print("PASS: exact disabled diagnostic comments tolerated; active, unrelated, duplicate and mutated config changes rejected")
 
 
 if __name__ == "__main__":
