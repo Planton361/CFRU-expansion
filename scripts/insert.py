@@ -4,6 +4,7 @@ import os
 import subprocess
 import shutil
 import sys
+import tempfile
 from datetime import datetime
 import _io
 
@@ -399,6 +400,131 @@ def ValidateCoordEvent(event: dict, expected: dict, label: str):
         raise ValueError("{} has nonzero serialized padding".format(label))
     if event["scriptPointer"] < 0x08000000:
         raise ValueError("{} has an invalid script pointer".format(label))
+
+
+def ValidateCoordEventStructure(event: dict, expected: dict, label: str):
+    for field in ("x", "y", "elevation", "trigger", "index"):
+        if event[field] != expected[field]:
+            raise ValueError("{} {} expected {}, found {}".format(label, field, expected[field], event[field]))
+    if event["paddingBeforeTrigger"] != 0 or event["paddingBeforeScript"] != b'\0\0':
+        raise ValueError("{} has nonzero serialized padding".format(label))
+    if event["scriptPointer"] < 0x08000000:
+        raise ValueError("{} has an invalid script pointer".format(label))
+
+
+def ReplaceEventObjectScriptAtExactIndex(objectData: bytes, expectedCount: int, targetIndex: int,
+                                         expected: dict, scriptPointer: int) -> (bytes, int):
+    if len(objectData) != expectedCount * EVENT_OBJECT_TEMPLATE_SIZE:
+        raise ValueError("Object data length does not match expected object count {}".format(expectedCount))
+    if targetIndex < 0 or targetIndex >= expectedCount:
+        raise ValueError("Object index is outside the expected object table")
+    if scriptPointer < 0x08000000:
+        raise ValueError("Replacement object script pointer is invalid")
+
+    targetOffset = targetIndex * EVENT_OBJECT_TEMPLATE_SIZE
+    targetTemplate = ReadEventObjectTemplate(objectData[targetOffset:targetOffset + EVENT_OBJECT_TEMPLATE_SIZE])
+    ValidateEventObjectTemplate(targetTemplate, expected, "target object")
+    uniqueOffset, _ = FindEventObjectTemplate(objectData, expected["localId"])
+    if uniqueOffset != targetOffset:
+        raise ValueError("Expected object local ID is not at the authored object index")
+
+    replaced = bytearray(objectData)
+    replaced[targetOffset + 16:targetOffset + 20] = scriptPointer.to_bytes(4, 'little')
+    replaced = bytes(replaced)
+    changedOffsets = [index for index, pair in enumerate(zip(objectData, replaced)) if pair[0] != pair[1]]
+    if any(index < targetOffset + 16 or index >= targetOffset + 20 for index in changedOffsets):
+        raise ValueError("Exact object script replacement changed bytes outside the script pointer")
+    return replaced, targetOffset
+
+
+def ReplaceCoordEventScriptAtExactIndex(coordData: bytes, expectedCount: int, targetIndex: int,
+                                        expected: dict, scriptPointer: int) -> (bytes, int):
+    if len(coordData) != expectedCount * COORD_EVENT_SIZE:
+        raise ValueError("CoordEvent data length does not match expected CoordEvent count {}".format(expectedCount))
+    if targetIndex < 0 or targetIndex >= expectedCount:
+        raise ValueError("CoordEvent index is outside the expected CoordEvent table")
+    if scriptPointer < 0x08000000:
+        raise ValueError("Replacement CoordEvent script pointer is invalid")
+
+    targetOffset = targetIndex * COORD_EVENT_SIZE
+    targetEvent = ReadCoordEvent(coordData[targetOffset:targetOffset + COORD_EVENT_SIZE])
+    ValidateCoordEventStructure(targetEvent, expected, "target CoordEvent")
+    replaced = bytearray(coordData)
+    replaced[targetOffset + 12:targetOffset + 16] = scriptPointer.to_bytes(4, 'little')
+    replaced = bytes(replaced)
+    changedOffsets = [index for index, pair in enumerate(zip(coordData, replaced)) if pair[0] != pair[1]]
+    if any(index < targetOffset + 12 or index >= targetOffset + 16 for index in changedOffsets):
+        raise ValueError("Exact CoordEvent script replacement changed bytes outside the script pointer")
+    return replaced, targetOffset
+
+
+def _SafeRomPointerOffset(rom: _io.BufferedReader, pointer: int, label: str, requiredBytes: int = 1) -> int:
+    if pointer < 0x08000000:
+        raise ValueError("{} pointer is invalid".format(label))
+    offset = pointer - 0x08000000
+    rom.seek(0, 2)
+    if requiredBytes < 0 or offset + requiredBytes > rom.tell():
+        raise ValueError("{} table is outside the source image".format(label))
+    return offset
+
+
+def _ReadMapEventsForExactScriptReplacement(rom: _io.BufferedReader, mapHeader: int,
+                                            expectedCounts: tuple) -> (int, tuple, tuple):
+    mapEventsPointer = ReadPointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET)
+    eventHeader = _SafeRomPointerOffset(rom, mapEventsPointer, "MapEvents", 0x14)
+    rom.seek(eventHeader)
+    data = rom.read(0x14)
+    if len(data) != 0x14:
+        raise ValueError("MapEvents header is truncated")
+
+    counts = tuple(data[:4])
+    pointers = tuple(int.from_bytes(data[index:index + 4], 'little') for index in (4, 8, 12, 16))
+    if counts != expectedCounts:
+        raise ValueError("MapEvents counts expected {}, found {}".format(expectedCounts, counts))
+    for count, pointer, label in zip(counts, pointers, ("object", "warp", "CoordEvent", "BG event")):
+        if count:
+            _SafeRomPointerOffset(rom, pointer, label)
+    return eventHeader, counts, pointers
+
+
+def ReplaceExactMapObjectScriptPointer(rom: _io.BufferedReader, mapBanksHeader: int,
+                                      mapBank: int, mapNum: int, expectedCounts: tuple,
+                                      targetIndex: int, expected: dict, scriptPointer: int) -> int:
+    mapHeader = ResolveMapHeader(rom, mapBanksHeader, mapBank, mapNum)
+    _, counts, pointers = _ReadMapEventsForExactScriptReplacement(rom, mapHeader, expectedCounts)
+    objectTableOffset = _SafeRomPointerOffset(
+        rom, pointers[0], "object", counts[0] * EVENT_OBJECT_TEMPLATE_SIZE)
+    rom.seek(objectTableOffset)
+    objectData = rom.read(counts[0] * EVENT_OBJECT_TEMPLATE_SIZE)
+    if len(objectData) != counts[0] * EVENT_OBJECT_TEMPLATE_SIZE:
+        raise ValueError("Object table is truncated")
+    replaced, targetOffset = ReplaceEventObjectScriptAtExactIndex(
+        objectData, counts[0], targetIndex, expected, scriptPointer)
+
+    scriptOffset = objectTableOffset + targetOffset + 16
+    rom.seek(scriptOffset)
+    rom.write(replaced[targetOffset + 16:targetOffset + 20])
+    return scriptOffset
+
+
+def ReplaceExactMapCoordEventScriptPointer(rom: _io.BufferedReader, mapBanksHeader: int,
+                                           mapBank: int, mapNum: int, expectedCounts: tuple,
+                                           targetIndex: int, expected: dict, scriptPointer: int) -> int:
+    mapHeader = ResolveMapHeader(rom, mapBanksHeader, mapBank, mapNum)
+    _, counts, pointers = _ReadMapEventsForExactScriptReplacement(rom, mapHeader, expectedCounts)
+    coordTableOffset = _SafeRomPointerOffset(
+        rom, pointers[2], "CoordEvent", counts[2] * COORD_EVENT_SIZE)
+    rom.seek(coordTableOffset)
+    coordData = rom.read(counts[2] * COORD_EVENT_SIZE)
+    if len(coordData) != counts[2] * COORD_EVENT_SIZE:
+        raise ValueError("CoordEvent table is truncated")
+    replaced, targetOffset = ReplaceCoordEventScriptAtExactIndex(
+        coordData, counts[2], targetIndex, expected, scriptPointer)
+
+    scriptOffset = coordTableOffset + targetOffset + 12
+    rom.seek(scriptOffset)
+    rom.write(replaced[targetOffset + 12:targetOffset + 16])
+    return scriptOffset
 def ValidateRomPointer(rom: _io.BufferedReader, pointer: int, label: str) -> int:
     if pointer < 0x08000000:
         raise ValueError("{} has an invalid ROM pointer {:08X}".format(label, pointer))
@@ -1342,8 +1468,9 @@ def ParseScriptReplacementExpectation(tokens: [str], definesDict: dict) -> dict:
     return {field: ResolveNumericOrDefine(token, definesDict) for field, token in zip(fieldNames, tokens)}
 
 
-def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOffset: int) -> int:
-    if not os.path.isfile(MAP_OBJECT_OVERLAYS):
+def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOffset: int,
+                            overlayPath: str = MAP_OBJECT_OVERLAYS) -> int:
+    if not os.path.isfile(overlayPath):
         return startOffset
 
     insertOffset = AlignOffset(startOffset)
@@ -1352,7 +1479,7 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
     conditionals = []
     commonPokeCenterNurseScriptPointer = None
 
-    with open(MAP_OBJECT_OVERLAYS, 'r') as file:
+    with open(overlayPath, 'r') as file:
         for i, line in enumerate(file):
             if TryProcessFileInclusion(line, definesDict):
                 continue
@@ -1419,6 +1546,40 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                         rom, mapScriptsPointer,
                         (expectedTransitionType, expectedConditionalTableType), conditionalTableType,
                         expectedConditions, targetConditionIndex, table[scriptSymbol] + 0x08000000)
+                    continue
+                elif action == "replace_object_script_exact":
+                    if len(parts) != 21:
+                        raise ValueError("replace_object_script_exact requires 21 fields")
+                    if parts[20] not in table:
+                        raise ValueError("replace_object_script_exact symbol missing")
+                    values = [ResolveNumericOrDefine(value, definesDict) for value in parts[1:20]]
+                    mapBank, mapNum, expectedObjectCount, expectedWarpCount, expectedCoordCount, expectedBgCount, \
+                        targetObjectIndex = values[:7]
+                    expected = dict(zip((
+                        "localId", "graphicsId", "x", "y", "elevation", "movementType",
+                        "movementRangeX", "movementRangeY", "trainerType", "trainerRange", "flagId", "flagId2",
+                    ), values[7:]))
+                    ReplaceExactMapObjectScriptPointer(
+                        rom, mapBanksHeader, mapBank, mapNum,
+                        (expectedObjectCount, expectedWarpCount, expectedCoordCount, expectedBgCount),
+                        targetObjectIndex, expected, table[parts[20]] + 0x08000000)
+                    continue
+                elif action == "replace_coord_script_exact":
+                    if len(parts) != 14:
+                        raise ValueError("replace_coord_script_exact requires 14 fields")
+                    if parts[13] not in table:
+                        raise ValueError("replace_coord_script_exact symbol missing")
+                    values = [ResolveNumericOrDefine(value, definesDict) for value in parts[1:13]]
+                    mapBank, mapNum, expectedObjectCount, expectedWarpCount, expectedCoordCount, expectedBgCount, \
+                        targetCoordIndex, x, y, elevation, trigger, triggerValue = values
+                    expected = {
+                        "x": x, "y": y, "elevation": elevation,
+                        "trigger": trigger, "index": triggerValue,
+                    }
+                    ReplaceExactMapCoordEventScriptPointer(
+                        rom, mapBanksHeader, mapBank, mapNum,
+                        (expectedObjectCount, expectedWarpCount, expectedCoordCount, expectedBgCount),
+                        targetCoordIndex, expected, table[parts[13]] + 0x08000000)
                     continue
                 elif action == "append_coord":
                     if len(parts) != 13:
@@ -1608,6 +1769,191 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                 sys.exit(1)
 
     return insertOffset
+
+
+def RunEarlyRunningPewterOverlaySelfTest():
+    expectedRows = [
+        ["replace_object_script_exact", "3", "2", "7", "7", "7", "6", "6", "7", "0x0037",
+         "46", "20", "3", "MOVEMENT_TYPE_FACE_RIGHT", "1", "1", "0", "0",
+         "FLAG_HIDE_PEWTER_CITY_RUNNING_SHOES_GUY", "0", "EventScript_PewterRunningShoesCleanup"],
+        ["replace_coord_script_exact", "3", "2", "7", "7", "7", "6", "4", "46", "21", "3",
+         "VAR_MAP_SCENE_PEWTER_CITY", "1", "EventScript_PewterRunningShoesCleanup"],
+        ["replace_coord_script_exact", "3", "2", "7", "7", "7", "6", "5", "46", "22", "3",
+         "VAR_MAP_SCENE_PEWTER_CITY", "1", "EventScript_PewterRunningShoesCleanup"],
+        ["replace_coord_script_exact", "3", "2", "7", "7", "7", "6", "6", "46", "23", "3",
+         "VAR_MAP_SCENE_PEWTER_CITY", "1", "EventScript_PewterRunningShoesCleanup"],
+    ]
+    definesDict = {}
+    conditionals = []
+    pewterRows = []
+    with open(MAP_OBJECT_OVERLAYS, 'r') as overlayFile:
+        for line in overlayFile:
+            if TryProcessFileInclusion(line, definesDict):
+                continue
+            if TryProcessConditionalCompilation(line, definesDict, conditionals):
+                continue
+            if line.strip() and not line.strip().startswith('#'):
+                row = line.split()
+                if row[0] in ("replace_object_script_exact", "replace_coord_script_exact") and row[1:3] == ["3", "2"]:
+                    pewterRows.append(row)
+    assert pewterRows == expectedRows
+    assert ResolveNumericOrDefine("FLAG_HIDE_PEWTER_CITY_RUNNING_SHOES_GUY", definesDict) == 0x0092
+    assert ResolveNumericOrDefine("VAR_MAP_SCENE_PEWTER_CITY", definesDict) == 0x406C
+    assert ResolveNumericOrDefine("MOVEMENT_TYPE_FACE_RIGHT", definesDict) == 0x0A
+
+    def BuildFixture() -> _io.BytesIO:
+        fixture = _io.BytesIO(bytearray(0x60000))
+        WritePointer(fixture, MAP_BANKS_HEADER_POINTER, 0x08000100)
+        WritePointer(fixture, 0x100 + 3 * 4, 0x08000200)
+        WritePointer(fixture, 0x200 + 2 * 4, 0x08000300)
+        WritePointer(fixture, 0x300 + MAP_HEADER_EVENTS_OFFSET, 0x08000400)
+        WritePointer(fixture, 0x300 + MAP_HEADER_SCRIPTS_OFFSET, 0x08000F00)
+        fixture.seek(0x400)
+        fixture.write(BuildMapEvents(7, 7, 7, 6, 0x08000500, 0x08000700, 0x08000800, 0x08000900))
+
+        objects = []
+        for index in range(6):
+            objects.append(BuildEventObjectTemplate(
+                index + 1, 1, 10 + index, 11 + index, 3, 8, 1, 1, 0, 0,
+                0x08000B00 + index * 4, 0, 0))
+        objects.append(BuildEventObjectTemplate(
+            7, 0x0037, 46, 20, 3, 0x0A, 1, 1, 0, 0,
+            0x08000B80, 0x0092, 0))
+        fixture.seek(0x500)
+        fixture.write(b''.join(objects))
+
+        fixture.seek(0x700)
+        fixture.write(bytes((index * 7) & 0xFF for index in range(7 * 8)))
+        coords = []
+        for x, y in ((42, 21), (42, 22), (42, 23), (43, 23)):
+            coords.append(BuildCoordEvent(x, y, 3, 0x406C, 0, 0x08000C00 + len(coords) * 4))
+        for x, y in ((46, 21), (46, 22), (46, 23)):
+            coords.append(BuildCoordEvent(x, y, 3, 0x406C, 1, 0x08000C20 + (len(coords) - 4) * 4))
+        fixture.seek(0x800)
+        fixture.write(b''.join(coords))
+        fixture.seek(0x900)
+        fixture.write(bytes((0xA0 + index) & 0xFF for index in range(6 * 12)))
+        return fixture
+
+    numericRows = []
+    for row in pewterRows:
+        numericRows.append(" ".join(
+            [row[0]]
+            + [str(ResolveNumericOrDefine(value, definesDict)) for value in row[1:-1]]
+            + [row[-1]]
+        ))
+
+    def InsertSyntheticRows(fixture: _io.BytesIO, rows: list) -> int:
+        with tempfile.TemporaryDirectory(prefix="cfru-pewter-overlay-") as tempDirectory:
+            overlayPath = os.path.join(tempDirectory, "mapobjectoverlays")
+            with open(overlayPath, 'w') as overlayFile:
+                overlayFile.write("\n".join(rows) + "\n")
+            return InsertMapObjectOverlays(
+                fixture, {"EventScript_PewterRunningShoesCleanup": 0x0A20}, 0x1000, overlayPath)
+
+    fixture = BuildFixture()
+    before = fixture.getvalue()
+    assert InsertSyntheticRows(fixture, numericRows) == 0x1000
+    after = fixture.getvalue()
+    scriptPointer = 0x08000A20
+    targetObjectOffset = 0x500 + 6 * EVENT_OBJECT_TEMPLATE_SIZE
+    assert after[targetObjectOffset:targetObjectOffset + 16] == before[targetObjectOffset:targetObjectOffset + 16]
+    assert after[targetObjectOffset + 20:targetObjectOffset + EVENT_OBJECT_TEMPLATE_SIZE] == \
+        before[targetObjectOffset + 20:targetObjectOffset + EVENT_OBJECT_TEMPLATE_SIZE]
+    assert after[targetObjectOffset + 16:targetObjectOffset + 20] == scriptPointer.to_bytes(4, 'little')
+    assert after[0x500:targetObjectOffset] == before[0x500:targetObjectOffset]
+    assert after[targetObjectOffset + EVENT_OBJECT_TEMPLATE_SIZE:0x500 + 7 * EVENT_OBJECT_TEMPLATE_SIZE] == \
+        before[targetObjectOffset + EVENT_OBJECT_TEMPLATE_SIZE:0x500 + 7 * EVENT_OBJECT_TEMPLATE_SIZE]
+    for coordIndex in range(7):
+        offset = 0x800 + coordIndex * COORD_EVENT_SIZE
+        if coordIndex in (4, 5, 6):
+            assert after[offset:offset + 12] == before[offset:offset + 12]
+            assert after[offset + 12:offset + 16] == scriptPointer.to_bytes(4, 'little')
+        else:
+            assert after[offset:offset + COORD_EVENT_SIZE] == before[offset:offset + COORD_EVENT_SIZE]
+
+    # Keep the full MapHeader and the Route 3 map-connection ownership intact.
+    assert after[0x300 + MAP_HEADER_EVENTS_OFFSET:0x300 + MAP_HEADER_EVENTS_OFFSET + 4] == \
+        before[0x300 + MAP_HEADER_EVENTS_OFFSET:0x300 + MAP_HEADER_EVENTS_OFFSET + 4]
+    assert after[0x300:0x320] == before[0x300:0x320]
+    assert after[0x400:0x414] == before[0x400:0x414]
+    assert after[0x700:0x738] == before[0x700:0x738]
+    assert after[0x900:0x948] == before[0x900:0x948]
+
+    expectedCounts = (7, 7, 7, 6)
+    aideExpectation = {
+        "localId": 7, "graphicsId": 0x0037, "x": 46, "y": 20, "elevation": 3,
+        "movementType": 0x0A, "movementRangeX": 1, "movementRangeY": 1,
+        "trainerType": 0, "trainerRange": 0, "flagId": 0x0092, "flagId2": 0,
+    }
+    coordExpectation = {"x": 46, "y": 21, "elevation": 3, "trigger": 0x406C, "index": 1}
+    mapBanksHeader = 0x100
+
+    def ExpectFailureWithoutWrites(mutator, action, label: str):
+        badFixture = BuildFixture()
+        mutator(badFixture)
+        beforeFailure = badFixture.getvalue()
+        try:
+            action(badFixture)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("{} did not fail closed".format(label))
+        assert badFixture.getvalue() == beforeFailure, "{} wrote before validation completed".format(label)
+
+    def MutateWrongCounts(bad):
+        bad.seek(0x403)
+        bad.write(b'\x05')
+
+    ExpectFailureWithoutWrites(
+        MutateWrongCounts,
+        lambda bad: ReplaceExactMapObjectScriptPointer(
+            bad, mapBanksHeader, 3, 2, expectedCounts, 6, aideExpectation, scriptPointer),
+        "wrong Pewter event counts")
+    for fieldOffset, replacement, label in (
+            (4, (47).to_bytes(2, 'little'), "wrong Aide coordinates"),
+            (1, b'\x38', "wrong Aide graphics"),
+            (20, b'\x93', "wrong Aide hide flag")):
+        def MutateObject(bad, fieldOffset=fieldOffset, replacement=replacement):
+            bad.seek(0x500 + 6 * EVENT_OBJECT_TEMPLATE_SIZE + fieldOffset)
+            bad.write(replacement)
+        ExpectFailureWithoutWrites(
+            MutateObject,
+            lambda bad: ReplaceExactMapObjectScriptPointer(
+                bad, mapBanksHeader, 3, 2, expectedCounts, 6, aideExpectation, scriptPointer),
+            label)
+    ExpectFailureWithoutWrites(
+        lambda bad: None,
+        lambda bad: ReplaceExactMapObjectScriptPointer(
+            bad, mapBanksHeader, 3, 1, expectedCounts, 6, aideExpectation, scriptPointer),
+        "wrong Pewter map number")
+    ExpectFailureWithoutWrites(
+        lambda bad: None,
+        lambda bad: ReplaceExactMapObjectScriptPointer(
+            bad, mapBanksHeader, 4, 2, expectedCounts, 6, aideExpectation, scriptPointer),
+        "wrong Pewter map bank")
+    for fieldOffset, replacement, label in (
+            (0, (47).to_bytes(2, 'little'), "wrong CoordEvent position"),
+            (6, (0x406D).to_bytes(2, 'little'), "wrong CoordEvent scene variable"),
+            (8, (0).to_bytes(2, 'little'), "wrong CoordEvent scene value")):
+        def MutateCoord(bad, fieldOffset=fieldOffset, replacement=replacement):
+            bad.seek(0x800 + 4 * COORD_EVENT_SIZE + fieldOffset)
+            bad.write(replacement)
+        ExpectFailureWithoutWrites(
+            MutateCoord,
+            lambda bad: ReplaceExactMapCoordEventScriptPointer(
+                bad, mapBanksHeader, 3, 2, expectedCounts, 4, coordExpectation, scriptPointer),
+            label)
+    try:
+        ReplaceCoordEventScriptAtExactIndex(
+            b''.join(BuildCoordEvent(46, 21, 3, 0x406C, 1, 0x08000C20) for _ in range(7)),
+            7, 7, coordExpectation, scriptPointer)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("wrong CoordEvent table index did not fail closed")
+
+    print("Early running / Pewter exact-script-pointer overlay synthetic checks passed")
 
 
 def GetTextSection() -> int:
@@ -2387,5 +2733,6 @@ if __name__ == '__main__':
         RunTalkToMomOverlaySelfTest()
         RunOptionalBillSeviiOverlaySelfTest()
         RunShortenedOakParcelFlowOverlaySelfTest()
+        RunEarlyRunningPewterOverlaySelfTest()
     else:
         main()
