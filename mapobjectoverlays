@@ -2,6 +2,7 @@
 #include "include/constants/event_object_movement_constants.h"
 #include "include/constants/flags.h"
 #include "include/constants/items.h"
+#include "include/constants/vars.h"
 
 ## append mapBank mapNum expectedCount localId graphicsId x y elevation movementType rangeX rangeY trainerType trainerRange script flagId flagId2
 append 5 4 4 5 MAP_OBJ_GFX_GENTLEMAN 10 5 3 MOVEMENT_TYPE_FACE_DOWN 1 1 0 0 EventScript_PokeCenterNameRater 0 0
@@ -62,6 +63,17 @@ append_coord 3 19 3 0 3 1 13 2 0 0x4057 0 EventScript_M007Route1ClerkTrigger13
 append 3 0 3 4 0x47 11 8 3 MOVEMENT_TYPE_FACE_UP 0 0 0 0 EventScript_M007NoOp FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE 0
 append_coord 3 0 4 3 3 5 12 0 0 0x4055 5 EventScript_M007PalletOakTrigger12
 append_coord 3 0 4 3 4 5 13 0 0 0x4055 5 EventScript_M007PalletOakTrigger13
+
+## #538: public pret Pewter City (map bank 3, map 2) has 7 objects, 7
+## warps, 7 CoordEvents, and 6 BG events. Replace only the final object
+## (Running-Shoes Aide; local ID 7) and the three scene-1 trigger pointers.
+## Every authored field below is checked before its single pointer is written.
+## replace_object_script_exact mapBank mapNum objects warps coords bg objectIndex localId graphicsId x y elevation movement rangeX rangeY trainerType trainerRange hideFlag hideFlag2 script
+replace_object_script_exact 3 2 7 7 7 6 6 7 0x0037 46 20 3 MOVEMENT_TYPE_FACE_RIGHT 1 1 0 0 FLAG_HIDE_PEWTER_CITY_RUNNING_SHOES_GUY 0 EventScript_PewterRunningShoesCleanup
+## replace_coord_script_exact mapBank mapNum objects warps coords bg coordIndex x y elevation sceneVar sceneValue script
+replace_coord_script_exact 3 2 7 7 7 6 4 46 21 3 VAR_MAP_SCENE_PEWTER_CITY 1 EventScript_PewterRunningShoesCleanup
+replace_coord_script_exact 3 2 7 7 7 6 5 46 22 3 VAR_MAP_SCENE_PEWTER_CITY 1 EventScript_PewterRunningShoesCleanup
+replace_coord_script_exact 3 2 7 7 7 6 6 46 23 3 VAR_MAP_SCENE_PEWTER_CITY 1 EventScript_PewterRunningShoesCleanup
 
 ## replace mapBank mapNum expectedCount localId oldGraphicsId oldX oldY oldElevation oldMovementType oldRangeX oldRangeY oldTrainerType oldTrainerRange oldScriptPointer oldFlagId oldFlagId2 newGraphicsId newX newY newElevation newMovementType newRangeX newRangeY newTrainerType newTrainerRange newScript newFlagId newFlagId2
 ## Viridian Forest: replace the original non-trainer youngster at this tile with the NatDex nurse.

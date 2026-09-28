@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 static u16 syntheticVars[0x5200];
+static u8 syntheticFlags[0x1000];
 
 u16 VarGet(u16 var)
 {
@@ -17,10 +18,27 @@ bool8 VarSet(u16 var, u16 value)
     return TRUE;
 }
 
+u8 FlagSet(u16 flag)
+{
+    syntheticFlags[flag] = TRUE;
+    return TRUE;
+}
+
+bool8 FlagGet(u16 flag)
+{
+    return syntheticFlags[flag];
+}
+
 static void ResetSyntheticVars(u16 value)
 {
     for (u32 i = 0; i < ARRAY_COUNT(syntheticVars); ++i)
         syntheticVars[i] = value;
+}
+
+static void ResetSyntheticFlags(void)
+{
+    for (u32 i = 0; i < ARRAY_COUNT(syntheticFlags); ++i)
+        syntheticFlags[i] = FALSE;
 }
 
 static void TestDifficultyMappingAndPreservation(void)
@@ -156,6 +174,7 @@ static void TestFreshDefaults(void)
     const u16 unrelatedVar = 0x5154;
 
     ResetSyntheticVars(0xBEEF);
+    ResetSyntheticFlags();
     syntheticVars[unrelatedVar] = 0x1234;
     ApplyFreshNewGameSettings();
 
@@ -164,8 +183,17 @@ static void TestFreshDefaults(void)
     assert(syntheticVars[VAR_WILD_LEVEL_SCALING] == 0);
     assert(syntheticVars[VAR_TRAINER_AI_PROFILE] == TRAINER_AI_PROFILE_STANDARD + 1);
     assert(syntheticVars[unrelatedVar] == 0x1234);
+    assert(FlagGet(FLAG_RUNNING_ENABLED));
+    assert(!FlagGet(FLAG_AUTO_RUN));
 
-    puts("Fresh-default raw witness: difficulty=4 trainer-scale=1 wild-scale=0 trainer-ai=7; unrelated VARs unchanged: PASS");
+    /* The fresh settings helper owns only the ordinary running unlock flag. */
+    ResetSyntheticFlags();
+    syntheticFlags[FLAG_AUTO_RUN] = TRUE;
+    ApplyFreshNewGameSettings();
+    assert(FlagGet(FLAG_RUNNING_ENABLED));
+    assert(FlagGet(FLAG_AUTO_RUN));
+
+    puts("Fresh-default raw witness: difficulty=4 trainer-scale=1 wild-scale=0 trainer-ai=7; running enabled; Auto-Run untouched: PASS");
 }
 
 static void TestIronmonPreset(void)

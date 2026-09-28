@@ -118,8 +118,19 @@ def main() -> int:
         "Ironmon Smart raw write missing",
     )
     require(settings.count("VarSet(") == 8, "fresh/preset helpers write an unexpected number of Vars")
-    for forbidden in ("FlagSet(", "FlagClear(", "gSaveBlock", "SaveBlock"):
-        require(forbidden not in settings, f"preset helper mutates unrelated state: {forbidden}")
+    fresh_settings = settings[settings.index("void ApplyFreshNewGameSettings(void)"):]
+    fresh_settings = fresh_settings.split("void ApplyIronmonSmartSettingsPreset(void)", 1)[0]
+    preset_settings = settings[settings.index("void ApplyIronmonSmartSettingsPreset(void)"):]
+    require(
+        fresh_settings.count("FlagSet(") == 1
+        and "FlagSet(FLAG_RUNNING_ENABLED);" in fresh_settings,
+        "Fresh New Game does not set only the ordinary running-enabled flag",
+    )
+    require("FLAG_AUTO_RUN" not in fresh_settings, "Fresh New Game settings enable Auto-Run")
+    require("FlagSet(" not in preset_settings and "FlagClear(" not in preset_settings,
+            "Ironmon Smart preset mutates running flags")
+    for forbidden in ("FlagClear(", "gSaveBlock", "SaveBlock"):
+        require(forbidden not in settings, f"settings helper mutates unrelated state: {forbidden}")
     require(
         "TRAINER_AI_PROFILE_MENU_OPTION_COUNT (TRAINER_AI_PROFILE_IRONMON_SMART + 2)" in header,
         "menu count is not derived from the appended profile",
