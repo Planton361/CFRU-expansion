@@ -208,10 +208,17 @@ extern const u8 gText_Easy[];
 extern const u8 gText_Hard[];
 extern const u8 gText_Expert[];
 extern const u8 gText_AutoOption[];
+extern const u8 gText_DifficultyAutoOption[];
 extern const u8 gText_VanillaOption[];
 extern const u8 gText_SmartOption[];
 extern const u8 gText_StandardOption[];
 extern const u8 gText_IronmonSmartOption[];
+extern const u8 gText_LegacyVanillaOption[];
+extern const u8 gText_LegacyEasyOption[];
+extern const u8 gText_LegacyNormalOption[];
+extern const u8 gText_LegacyHardOption[];
+extern const u8 gText_LegacyExpertOption[];
+extern const u8 gText_LegacySmartOption[];
 
 static const u8 *const sTextSpeedOptions[] =
 {
@@ -276,7 +283,7 @@ static const u8 *const sGameDifficultyOptions[] =
 };
 static const u8 *const sTrainerLevelScalingOptions[] =
 {
-    gText_AutoOption,
+    gText_DifficultyAutoOption,
     gText_OffOption,
     gText_Easy,
     gText_Normal,
@@ -285,13 +292,13 @@ static const u8 *const sTrainerLevelScalingOptions[] =
 };
 static const u8 *const sTrainerAIProfileOptions[TRAINER_AI_PROFILE_MENU_OPTION_COUNT] =
 {
-    gText_AutoOption,
-    gText_VanillaOption,
-    gText_Easy,
-    gText_Normal,
-    gText_Hard,
-    gText_Expert,
-    gText_SmartOption,
+    gText_DifficultyAutoOption,
+    gText_LegacyVanillaOption,
+    gText_LegacyEasyOption,
+    gText_LegacyNormalOption,
+    gText_LegacyHardOption,
+    gText_LegacyExpertOption,
+    gText_LegacySmartOption,
     gText_StandardOption,
     gText_IronmonSmartOption,
 };
@@ -613,7 +620,7 @@ void BufferOptionMenuString(u8 selection)
     memcpy(dst, sOptionMenuTextColor, 3);
     x = 0x82;
     y = ((GetFontAttribute(2, FONTATTR_MAX_LETTER_HEIGHT) - 1) * (selection)) + 2;
-    FillWindowPixelRect(1, 1, x, y, 0x46, GetFontAttribute(2, FONTATTR_MAX_LETTER_HEIGHT));
+    FillWindowPixelRect(1, 1, x, y, 0x4E, GetFontAttribute(2, FONTATTR_MAX_LETTER_HEIGHT));
     if(sOptionMenuPtr->page == 0)
     {
         switch (selection)

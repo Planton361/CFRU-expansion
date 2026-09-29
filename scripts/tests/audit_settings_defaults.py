@@ -40,7 +40,7 @@ def main() -> int:
         "Trainer AI cycling count does not include both new profiles",
     )
     require(
-        "gText_SmartOption,\n    gText_StandardOption,\n    gText_IronmonSmartOption," in option_menu,
+        "gText_LegacySmartOption,\n    gText_StandardOption,\n    gText_IronmonSmartOption," in option_menu,
         "legacy Smart plus appended Standard/Ironmon Smart menu order is missing",
     )
     require(
