@@ -1403,6 +1403,8 @@ def RunShortenedOakParcelFlowOverlaySelfTest():
         "clearflag FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE",
         "setflag FLAG_SYS_POKEDEX_GET",
         "special SPECIAL_SET_UNLOCKED_POKEDEX_FLAGS",
+        ".equ SPECIAL_ENABLE_NATIONAL_POKEDEX, 0x016F",
+        "special SPECIAL_ENABLE_NATIONAL_POKEDEX",
         "obtainitem ITEM_POKE_BALL 5",
         "setvar VAR_MAP_SCENE_POKEMON_CENTER_TEALA 1",
         "setvar VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB 6",
@@ -1414,6 +1416,9 @@ def RunShortenedOakParcelFlowOverlaySelfTest():
     ):
         assert sourceFragment in scriptSource
     assert "EnableNationalPokedex" not in scriptSource
+    assert scriptSource.count(".equ SPECIAL_ENABLE_NATIONAL_POKEDEX, 0x016F") == 1
+    assert scriptSource.count("special SPECIAL_ENABLE_NATIONAL_POKEDEX") == 1
+    assert "special 0x016F" not in scriptSource
     assert scriptSource.index("setvar VAR_MAP_SCENE_VIRIDIAN_CITY_MART 1") < \
         scriptSource.index("obtainitem ITEM_OAKS_PARCEL 1")
     routeHandoffSource = scriptSource.split("EventScript_M007Route1ClerkHandoff:", 1)[1].split(
@@ -1421,6 +1426,33 @@ def RunShortenedOakParcelFlowOverlaySelfTest():
     assert routeHandoffSource.count("removeobject LOCALID_ROUTE1_MART_CLERK") == 1
     palletHandoffSource = scriptSource.split("EventScript_M007PalletOakHandoff:", 1)[1].split(
         "Movement_M007Route1ClerkApproach10:", 1)[0]
+    handoffOrder = (
+        "removeitem ITEM_OAKS_PARCEL 1",
+        "setflag FLAG_SYS_POKEDEX_GET",
+        "special SPECIAL_SET_UNLOCKED_POKEDEX_FLAGS",
+        "special SPECIAL_ENABLE_NATIONAL_POKEDEX",
+        "obtainitem ITEM_POKE_BALL 5",
+        "setvar VAR_MAP_SCENE_POKEMON_CENTER_TEALA 1",
+        "compare VAR_TEMP_1 0",
+        "if equal _call EventScript_M007PalletOakLeave12",
+        "compare VAR_TEMP_1 1",
+        "if equal _call EventScript_M007PalletOakLeave13",
+        "setvar VAR_MAP_SCENE_PALLET_TOWN_PROFESSOR_OAKS_LAB 6",
+        "setvar VAR_MAP_SCENE_VIRIDIAN_CITY_MART 2",
+        "setvar VAR_MAP_SCENE_VIRIDIAN_CITY_OLD_MAN 2",
+        "setvar VAR_MAP_SCENE_PALLET_TOWN_RIVALS_HOUSE 1",
+        "setvar VAR_MAP_SCENE_ROUTE22 1",
+        "setflag FLAG_HIDE_OAK_PALLET_TOWN_BALL_CUTSCENE",
+        "releaseall",
+        "end",
+    )
+    handoffOrderPositions = [palletHandoffSource.index(fragment) for fragment in handoffOrder]
+    assert handoffOrderPositions == sorted(handoffOrderPositions)
+    for forbiddenSetter in (
+        "nationalMagic", "VAR_NATIONAL_DEX", "FLAG_SYS_NATIONAL_DEX", "0x6258", "0x00B9",
+        "callasm", "callnative", "special 0x016F",
+    ):
+        assert forbiddenSetter not in palletHandoffSource
     assert palletHandoffSource.index("setvar VAR_MAP_SCENE_VIRIDIAN_CITY_OLD_MAN 2") > \
         palletHandoffSource.index("obtainitem ITEM_POKE_BALL 5")
     assert "setvar VAR_TEMP_1 0" in scriptSource

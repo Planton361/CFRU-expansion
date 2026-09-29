@@ -20,6 +20,7 @@
 .equ LOCALID_ROUTE1_MART_CLERK, 3
 .equ LOCALID_PALLET_PARCEL_OAK, 4
 .equ SPECIAL_SET_UNLOCKED_POKEDEX_FLAGS, 0x181
+.equ SPECIAL_ENABLE_NATIONAL_POKEDEX, 0x016F
 .equ face_down_fast, 0x04
 
 .global EventScript_M007NoOp
@@ -98,10 +99,11 @@ EventScript_M007PalletOakHandoff:
     closemessage
     textcolor BLACK
     removeitem ITEM_OAKS_PARCEL 1
-    @ Match the normal BPRE parcel completion path. Do not enable the National
-    @ Dex here: that remains the project's existing later-game policy.
+    @ Keep the normal Pokédex handoff state and activate the complete BPRE
+    @ National Dex state here. Fresh New Game remains unchanged.
     setflag FLAG_SYS_POKEDEX_GET
     special SPECIAL_SET_UNLOCKED_POKEDEX_FLAGS
+    special SPECIAL_ENABLE_NATIONAL_POKEDEX
     obtainitem ITEM_POKE_BALL 5
     setvar VAR_MAP_SCENE_POKEMON_CENTER_TEALA 1
     closemessage
