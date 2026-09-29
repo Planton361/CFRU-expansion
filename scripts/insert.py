@@ -468,6 +468,89 @@ def _SafeRomPointerOffset(rom: _io.BufferedReader, pointer: int, label: str, req
     return offset
 
 
+def AppendExactMapObject(rom: _io.BufferedReader, mapBanksHeader: int, mapBank: int,
+                         mapNum: int, expectedCounts: tuple, template: bytes,
+                         insertOffset: int) -> int:
+    """Append one object only when the complete source MapEvents layout matches."""
+    if len(expectedCounts) != 4 or any(not 0 <= count <= 255 for count in expectedCounts):
+        raise ValueError("Exact object append requires four byte counts")
+    if expectedCounts[0] == 255 or not 0 <= mapBank <= 255 or not 0 <= mapNum <= 255:
+        raise ValueError("Exact object append has an invalid map or object count")
+    newObject = ReadEventObjectTemplate(template)
+    if not newObject["localId"]:
+        raise ValueError("Exact object append requires a nonzero local ID")
+    _SafeRomPointerOffset(rom, newObject["scriptPointer"], "appended object script")
+
+    protectedSpans = []
+
+    def checkedSpan(pointer: int, length: int, label: str) -> int:
+        if pointer % 4 or not 0x08000000 <= pointer < 0x0A000000:
+            raise ValueError("{} pointer is not an aligned ROM pointer".format(label))
+        offset = _SafeRomPointerOffset(rom, pointer, label, length)
+        protectedSpans.append((offset, offset + length))
+        return offset
+
+    bankSlot = checkedSpan(0x08000000 + mapBanksHeader + mapBank * 4, 4, "map bank slot")
+    mapBankPointer = ReadPointer(rom, bankSlot)
+    mapSlot = checkedSpan(mapBankPointer + mapNum * 4, 4, "map slot")
+    mapHeader = checkedSpan(ReadPointer(rom, mapSlot), 0x1C, "MapHeader")
+    eventHeader = checkedSpan(ReadPointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET),
+                              0x14, "MapEvents")
+    rom.seek(eventHeader)
+    eventData = rom.read(0x14)
+    if tuple(eventData[:4]) != tuple(expectedCounts):
+        raise ValueError("Exact object append expected counts {}, found {}".format(
+            expectedCounts, tuple(eventData[:4])))
+
+    pointers = tuple(int.from_bytes(eventData[index:index + 4], 'little')
+                     for index in (4, 8, 12, 16))
+    originalObjects = b''
+    for index, (count, pointer, size, label) in enumerate(zip(
+            expectedCounts, pointers, (EVENT_OBJECT_TEMPLATE_SIZE, 8, COORD_EVENT_SIZE, 12),
+            ("object", "warp", "CoordEvent", "BG event"))):
+        if count or pointer:
+            tableOffset = checkedSpan(pointer, max(count * size, 1), label)
+            if index == 0:
+                rom.seek(tableOffset)
+                originalObjects = rom.read(count * size)
+    if len(originalObjects) != expectedCounts[0] * EVENT_OBJECT_TEMPLATE_SIZE:
+        raise ValueError("Exact object append source table is truncated")
+    sourceLocalIds = originalObjects[::EVENT_OBJECT_TEMPLATE_SIZE]
+    if not all(sourceLocalIds) or len(set(sourceLocalIds)) != len(sourceLocalIds):
+        raise ValueError("Exact object append source local IDs are invalid")
+    if newObject["localId"] in sourceLocalIds:
+        raise ValueError("Exact object append local ID already exists")
+    for index, (start, end) in enumerate(protectedSpans):
+        if any(start < otherEnd and otherStart < end
+               for otherStart, otherEnd in protectedSpans[:index]):
+            raise ValueError("Exact object append source spans overlap")
+
+    newObjectTable = originalObjects + template
+    start = AlignOffset(insertOffset)
+    eventOffset = start + len(newObjectTable)
+    end = eventOffset + 0x14
+    if start < 0 or end > 0x02000000:
+        raise ValueError("Exact object append allocation is outside ROM space")
+    if any(start < oldEnd and oldStart < end for oldStart, oldEnd in protectedSpans):
+        raise ValueError("Exact object append allocation overlaps source data")
+    rom.seek(0, 2)
+    sourceLength = rom.tell()
+    if start > sourceLength:
+        raise ValueError("Exact object append allocation leaves a gap")
+    rom.seek(start)
+    if any(byte != 0xFF for byte in rom.read(min(end, sourceLength) - start)):
+        raise ValueError("Exact object append allocation is not free")
+
+    newEvents = BuildMapEvents(expectedCounts[0] + 1, *expectedCounts[1:],
+                               start + 0x08000000, *pointers[1:])
+    if newEvents[1:4] != eventData[1:4] or newEvents[8:] != eventData[8:]:
+        raise ValueError("Exact object append changed preserved events")
+    rom.seek(start)
+    rom.write(newObjectTable + newEvents)
+    WritePointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET, eventOffset + 0x08000000)
+    return end
+
+
 def _ReadMapEventsForExactScriptReplacement(rom: _io.BufferedReader, mapHeader: int,
                                             expectedCounts: tuple) -> (int, tuple, tuple):
     mapEventsPointer = ReadPointer(rom, mapHeader + MAP_HEADER_EVENTS_OFFSET)
@@ -1612,6 +1695,19 @@ def InsertMapObjectOverlays(rom: _io.BufferedReader, table: {str: int}, startOff
                         rom, mapBanksHeader, mapBank, mapNum,
                         (expectedObjectCount, expectedWarpCount, expectedCoordCount, expectedBgCount),
                         targetCoordIndex, expected, table[parts[13]] + 0x08000000)
+                    continue
+                elif action == "append_object_exact":
+                    if len(parts) != 20:
+                        raise ValueError("append_object_exact requires 20 fields")
+                    values = [ResolveNumericOrDefine(value, definesDict) for value in parts[1:17]]
+                    if parts[17] not in table:
+                        raise ValueError("append_object_exact script symbol missing")
+                    flags = [ResolveNumericOrDefine(value, definesDict) for value in parts[18:20]]
+                    template = BuildEventObjectTemplate(
+                        *values[6:], table[parts[17]] + 0x08000000, *flags)
+                    insertOffset = AppendExactMapObject(
+                        rom, mapBanksHeader, values[0], values[1],
+                        tuple(values[2:6]), template, insertOffset)
                     continue
                 elif action == "append_coord":
                     if len(parts) != 13:
