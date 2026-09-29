@@ -70,6 +70,9 @@ Wild Prebattle
 #org @gText_AutoOption
 Auto
 
+#org @gText_DifficultyAutoOption
+Auto (Diff.)
+
 #org @gText_VanillaOption
 Vanilla
 
@@ -93,3 +96,21 @@ Standard
 
 #org @gText_IronmonSmartOption
 Ironmon Smart
+
+#org @gText_LegacyVanillaOption
+Legacy Vanil.
+
+#org @gText_LegacyEasyOption
+Legacy Easy
+
+#org @gText_LegacyNormalOption
+Legacy Normal
+
+#org @gText_LegacyHardOption
+Legacy Hard
+
+#org @gText_LegacyExpertOption
+Legacy Expert
+
+#org @gText_LegacySmartOption
+Legacy Smart
