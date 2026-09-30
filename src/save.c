@@ -511,7 +511,7 @@ void NewGameWipeNewSaveData(void)
 	#else
 	Memset((void*) SAVE_BLOCK_PARASITE, 0, 0x2EA4);
 	#endif
-	ApplyFreshNewGameSettings();
+	QueueFreshNewGameSettings();
 }
 
 static void Task_SaveErrorStatus_RunPrinter(unusedArg u8 taskId)

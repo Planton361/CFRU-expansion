@@ -91,17 +91,27 @@ def main() -> int:
     )
 
     wipe = save[save.index("void NewGameWipeNewSaveData(void)"):]
-    require("ApplyFreshNewGameSettings();" in wipe, "fresh defaults are not called by the wipe hook")
+    require("QueueFreshNewGameSettings();" in wipe, "fresh defaults are not queued by the wipe hook")
     require(
-        wipe.index("ApplyFreshNewGameSettings();") > wipe.index("#endif"),
-        "fresh defaults are not written after both wipe branches",
+        wipe.index("QueueFreshNewGameSettings();") > wipe.index("#endif"),
+        "fresh defaults are not queued after both wipe branches",
     )
+    require("ApplyFreshNewGameSettings();" not in wipe,
+            "fresh defaults are applied before vanilla event data initialization")
     require("ApplyFreshNewGameSettings();" not in option_menu, "options entry applies fresh defaults")
     require(
         "NewGameSaveClearHook:" in hooks and "bl NewGameWipeNewSaveData" in hooks,
         "the selected CFRU new-game clear hook does not call the wipe lifecycle",
     )
-    require("ApplyFreshNewGameSettings();" not in scripting, "ordinary save-load code applies fresh defaults")
+    require("ApplyFreshNewGameSettings();" not in scripting
+            and "QueueFreshNewGameSettings();" not in scripting,
+            "ordinary save-load code applies or queues fresh defaults")
+    overworld = read("src/overworld.c")
+    frame_script = overworld[overworld.index("bool8 TryRunOnFrameMapScript(void)"):]
+    frame_script = frame_script.split("// Whiteout Hack", 1)[0]
+    require(frame_script.index("ApplyQueuedFreshNewGameSettings();")
+            < frame_script.index("TryUpdateSwarm();"),
+            "fresh defaults are not applied on the post-New-Game field path")
 
     require("VAR_GAME_DIFFICULTY, OPTIONS_VANILLA_DIFFICULTY" in settings, "fresh/preset Vanilla write missing")
     require(
@@ -126,6 +136,11 @@ def main() -> int:
         and "FlagSet(FLAG_RUNNING_ENABLED);" in fresh_settings,
         "Fresh New Game does not set only the ordinary running-enabled flag",
     )
+    require("QueueFreshNewGameSettings" in settings and "ApplyQueuedFreshNewGameSettings" in settings,
+            "post-reset Fresh New Game settings queue is missing")
+    require("sFreshNewGameSettingsPending = TRUE;" in settings
+            and "sFreshNewGameSettingsPending = FALSE;" in settings,
+            "Fresh New Game settings queue is not one-shot")
     require("FLAG_AUTO_RUN" not in fresh_settings, "Fresh New Game settings enable Auto-Run")
     require("FlagSet(" not in preset_settings and "FlagClear(" not in preset_settings,
             "Ironmon Smart preset mutates running flags")
