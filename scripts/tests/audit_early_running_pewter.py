@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Source-owned lifecycle and scene contract checks for Workspace #538."""
+"""Source-owned lifecycle and scene contract checks for Workspace #538/#577."""
 
 from pathlib import Path
 import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[2]
-START_SHA = "d851256f2bb897042fbe865b4533e55fc7586ba9"
+START_SHA = "c9a7f19f1e8aaebd33213503f32fa7bba59ce81c"
 
 
 def read(path: str) -> str:
@@ -41,13 +41,20 @@ def main() -> int:
             "FLAG_AUTO_RUN is no longer defined independently")
 
     wipe = save[save.index("void NewGameWipeNewSaveData(void)"):]
-    require("ApplyFreshNewGameSettings();" in wipe, "Fresh New Game does not call the settings initializer")
-    require(wipe.index("ApplyFreshNewGameSettings();") > wipe.index("#endif"),
-            "Fresh New Game settings run before the relevant wipe branches finish")
+    require("QueueFreshNewGameSettings();" in wipe, "Fresh New Game does not queue its settings initializer")
+    require(wipe.index("QueueFreshNewGameSettings();") > wipe.index("#endif"),
+            "Fresh New Game settings are not queued after both wipe branches finish")
+    require("ApplyFreshNewGameSettings();" not in wipe,
+            "Fresh New Game settings are applied before the later vanilla event reset")
     require("NewGameSaveClearHook:" in hooks and "bl NewGameWipeNewSaveData" in hooks,
             "the existing New Game hook no longer owns the wipe lifecycle")
-    require("ApplyFreshNewGameSettings();" not in scripting,
+    require("ApplyFreshNewGameSettings();" not in scripting and "QueueFreshNewGameSettings();" not in scripting,
             "ordinary save loading invokes fresh initialization")
+    frame_script = overworld[overworld.index("bool8 TryRunOnFrameMapScript(void)"):]
+    frame_script = frame_script.split("// Whiteout Hack", 1)[0]
+    require(frame_script.index("ApplyQueuedFreshNewGameSettings();")
+            < frame_script.index("TryUpdateSwarm();"),
+            "queued settings are not applied before post-load field input/scripts")
 
     should_run = overworld[overworld.index("bool8 ShouldPlayerRun(u16 heldKeys)"):]
     should_run = should_run.split("static bool8 IsRunningDisabledByFlag(void)", 1)[0]
@@ -99,14 +106,17 @@ def main() -> int:
     require(all(row[-1] == "EventScript_PewterRunningShoesCleanup" for row in pewterRows),
             "all four Aide paths do not share the fast cleanup script")
 
-    # The Brock trainer/reward script is not source-owned by this component;
-    # ensure this repair leaves the existing event-script manifest byte-identical.
+    # The accepted Pewter and control path remain byte-identical to the exact
+    # repair base; this scope only changes Fresh New Game initialization.
     unchanged = subprocess.run(
-        ["git", "diff", "--quiet", START_SHA, "--", "eventscripts"],
+        ["git", "diff", "--quiet", START_SHA, "--", "eventscripts", "mapobjectoverlays",
+         "assembly/overworld_scripts/pewter_running_shoes_cleanup.s", "assembly/hooks/general_hooks.s",
+         "hooks", "src/read_keys.c"],
         cwd=ROOT,
         check=False,
     )
-    require(unchanged.returncode == 0, "Brock/event-script overrides changed from the exact start revision")
+    require(unchanged.returncode == 0,
+            "Pewter cleanup, object/coord overlays, movement hook or L-toggle changed from exact start")
 
     print("Fresh running lifecycle and Pewter Aide cleanup source audit: PASS")
     return 0

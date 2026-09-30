@@ -58,6 +58,7 @@
 #include "../include/new/party_menu.h"
 #include "../include/new/read_keys.h"
 #include "../include/new/renewable_hidden_items.h"
+#include "../include/new/settings.h"
 #include "../include/new/wild_encounter.h"
 #include "../include/save.h"
 
@@ -1666,6 +1667,7 @@ void RunOnResumeMapScript(void)
 
 bool8 TryRunOnFrameMapScript(void)
 {
+	ApplyQueuedFreshNewGameSettings();
 	TryUpdateSwarm();
 
 	//if (gQuestLogMode != 3)

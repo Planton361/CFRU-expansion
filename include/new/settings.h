@@ -18,7 +18,9 @@ u16 TrainerAIProfileRawToMenuSelection(u16 raw);
 u16 TrainerAIProfileMenuSelectionToRaw(u16 selection);
 u16 TrainerAIProfileRawAfterOptions(u16 originalRaw, u16 selection, bool8 dirty);
 
+void QueueFreshNewGameSettings(void);
 void ApplyFreshNewGameSettings(void);
+void ApplyQueuedFreshNewGameSettings(void);
 void ApplyIronmonSmartSettingsPreset(void);
 
 #endif // GUARD_NEW_SETTINGS_H
