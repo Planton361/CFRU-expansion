@@ -44,11 +44,21 @@ replace_coord_script_exact 3 2 7 7 7 6 4 46 21 3 VAR_MAP_SCENE_PEWTER_CITY 1 Eve
 replace_coord_script_exact 3 2 7 7 7 6 5 46 22 3 VAR_MAP_SCENE_PEWTER_CITY 1 EventScript_PewterRunningShoesCleanup
 replace_coord_script_exact 3 2 7 7 7 6 6 46 23 3 VAR_MAP_SCENE_PEWTER_CITY 1 EventScript_PewterRunningShoesCleanup"""
 PEWTER_OVERLAY_INCLUDE = '#include "include/constants/vars.h"\n'
-PEWTER_OVERLAY_INCLUDE_ANCHOR = '#include "include/constants/items.h"\n'
-PEWTER_OVERLAY_ROW_ANCHOR = "## replace mapBank mapNum expectedCount localId oldGraphicsId"
 INSERTION_PREFLIGHT = "    from check_hidden_item_sparkle import check_source_contract\n    check_source_contract()\n"
 M009_SYMBOL_REJECTION = ('                        if symbol == "M009_OverworldBasic":\n'
                          '                            raise ValueError("M-009 frame replacement symbol missing; refusing partial insertion")\n')
+OVERLAY_ARITIES = {
+    "replace_scene_scripts": 14,
+    "replace_conditional_map_script": 15,
+    "replace_object_script_exact": 21,
+    "replace_coord_script_exact": 14,
+    "append_object_exact": 20,
+    "append_coord": 13,
+    "append": 17,
+    "replace": 29,
+    "replace_graphics": (18, 31),
+    "replace_script": 16,
+}
 
 
 def require(condition, message):
@@ -102,19 +112,52 @@ def normalized_rom_linker(source):
     return source[:match.start("expression")] + "<M009_ROM_ORIGIN>" + source[match.end("expression"):]
 
 
+def parse_overlay_rows(source):
+    parsed = []
+    for line_number, line in enumerate(source.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        fields = stripped.split()
+        command = fields[0].lower()
+        require(command in OVERLAY_ARITIES,
+                "unknown mapobjectoverlays command at line " + str(line_number))
+        expected = OVERLAY_ARITIES[command]
+        allowed = expected if isinstance(expected, tuple) else (expected,)
+        require(len(fields) in allowed,
+                "malformed mapobjectoverlays command at line " + str(line_number))
+        parsed.append((line_number, fields))
+    return parsed
+
+
 def check_pewter_overlay_composition():
-    before = git("show", BASE + ":mapobjectoverlays")
     current = read("mapobjectoverlays")
-    require(before.count(PEWTER_OVERLAY_INCLUDE_ANCHOR) == 1,
-            "M-009 overlay baseline include anchor is not unique")
-    require(before.count(PEWTER_OVERLAY_ROW_ANCHOR) == 1,
-            "M-009 overlay baseline row anchor is not unique")
-    expected = before.replace(PEWTER_OVERLAY_INCLUDE_ANCHOR,
-                              PEWTER_OVERLAY_INCLUDE_ANCHOR + PEWTER_OVERLAY_INCLUDE, 1)
-    expected = expected.replace(PEWTER_OVERLAY_ROW_ANCHOR,
-                                PEWTER_OVERLAY_BLOCK + "\n\n" + PEWTER_OVERLAY_ROW_ANCHOR, 1)
-    require(current == expected,
-            "mapobjectoverlays changed outside the exact accepted #538 Pewter extension")
+    parsed = parse_overlay_rows(current)
+    expected_rows = [fields for _, fields in parse_overlay_rows(PEWTER_OVERLAY_BLOCK)]
+    owned_commands = {"replace_object_script_exact", "replace_coord_script_exact"}
+    pewter_rows = [(line_number, fields) for line_number, fields in parsed
+                   if fields[0].lower() in owned_commands and fields[1:3] == ["3", "2"]]
+    expected_owned = [fields for fields in expected_rows
+                      if fields[0] in owned_commands and fields[1:3] == ["3", "2"]]
+    object_rows = [fields for _, fields in pewter_rows if fields[0].lower() == "replace_object_script_exact"]
+    coord_rows = [fields for _, fields in pewter_rows if fields[0].lower() == "replace_coord_script_exact"]
+    expected_objects = [fields for fields in expected_owned if fields[0] == "replace_object_script_exact"]
+    expected_coords = [fields for fields in expected_owned if fields[0] == "replace_coord_script_exact"]
+    require(object_rows == expected_objects and len(object_rows) == 1,
+            "#538 Pewter object replacement differs from its exact owned contract")
+    require(coord_rows == expected_coords and len(coord_rows) == 3,
+            "#538 Pewter CoordEvent replacements differ from their exact owned contract")
+
+    vars_includes = [(line_number, line.strip()) for line_number, line in enumerate(current.splitlines(), 1)
+                     if line.strip() == PEWTER_OVERLAY_INCLUDE.strip()]
+    require(len(vars_includes) == 1, "#538 Pewter VAR constants include must exist exactly once")
+    require(vars_includes[0][0] < min(line_number for line_number, _ in pewter_rows),
+            "#538 Pewter VAR constants include must precede its owned rows")
+    owned_symbols = ("VAR_MAP_SCENE_PEWTER_CITY", "FLAG_HIDE_PEWTER_CITY_RUNNING_SHOES_GUY",
+                     "MOVEMENT_TYPE_FACE_RIGHT")
+    for symbol in owned_symbols:
+        require(re.search(r"(?m)^\s*#\s*define\s+" + re.escape(symbol) + r"\b", current) is None,
+                "#538 Pewter constants must remain owned by their canonical includes: " + symbol)
 
 
 def check_source_contract():
@@ -181,6 +224,7 @@ def check_source_contract():
                "include/new/hidden_item_sparkle.h", "scripts/insert.py",
                "scripts/check_hidden_item_sparkle.py", "scripts/tests/m009_sparkle_host.c",
                "scripts/make.py", "scripts/tests/test_make_assignment_updates.py",
+               "scripts/tests/test_make_insert_fail_fast.py",
                "src/Tables/level_up_learnsets.c", "scripts/check_coherent_learnsets.py",
                # Independent CFRU Standard AI source-only milestone.  Keep its
                # exact file set explicit so this gate still fails closed for
@@ -216,7 +260,14 @@ def check_source_contract():
                # Accepted #538 Fresh New Game / Pewter Aide cleanup and current build support.
                "assembly/overworld_scripts/pewter_running_shoes_cleanup.s", "scripts/build.py",
                "scripts/tests/audit_early_running_pewter.py", "scripts/tests/run_early_running_pewter_tests.py",
-               "scripts/tests/run_settings_defaults_tests.py", "src/config.h", "src/save.c", "src/settings.c"}
+               "scripts/tests/run_settings_defaults_tests.py", "src/config.h", "src/save.c", "src/settings.c",
+               # These exact files are already accepted on this pin in later
+               # independent milestones; the M-009 contract still checks its
+               # own source invariants and only the owned overlay rows.
+               "assembly/overworld_scripts/route10_hm05.s", "scripts/tests/test_route10_hm05.py",
+               "assembly/overworld_scripts/shortened_oak_parcel_flow.s",
+               "scripts/tests/audit_m007_national_dex_handoff.py",
+               "scripts/tests/test_settings_legacy_ux.py"}
     changed = set(git("diff", "--name-only", BASE, "--", "src", "include", "assembly", "scripts").splitlines())
     changed.update(git("ls-files", "--others", "--exclude-standard", "--", "src", "include", "assembly", "scripts").splitlines())
     require(changed <= allowed, "unapproved source/test change: " + str(sorted(changed - allowed)))
@@ -253,7 +304,8 @@ def check_source_contract():
 
 
 def check_composition_variants():
-    # make.py changes only this offset before building and the preflight runs.
+    # Independently accepted feature overlays may be added without transferring
+    # ownership of their rows to the #538 Pewter guard.
     global read
     original = read
     offset = "0x1234560"
@@ -263,12 +315,24 @@ def check_composition_variants():
         "OFFSET_TO_PUT = 0x1000000", "OFFSET_TO_PUT = " + offset, 1)
     require(linker != original("linker.ld") and inserter != original("scripts/insert.py"),
             "dynamic insertion-offset fixture did not change both files")
+    route10_row = ("append_object_exact 3 28 10 5 0 8 11 0x38 17 22 0 "
+                   "MOVEMENT_TYPE_FACE_LEFT 0 0 0 0 EventScript_Route10HM05 FLAG_GOT_HM05 0")
+    current_overlay = original("mapobjectoverlays")
+    require(current_overlay.splitlines().count(route10_row) == 1,
+            "accepted #557 Route 10 fixture row is not unique")
+    pewter_only_overlay = current_overlay.replace(route10_row + "\n", "", 1)
+    require(pewter_only_overlay != current_overlay, "could not form the #538-only overlay fixture")
     try:
-        read = lambda path: linker if path == "linker.ld" else inserter if path == "scripts/insert.py" else original(path)
+        read = lambda path: (linker if path == "linker.ld" else
+                             inserter if path == "scripts/insert.py" else
+                             pewter_only_overlay if path == "mapobjectoverlays" else original(path))
+        check_source_contract()
+        read = lambda path: (linker if path == "linker.ld" else
+                             inserter if path == "scripts/insert.py" else original(path))
         check_source_contract()
     finally:
         read = original
-    print("M-009 composition with the semantic make.py linker/insert offset update PASS")
+    print("M-009 #538-only and #538 plus independent #557 Route 10 overlay composition PASS")
 
 
 def check_map_census():
@@ -349,12 +413,29 @@ def check_rejections():
                                        "M-009 frame replacement symbol missing", 1)),
         ("unrelated linker drift", "linker.ld",
          original("linker.ld").replace("ewram   : ORIGIN = 0x02000000", "ewram   : ORIGIN = 0x02001000", 1)),
-        ("missing accepted Pewter overlay row", overlay_path,
-         original(overlay_path).replace(PEWTER_OVERLAY_BLOCK.splitlines()[-1] + "\n", "", 1)),
-        ("mutated accepted Pewter overlay row", overlay_path,
-         original(overlay_path).replace("EventScript_PewterRunningShoesCleanup",
-                                        "EventScript_Unapproved", 1)),
     ]
+    overlay_source = original(overlay_path)
+    pewter_rows = [line for line in PEWTER_OVERLAY_BLOCK.splitlines()
+                   if line.startswith(("replace_object_script_exact 3 2 ",
+                                       "replace_coord_script_exact 3 2 "))]
+    require(len(pewter_rows) == 4, "expected #538 owned row fixture is incomplete")
+    for index, row in enumerate(pewter_rows):
+        label = "Pewter object" if index == 0 else "Pewter CoordEvent " + str(index)
+        cases.extend((
+            ("missing " + label, overlay_path, overlay_source.replace(row + "\n", "", 1)),
+            ("mutated " + label, overlay_path,
+             overlay_source.replace(row, row.replace("EventScript_PewterRunningShoesCleanup",
+                                                     "EventScript_Unapproved", 1), 1)),
+            ("duplicated " + label, overlay_path, overlay_source + row + "\n"),
+        ))
+    cases.extend((
+        ("missing Pewter constants include", overlay_path,
+         overlay_source.replace(PEWTER_OVERLAY_INCLUDE, "", 1)),
+        ("duplicate Pewter constants include", overlay_path,
+         overlay_source + PEWTER_OVERLAY_INCLUDE),
+        ("malformed Route 10 overlay row", overlay_path,
+         overlay_source.replace("FLAG_GOT_HM05 0\n", "FLAG_GOT_HM05\n", 1)),
+    ))
     try:
         for label, path, replacement in cases:
             read = lambda p: replacement if p == path else original(p)
