@@ -2,9 +2,9 @@
 
 import ast
 import json
-import os
 import re
 import shutil
+import subprocess
 import sys
 
 ############
@@ -152,21 +152,21 @@ def EditInsert(offset: int, filePath: str = "./scripts/insert.py"):
     })
 
 
-def BuildCode():
-    if shutil.which('python3') is not None:
-        result = os.system("python3 scripts/build.py")
-    else:
-        result = os.system("python scripts/build.py")
-
-    if result != 0:  # Build wasn't sucessful
+def RunPythonScript(scriptPath: str):
+    interpreter = "python3" if shutil.which('python3') is not None else "python"
+    try:
+        return subprocess.run([interpreter, scriptPath], check=True)
+    except OSError:
+        print("Error: Could not execute " + scriptPath + ".", file=sys.stderr)
         sys.exit(1)
 
 
+def BuildCode():
+    RunPythonScript("scripts/build.py")
+
+
 def InsertCode():
-    if shutil.which('python3') is not None:
-        os.system("python3 scripts/insert.py")
-    else:
-        os.system("python scripts/insert.py")
+    RunPythonScript("scripts/insert.py")
 
 
 def ClearFromTo(rom, from_: int, to_: int):
@@ -195,6 +195,7 @@ def main():
     except FileNotFoundError:
         print('Error: Could not find source rom: "' + ROM_NAME + '".\n'
               + 'Please make sure a rom with this name exists in the root.')
+        sys.exit(1)
 
 
 if __name__ == '__main__':
