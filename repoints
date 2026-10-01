@@ -338,3 +338,8 @@ Item_StoragePal 0810d7fc
 ##Replace new egg hatch animation
 egg_hatchingTiles 0826011C
 egg_hatchingPal 0826012C
+
+## #595: only the three BPRE starter-confirmation YES pointers.
+EventScript_ChoseStarterNoFlavor 08169C23
+EventScript_ChoseStarterNoFlavor 08169C42
+EventScript_ChoseStarterNoFlavor 08169C61
