@@ -64,6 +64,7 @@ static void MarkThirdPageOptionDirty(u16 selection);
 static void ApplyHardLevelCapMode(u16 raw);
 static void ApplyNuzlockeMode(u16 selection);
 static void ApplyWildPrebattleMode(u16 selection);
+static void ApplyFastBattleMessagesMode(u16 selection);
 
 // Menu items
 enum
@@ -96,6 +97,7 @@ enum
     MENUITEM_HARD_LEVEL_CAP,
     MENUITEM_NUZLOCKE,
     MENUITEM_WILD_PREBATTLE,
+    MENUITEM_FAST_BATTLE_MESSAGES,
     MENUITEM_CANCEL_PAGE_3,
     MENUITEM_PAGE3_COUNT,
 };
@@ -129,6 +131,7 @@ struct OptionMenu
     /*0x??*/ bool8 hardLevelCapModeDirty;
     /*0x??*/ bool8 nuzlockeModeDirty;
     /*0x??*/ bool8 wildPrebattleModeDirty;
+    /*0x??*/ bool8 fastBattleMessagesModeDirty;
 };
 
 extern struct OptionMenu *sOptionMenuPtr;
@@ -149,6 +152,7 @@ extern const u8 gText_TrainerAI[];
 extern const u8 gText_HardCap[];
 extern const u8 gText_Nuzlocke[];
 extern const u8 gText_WildPrebattle[];
+extern const u8 gText_FastBattleMessages[];
 
 static const u8 *const sOptionMenuItemsNames[MENUITEM_COUNT] =
 {
@@ -176,6 +180,7 @@ static const u8 *const sOptionMenuItemsNames_ThirdPage[MENUITEM_PAGE3_COUNT] =
     [MENUITEM_HARD_LEVEL_CAP] = gText_HardCap,
     [MENUITEM_NUZLOCKE] = gText_Nuzlocke,
     [MENUITEM_WILD_PREBATTLE] = gText_WildPrebattle,
+    [MENUITEM_FAST_BATTLE_MESSAGES] = gText_FastBattleMessages,
     [MENUITEM_CANCEL_PAGE_3] = gText_OptionMenuCancel,
 };
 
@@ -316,7 +321,7 @@ static const u8 *const sOffOnOptions[] =
 
 static const u16 sOptionMenuItemCounts[MENUITEM_COUNT] = {3, 2, 2, 2, 3, 10, 0};
 static const u16 sOptionMenuItemCounts_SecondPage[MENUITEM_PAGE2_COUNT] = {3, 2, 2, 4, 5, 0};
-static const u16 sOptionMenuItemCounts_ThirdPage[MENUITEM_PAGE3_COUNT] = {6, TRAINER_AI_PROFILE_MENU_OPTION_COUNT, 3, 2, 2, 0};
+static const u16 sOptionMenuItemCounts_ThirdPage[MENUITEM_PAGE3_COUNT] = {6, TRAINER_AI_PROFILE_MENU_OPTION_COUNT, 3, 2, 2, 2, 0};
 
 static u16 HardLevelCapRawToMenuSelection(u16 raw)
 {
@@ -346,6 +351,8 @@ static void MarkThirdPageOptionDirty(u16 selection)
         sOptionMenuPtr->nuzlockeModeDirty = TRUE;
     else if (selection == MENUITEM_WILD_PREBATTLE)
         sOptionMenuPtr->wildPrebattleModeDirty = TRUE;
+    else if (selection == MENUITEM_FAST_BATTLE_MESSAGES)
+        sOptionMenuPtr->fastBattleMessagesModeDirty = TRUE;
 }
 
 static void ApplyHardLevelCapMode(u16 raw)
@@ -375,6 +382,16 @@ static void ApplyWildPrebattleMode(u16 selection)
         FlagClear(FLAG_ENABLE_WILD_PMN_PREBATTLE_SCREEN);
     else
         FlagSet(FLAG_ENABLE_WILD_PMN_PREBATTLE_SCREEN);
+    #endif
+}
+
+static void ApplyFastBattleMessagesMode(u16 selection)
+{
+    #ifdef FLAG_FAST_BATTLE_MESSAGES
+    if (selection == 0)
+        FlagClear(FLAG_FAST_BATTLE_MESSAGES);
+    else
+        FlagSet(FLAG_FAST_BATTLE_MESSAGES);
     #endif
 }
 
@@ -419,6 +436,10 @@ void CB2_OptionsMenuFromStartMenu(void)
     #ifdef FLAG_ENABLE_WILD_PMN_PREBATTLE_SCREEN
     sOptionMenuPtr->option_thirdPage[MENUITEM_WILD_PREBATTLE] =
         FlagGet(FLAG_ENABLE_WILD_PMN_PREBATTLE_SCREEN) ? 1 : 0;
+    #endif
+    #ifdef FLAG_FAST_BATTLE_MESSAGES
+    sOptionMenuPtr->option_thirdPage[MENUITEM_FAST_BATTLE_MESSAGES] =
+        FlagGet(FLAG_FAST_BATTLE_MESSAGES) ? 1 : 0;
     #endif
 
     
@@ -557,6 +578,8 @@ void CloseAndSaveOptionMenu(u8 taskId)
         ApplyNuzlockeMode(sOptionMenuPtr->option_thirdPage[MENUITEM_NUZLOCKE]);
     if (sOptionMenuPtr->wildPrebattleModeDirty)
         ApplyWildPrebattleMode(sOptionMenuPtr->option_thirdPage[MENUITEM_WILD_PREBATTLE]);
+    if (sOptionMenuPtr->fastBattleMessagesModeDirty)
+        ApplyFastBattleMessagesMode(sOptionMenuPtr->option_thirdPage[MENUITEM_FAST_BATTLE_MESSAGES]);
     SetPokemonCryStereo(gSaveBlock2->optionsSound);
     FREE_AND_SET_NULL(sOptionMenuPtr);
     DestroyTask(taskId);
@@ -689,6 +712,7 @@ void BufferOptionMenuString(u8 selection)
                 break;
             case MENUITEM_NUZLOCKE:
             case MENUITEM_WILD_PREBATTLE:
+            case MENUITEM_FAST_BATTLE_MESSAGES:
                 AddTextPrinterParameterized3(1, 2, x, y, dst, -1, sOffOnOptions[sOptionMenuPtr->option_thirdPage[selection]]);
                 break;
             default:
