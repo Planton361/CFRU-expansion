@@ -1547,6 +1547,7 @@ CB2_EvolutionSceneUpdate = 0x80CE710 | 1;
 CB2_TradeEvolutionSceneUpdate = 0x80CE72C | 1;
 
 /* Oak Speech Functions */
+Task_OakSpeech_FadeOutOak = 0x0812FD78 | 1;
 OakTutorialCreateWindow = 0x81220D4 | 1;
 
 /* Window Functions */

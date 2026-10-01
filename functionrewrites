@@ -18,6 +18,8 @@ ShowPokemonSummaryScreen 0x081344F8 0 1
 #endif
 
 SetTitleScreenScene_Cry 0x080791c0 0 1
+## #592: BPRE Task_OakSpeech_WelcomeToTheWorld; retain OakSpeech_Init.
+Task_OakSpeech_MinimalExposition 0x0812F880 1 0
 Task_OakSpeech_IsInhabitedFarAndWide 0x0812fa78 0 1
 CreateOakIntroPokemonSprite 0x08130f2c 0 1
 
