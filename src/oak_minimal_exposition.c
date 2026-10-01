@@ -10,7 +10,7 @@ void __attribute__((long_call)) Task_OakSpeech_FadeOutOak(u8 taskId);
 // Task data indices are owned by BPRE oak_speech.c, not persistent storage.
 void Task_OakSpeech_MinimalExposition(u8 taskId)
 {
-	if (gPaletteFade->active || IsTextPrinterActive(0))
+	if (gPaletteFade.active || IsTextPrinterActive(0))
 		return;
 
 	// Init created this hidden sprite. The bypassed TellMeALittleAboutYourself

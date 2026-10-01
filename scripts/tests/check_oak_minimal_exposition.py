@@ -49,11 +49,13 @@ def main():
         assert current.count(addition) == 1, path
         assert current.replace(addition, '') == git(ROOT, 'show', BASE + ':' + path), path
 
-    replacement = function((ROOT / 'src/oak_minimal_exposition.c').read_text(),
-                           'Task_OakSpeech_MinimalExposition')
+    source = (ROOT / 'src/oak_minimal_exposition.c').read_text()
+    assert 'gPaletteFade.active' in source
+    assert 'gPaletteFade->active' not in source
+    replacement = function(source, 'Task_OakSpeech_MinimalExposition')
     assert re.findall(r'\b([A-Za-z_]\w*)\s*\(', replacement) == [
         'if', 'IsTextPrinterActive', 'DestroySprite', 'Task_OakSpeech_FadeOutOak']
-    assert 'gPaletteFade->active || IsTextPrinterActive(0)' in replacement
+    assert 'gPaletteFade.active || IsTextPrinterActive(0)' in replacement
     assert 'DestroySprite(&gSprites[gTasks[taskId].data[4]]);' in replacement
     assert replacement.index('return;') < replacement.index('DestroySprite(')
     assert replacement.index('DestroySprite(') < replacement.index('Task_OakSpeech_FadeOutOak(taskId);')
