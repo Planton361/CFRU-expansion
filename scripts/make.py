@@ -169,6 +169,10 @@ def InsertCode():
     RunPythonScript("scripts/insert.py")
 
 
+def CheckNativeSourceIdentity():
+    RunPythonScript("scripts/check_native_source_identity.py")
+
+
 def ClearFromTo(rom, from_: int, to_: int):
     rom.seek(from_)
     for i in range(0, to_ - from_):
@@ -180,6 +184,7 @@ def ClearFromTo(rom, from_: int, to_: int):
 
 
 def main():
+    CheckNativeSourceIdentity()
     try:
         with open(ROM_NAME, 'rb+') as rom:
             offset = OFFSET_TO_PUT

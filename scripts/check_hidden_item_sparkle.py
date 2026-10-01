@@ -12,6 +12,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "a869c3526d7f76c54082bc71e236742564319e02"
+ROUTE10_OVERLAY_ROW = ("append_object_exact 3 28 10 5 0 8 11 0x38 17 22 0 "
+                       "MOVEMENT_TYPE_FACE_LEFT 0 0 0 0 EventScript_Route10HM05 FLAG_GOT_HM05 0")
 ORDER = ["ScriptContext_RunScript", "RunTasks", "AnimateSprites", "CameraUpdate",
          "SetQuestLogEvent_Arrived", "UpdateCameraPanning", "BuildOamBuffer",
          "UpdatePaletteFade", "UpdateTilesetAnimations",
@@ -96,22 +98,6 @@ def body(source, name):
     return source[pos:end - 1]
 
 
-def normalized_rom_linker(source):
-    pattern = re.compile(
-        r"(?m)^(?P<prefix>[ \t]*rom[ \t]*:[ \t]*ORIGIN[ \t]*=[ \t]*)"
-        r"(?P<expression>[^,\r\n]+?)(?P<spacing>[ \t]*)"
-        r"(?P<suffix>,[ \t]*LENGTH[ \t]*=[ \t]*32M[ \t]*(?:\#.*)?)"
-        r"(?P<newline>\r?\n|\Z)"
-    )
-    matches = list(pattern.finditer(source))
-    require(len(matches) == 1, "linker.ld must contain exactly one rom ORIGIN region")
-    match = matches[0]
-    if re.fullmatch(r"\(\s*0x08000000\s*\+\s*0[xX][0-9a-fA-F]+\s*\)",
-                    match.group("expression").strip()) is None:
-        raise ValueError("M-009 fail-closed: linker.ld rom ORIGIN is not the expected FireRed offset form")
-    return source[:match.start("expression")] + "<M009_ROM_ORIGIN>" + source[match.end("expression"):]
-
-
 def parse_overlay_rows(source):
     parsed = []
     for line_number, line in enumerate(source.splitlines(), 1):
@@ -135,8 +121,15 @@ def check_pewter_overlay_composition():
     parsed = parse_overlay_rows(current)
     expected_rows = [fields for _, fields in parse_overlay_rows(PEWTER_OVERLAY_BLOCK)]
     owned_commands = {"replace_object_script_exact", "replace_coord_script_exact"}
-    pewter_rows = [(line_number, fields) for line_number, fields in parsed
-                   if fields[0].lower() in owned_commands and fields[1:3] == ["3", "2"]]
+    pewter_rows = [
+        (line_number, fields) for line_number, fields in parsed
+        if fields[0].lower() in owned_commands
+        and fields[1:3] == ["3", "2"]
+        and ((fields[0].lower() == "replace_object_script_exact"
+              and fields[7:9] == ["6", "7"])
+             or (fields[0].lower() == "replace_coord_script_exact"
+                 and fields[7] in {"4", "5", "6"}))
+    ]
     expected_owned = [fields for fields in expected_rows
                       if fields[0] in owned_commands and fields[1:3] == ["3", "2"]]
     object_rows = [fields for _, fields in pewter_rows if fields[0].lower() == "replace_object_script_exact"]
@@ -160,41 +153,104 @@ def check_pewter_overlay_composition():
                 "#538 Pewter constants must remain owned by their canonical includes: " + symbol)
 
 
-def check_source_contract():
-    # Preserve the independent data guard; fail before insertion accesses its input.
-    from check_coherent_learnsets import check_source_contract as check_learnsets
-    check_learnsets()
-    bpreLinker = read("BPRE.ld")
-    bindingRows = re.findall(r"^(\w+)\s*=\s*(0x[0-9a-fA-F]+)\s*\|\s*1;", bpreLinker, re.M)
-    for name, expectedAddress in EXPECTED_BINDINGS.items():
-        matches = [int(value, 16) for symbol, value in bindingRows if symbol == name]
-        require(matches == [expectedAddress], "unexpected or duplicate BPRE binding: " + name)
+def check_route10_overlay_composition():
+    parsed = parse_overlay_rows(read("mapobjectoverlays"))
+    route10_rows = [fields for _, fields in parsed
+                    if fields[0].lower() == "append_object_exact"
+                    and fields[1:3] == ["3", "28"]
+                    and fields[7] == "11"]
+    require(route10_rows == [ROUTE10_OVERLAY_ROW.split()],
+            "#557 Route 10 HM05 object row differs from its exact owned contract")
+
+
+def check_linker_insert_contract(linker, inserter):
+    offset_assignments = re.findall(
+        r"(?m)^OFFSET_TO_PUT\s*=\s*(0[xX][0-9a-fA-F]+|[0-9]+)\s*$", inserter)
+    require(len(offset_assignments) == 1, "insert.py must have one insertion offset")
+    offset = int(offset_assignments[0], 0)
+    pattern = re.compile(
+        r"(?m)^\s*rom\s*:\s*ORIGIN\s*=\s*\(\s*0x08000000\s*\+\s*(0[xX][0-9a-fA-F]+)\s*\)"
+        r"\s*,\s*LENGTH\s*=\s*32M\s*$"
+    )
+    rom_regions = list(pattern.finditer(linker))
+    require(len(rom_regions) == 1 and int(rom_regions[0].group(1), 16) == offset,
+            "linker ROM origin must match insert.py's selected offset and preserve the 32M region")
+    require(len(re.findall(r"(?m)^\s*ewram\s*:\s*ORIGIN\s*=\s*0x02000000\s*,\s*LENGTH\s*=\s*4M\s*-\s*4k\s*$",
+                           linker)) == 1,
+            "linker EWRAM region differs from its required ABI boundary")
+    required_layout = (
+        r"FILL\s*\(0xABCD\)", r"__text_start\s*=", r"\*\(\.init\)", r"\*\(\.text\)",
+        r"\*\(\.ctors\)", r"\*\(\.dtors\)", r"\*\(\.rodata\)", r"\*\(\.fini\)",
+        r"\*\(COMMON\)", r"__text_end\s*=", r"__bss_start__\s*=", r"\*\(\.bss\)",
+        r"__bss_end__\s*=", r"_end\s*=\s*__bss_end__", r"__end__\s*=\s*__bss_end__",
+        r"\}\s*>rom\s*=\s*0xff",
+    )
+    positions = []
+    for token in required_layout:
+        matches = list(re.finditer(token, linker))
+        require(len(matches) == 1, "linker insertion layout is missing or duplicates " + token)
+        positions.append(matches[0].start())
+    require(positions == sorted(positions), "linker text/BSS insertion layout order changed")
+
+
+def check_accepted_fresh_new_game_delta():
+    current = read("src/overworld.c")
+    include = '#include "../include/new/settings.h"'
+    require(current.splitlines().count(include) == 1,
+            "accepted #577 settings header must remain included exactly once")
+    current_frame = body(current, "TryRunOnFrameMapScript")
+    baseline = git("show", BASE + ":src/overworld.c")
+    baseline_frame = body(baseline, "TryRunOnFrameMapScript")
+    hook = "ApplyQueuedFreshNewGameSettings();"
+    require(current_frame.count(hook) == 1 and current_frame.lstrip().startswith(hook),
+            "accepted #577 lifecycle hook must appear exactly once at the frame-script entry")
+    normalized_frame = re.sub(r"(?m)^[ \t]*" + re.escape(hook) + r"\r?\n", "",
+                              current_frame, count=1)
+    require(normalized_frame == baseline_frame,
+            "TryRunOnFrameMapScript has an unapproved change outside the accepted #577 hook")
+    require(current_frame.index(hook) < current_frame.index("TryUpdateSwarm();"),
+            "accepted #577 lifecycle hook must precede post-load swarm processing")
+
+
+def check_m009_feature_contract():
+    # This function owns M-009 and #538 Pewter rows only. Other manifest
+    # owners compose independently; check_source_contract aggregates them.
+    bpre_linker = read("BPRE.ld")
+    binding_rows = re.findall(r"^(\w+)\s*=\s*(0x[0-9a-fA-F]+)\s*\|\s*1;", bpre_linker, re.M)
+    for name, expected_address in EXPECTED_BINDINGS.items():
+        matches = [int(value, 16) for symbol, value in binding_rows if symbol == name]
+        require(matches == [expected_address], "unexpected or duplicate BPRE binding: " + name)
 
     expected = ["M009_OverworldBasic", "0x08056578", "0", "0"]
     rewrites = rows(read("functionrewrites"))
     named_rows = [row for row in rewrites if row and row[0] == "M009_OverworldBasic"]
     require(named_rows == [expected], "exactly one approved M-009 rewrite row must remain")
-    target_rows = [row for row in rewrites if len(row) > 1 and int(row[1], 16) == EXPECTED_BINDINGS["OverworldBasic"]]
+    target_rows = [row for row in rewrites
+                   if len(row) > 1 and int(row[1], 16) == EXPECTED_BINDINGS["OverworldBasic"]]
     require(target_rows == [expected], "duplicate/missing frame owner")
 
-    byteOwners = [row for row in rows(read("bytereplacement"))
-                  if row and int(row[0], 16) == EXPECTED_BINDINGS["OverworldBasic"]]
-    require(not byteOwners, "old slow-camera byte owner remains")
-    activeAsm = re.sub(r"(?m)^[ \t]*@[^\n]*", "", uncomment(read("special_inserts.asm")))
-    require(not re.search(r"(?m)^[ \t]*(?:M009_)?OverworldBasic\s*:", activeAsm),
+    byte_owners = [row for row in rows(read("bytereplacement"))
+                   if row and int(row[0], 16) == EXPECTED_BINDINGS["OverworldBasic"]]
+    require(not byte_owners, "old slow-camera byte owner remains")
+    active_asm = re.sub(r"(?m)^[ \t]*@[^\n]*", "", uncomment(read("special_inserts.asm")))
+    require(not re.search(r"(?m)^[ \t]*(?:M009_)?OverworldBasic\s*:", active_asm),
             "duplicate OverworldBasic assembler owner remains")
 
-    require(normalized_rom_linker(read("linker.ld"))
-            == normalized_rom_linker(git("show", BASE + ":linker.ld")),
-            "linker.ld changed outside the selected ROM offset")
-    check_pewter_overlay_composition()
+    hook_rows = rows(read("hooks"))
+    for name, address in (("TryRunOnFrameMapScript", 0x08069C74),
+                          ("AutoRunHook", 0x0805BA30),
+                          ("FieldGetPlayerInputLButtonHook", 0x0806C9AC)):
+        owned = [row for row in hook_rows if row[0] == name]
+        targets = [row for row in hook_rows
+                   if len(row) > 1 and int(row[1], 16) == address]
+        require(len(owned) == 1 and int(owned[0][1], 16) == address
+                and owned[0][2:] == ["0"] and targets == [owned[0]],
+                "unexpected or duplicate hook owner: " + name)
 
-    for path in ("hooks", "repoints", "repointall", "free_bytereplacements",
-                 "src/overworld.c", "src/field_effects.c", "src/dexnav.c", "src/read_keys.c",
-                 "src/dns.c", "src/Tables/movement_action.tables.c",
-                 "include/config.h", "include/constants/flags.h",
-                 "scripts/clean.py", "scripts/check_renewable_hidden_items.py"):
-        require(read(path) == git("show", BASE + ":" + path), "out-of-contract change: " + path)
+    check_linker_insert_contract(read("linker.ld"), read("scripts/insert.py"))
+    check_pewter_overlay_composition()
+    check_accepted_fresh_new_game_delta()
+
     inserter = read("scripts/insert.py")
     require(inserter.count(INSERTION_PREFLIGHT) == 1, "M-009 insertion preflight must exist exactly once")
     require(inserter.count(M009_SYMBOL_REJECTION) == 1,
@@ -208,69 +264,8 @@ def check_source_contract():
         main_body.find("open(ROM_NAME"),
     ) if index >= 0]
     require(bool(rom_accesses), "insertion main has no recognizable ROM access boundary")
-    first_rom_access = min(rom_accesses)
-    require(main_body.index(INSERTION_PREFLIGHT) < first_rom_access,
+    require(main_body.index(INSERTION_PREFLIGHT) < min(rom_accesses),
             "M-009 preflight runs after ROM access")
-
-    # M-013 is an independent, bounded successor. Keep its item.c changes
-    # confined to the existing purchase callback; all frame guards remain.
-    item = read("src/item.c")
-    old_item = git("show", BASE + ":src/item.c")
-    callback = "Task_ReturnToItemListAfterItemPurchase"
-    require(item.replace(body(item, callback), "") == old_item.replace(body(old_item, callback), ""),
-            "item changes outside the M-013 purchase callback")
-    allowed = {"src/m009_overworld_frame.c", "src/hidden_item_sparkle.c", "src/item.c",
-               "scripts/check_premier_bonus.py", "scripts/tests/m013_premier_host.c",
-               "include/new/hidden_item_sparkle.h", "scripts/insert.py",
-               "scripts/check_hidden_item_sparkle.py", "scripts/tests/m009_sparkle_host.c",
-               "scripts/make.py", "scripts/tests/test_make_assignment_updates.py",
-               "scripts/tests/test_make_insert_fail_fast.py",
-               "src/Tables/level_up_learnsets.c", "scripts/check_coherent_learnsets.py",
-               # Independent CFRU Standard AI source-only milestone.  Keep its
-               # exact file set explicit so this gate still fails closed for
-               # unrelated source, assembly, or data edits.
-               "include/battle.h", "include/global.h", "include/new/ai_standard.h",
-               "include/new/ai_standard_policy.h", "src/Battle_AI/ai_master.c",
-               "src/Battle_AI/ai_standard.c", "src/Battle_AI/ai_standard_policy.c",
-               "src/util.c", "scripts/tests/audit_standard_ai.py",
-               "scripts/tests/run_standard_ai_tests.py",
-               "scripts/tests/standard_ai_layout_host.c",
-               "scripts/tests/standard_ai_policy_host.c",
-               "include/new/ai_standard_mechanics.h", "src/Battle_AI/ai_standard_mechanics.c",
-               "scripts/tests/standard_ai_adapter_host.c", "src/battle_controller_opponent.c",
-               "src/battle_anims.c", "src/battle_util.c",
-               # Independent CFRU Ironmon Smart fair-adapter milestone.
-               "include/new/ai_ironmon.h", "include/new/ai_ironmon_policy.h",
-               "src/Battle_AI/ai_ironmon.c", "src/Battle_AI/ai_ironmon_policy.c",
-               "scripts/tests/audit_ironmon_ai.py", "scripts/tests/run_ironmon_ai_tests.py",
-               "scripts/tests/ironmon_history_clear_host.c",
-               # Previously accepted trainer-AI safety / settings follow-ups.
-               "include/new/ai_damage_engine_overrides.inc", "include/new/ai_master.h",
-               "include/new/ai_opponent_replacement.h", "include/new/battle_controller_opponent.h",
-               "include/new/battle_strings.h", "include/new/settings.h", "src/battle_strings.c",
-               "src/general_bs_commands.c", "src/option_menu.c", "src/switching.c",
-               "scripts/tests/ai_runtime_differential.py", "scripts/tests/ai_runtime_quality_host.c",
-               "scripts/tests/audit_ai_controller_fallback.py", "scripts/tests/audit_ai_damage_overrides.py",
-               "scripts/tests/audit_ai_writable_state.py", "scripts/tests/audit_opponent_replacement.py",
-               "scripts/tests/audit_runtime_dispatch_closure.py", "scripts/tests/audit_settings_defaults.py",
-               "scripts/tests/audit_trainer_ai_storage.py", "scripts/tests/controller_fallback_host.c",
-               "scripts/tests/opponent_replacement_host.c", "scripts/tests/run_ai_controller_fallback_tests.py",
-               "scripts/tests/run_ai_runtime_quality_tests.py", "scripts/tests/run_replacement_safety_tests.py",
-               "scripts/tests/settings_defaults_host.c",
-               # Accepted #538 Fresh New Game / Pewter Aide cleanup and current build support.
-               "assembly/overworld_scripts/pewter_running_shoes_cleanup.s", "scripts/build.py",
-               "scripts/tests/audit_early_running_pewter.py", "scripts/tests/run_early_running_pewter_tests.py",
-               "scripts/tests/run_settings_defaults_tests.py", "src/config.h", "src/save.c", "src/settings.c",
-               # These exact files are already accepted on this pin in later
-               # independent milestones; the M-009 contract still checks its
-               # own source invariants and only the owned overlay rows.
-               "assembly/overworld_scripts/route10_hm05.s", "scripts/tests/test_route10_hm05.py",
-               "assembly/overworld_scripts/shortened_oak_parcel_flow.s",
-               "scripts/tests/audit_m007_national_dex_handoff.py",
-               "scripts/tests/test_settings_legacy_ux.py"}
-    changed = set(git("diff", "--name-only", BASE, "--", "src", "include", "assembly", "scripts").splitlines())
-    changed.update(git("ls-files", "--others", "--exclude-standard", "--", "src", "include", "assembly", "scripts").splitlines())
-    require(changed <= allowed, "unapproved source/test change: " + str(sorted(changed - allowed)))
 
     frame = uncomment(read("src/m009_overworld_frame.c"))
     calls = body(frame, "M009_OverworldBasic")
@@ -300,12 +295,25 @@ def check_source_contract():
             "persistent save-block mutation added")
     require(not re.search(r"0[xX][0-9a-fA-F]{7,}", scan + frame), "raw-address workaround added")
     require("static u8 s" not in scan and "EWRAM_DATA" not in scan, "ROM-backed mutable static cache")
-    print("M-009 frame, scanner, preflight and accepted-composition invariants PASS")
+    require("#define M009_MAX_BG_EVENTS 36" in read("include/new/hidden_item_sparkle.h"),
+            "M-009 scanner capacity no longer matches the source-backed BG-event bound")
+    print("M-009 frame, scanner, Pewter owner, #577 hook, and insertion invariants PASS")
+
+
+def check_source_contract():
+    # Data and insertion safety are feature-owned; historical change lists are
+    # intentionally not consulted here.
+    from check_coherent_learnsets import check_source_contract as check_learnsets
+    check_learnsets()
+    check_m009_feature_contract()
+    check_route10_overlay_composition()
+    parse_overlay_rows(read("mapobjectoverlays"))
 
 
 def check_composition_variants():
-    # Independently accepted feature overlays may be added without transferring
-    # ownership of their rows to the #538 Pewter guard.
+    # Owner checks compose: M-009/#538 Pewter does not take ownership of
+    # Route 10, and unrelated accepted source in shared files does not inherit
+    # historical whole-file locks.
     global read
     original = read
     offset = "0x1234560"
@@ -315,24 +323,36 @@ def check_composition_variants():
         "OFFSET_TO_PUT = 0x1000000", "OFFSET_TO_PUT = " + offset, 1)
     require(linker != original("linker.ld") and inserter != original("scripts/insert.py"),
             "dynamic insertion-offset fixture did not change both files")
-    route10_row = ("append_object_exact 3 28 10 5 0 8 11 0x38 17 22 0 "
-                   "MOVEMENT_TYPE_FACE_LEFT 0 0 0 0 EventScript_Route10HM05 FLAG_GOT_HM05 0")
+    route10_row = ROUTE10_OVERLAY_ROW
     current_overlay = original("mapobjectoverlays")
     require(current_overlay.splitlines().count(route10_row) == 1,
             "accepted #557 Route 10 fixture row is not unique")
     pewter_only_overlay = current_overlay.replace(route10_row + "\n", "", 1)
     require(pewter_only_overlay != current_overlay, "could not form the #538-only overlay fixture")
+    adjacent_pewter_owner = (
+        "replace_object_script_exact 3 2 7 7 7 6 5 6 0x0037 45 20 3 "
+        "MOVEMENT_TYPE_FACE_RIGHT 1 1 0 0 FLAG_HIDE_PEWTER_CITY_RUNNING_SHOES_GUY "
+        "0 EventScript_PewterRunningShoesCleanup"
+    )
+    adjacent_route10_owner = (
+        "append_object_exact 3 28 11 5 0 8 12 0x38 18 22 0 "
+        "MOVEMENT_TYPE_FACE_LEFT 0 0 0 0 EventScript_Route10HM05 0 0"
+    )
+    composed_overlay = current_overlay + adjacent_pewter_owner + "\n" + adjacent_route10_owner + "\n"
     try:
         read = lambda path: (linker if path == "linker.ld" else
                              inserter if path == "scripts/insert.py" else
                              pewter_only_overlay if path == "mapobjectoverlays" else original(path))
-        check_source_contract()
+        check_m009_feature_contract()
         read = lambda path: (linker if path == "linker.ld" else
-                             inserter if path == "scripts/insert.py" else original(path))
+                             inserter if path == "scripts/insert.py" else
+                             composed_overlay if path == "mapobjectoverlays" else
+                             original(path) + "\n/* unrelated accepted source */\n"
+                             if path == "src/overworld.c" else original(path))
         check_source_contract()
     finally:
         read = original
-    print("M-009 #538-only and #538 plus independent #557 Route 10 overlay composition PASS")
+    print("M-009/Pewter/Route 10 owner composition and unrelated-source witness PASS")
 
 
 def check_map_census():
@@ -349,8 +369,8 @@ def check_map_census():
         require(max(census) == (36, "data/maps/CeladonCity_GameCorner/map.json"), "BG capacity changed")
         print(f"M-009 {repo}: {count} tracked maps; maximum BG events = 36 PASS")
     require("#define M009_MAX_BG_EVENTS 36" in read("include/new/hidden_item_sparkle.h"), "cache capacity mismatch")
-    # The existing overlay program/manifests are baseline-locked above. Their
-    # source operations preserve BG pointers/counts; no BG append operation exists.
+    # The compositional parser and row owners prevent these operations from
+    # changing BG-event counts or pointers; no overlay command appends BG rows.
 
 
 def check_host_algorithm():
@@ -379,6 +399,7 @@ def check_rejections():
     rewrite_path = "functionrewrites"
     insert_path = "scripts/insert.py"
     overlay_path = "mapobjectoverlays"
+    overworld_path = "src/overworld.c"
     rewrite_row = "M009_OverworldBasic 0x08056578 0 0\n"
     cases = [
         ("duplicate rewrite", rewrite_path, original(rewrite_path) + "\n" + rewrite_row),
@@ -413,6 +434,12 @@ def check_rejections():
                                        "M-009 frame replacement symbol missing", 1)),
         ("unrelated linker drift", "linker.ld",
          original("linker.ld").replace("ewram   : ORIGIN = 0x02000000", "ewram   : ORIGIN = 0x02001000", 1)),
+        ("misplaced #577 lifecycle hook", overworld_path,
+         original(overworld_path).replace("ApplyQueuedFreshNewGameSettings();\n\tTryUpdateSwarm();",
+                                          "TryUpdateSwarm();\n\tApplyQueuedFreshNewGameSettings();", 1)),
+        ("unknown #577 frame change", overworld_path,
+         original(overworld_path).replace("TryUpdateSwarm();",
+                                          "TryUpdateSwarm();\n\tRunTasks();", 1)),
     ]
     overlay_source = original(overlay_path)
     pewter_rows = [line for line in PEWTER_OVERLAY_BLOCK.splitlines()
@@ -433,8 +460,16 @@ def check_rejections():
          overlay_source.replace(PEWTER_OVERLAY_INCLUDE, "", 1)),
         ("duplicate Pewter constants include", overlay_path,
          overlay_source + PEWTER_OVERLAY_INCLUDE),
+        ("mutated Route 10 owned row", overlay_path,
+         overlay_source.replace(ROUTE10_OVERLAY_ROW,
+                                ROUTE10_OVERLAY_ROW.replace("EventScript_Route10HM05",
+                                                             "EventScript_Unapproved"), 1)),
+        ("duplicate Route 10 owned row", overlay_path,
+         overlay_source + ROUTE10_OVERLAY_ROW + "\n"),
         ("malformed Route 10 overlay row", overlay_path,
          overlay_source.replace("FLAG_GOT_HM05 0\n", "FLAG_GOT_HM05\n", 1)),
+        ("unknown overlay command", overlay_path,
+         overlay_source + "append_unreviewed 3 28\n"),
     ))
     try:
         for label, path, replacement in cases:
