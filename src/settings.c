@@ -1,8 +1,6 @@
 #include "defines.h"
 #include "../include/new/settings.h"
 
-static bool8 sFreshNewGameSettingsPending;
-
 u16 DifficultyRawToMenuSelection(u16 raw)
 {
     switch (raw)
@@ -122,21 +120,6 @@ void ApplyFreshNewGameSettings(void)
     VarSet(VAR_TRAINER_LEVEL_SCALING_MODE, TRAINER_LEVEL_SCALING_OFF + 1);
     VarSet(VAR_WILD_LEVEL_SCALING, 0);
     VarSet(VAR_TRAINER_AI_PROFILE, TRAINER_AI_PROFILE_STANDARD + 1);
-    FlagSet(FLAG_RUNNING_ENABLED);
-}
-
-void QueueFreshNewGameSettings(void)
-{
-    sFreshNewGameSettingsPending = TRUE;
-}
-
-void ApplyQueuedFreshNewGameSettings(void)
-{
-    if (!sFreshNewGameSettingsPending)
-        return;
-
-    sFreshNewGameSettingsPending = FALSE;
-    ApplyFreshNewGameSettings();
 }
 
 void ApplyIronmonSmartSettingsPreset(void)

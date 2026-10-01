@@ -193,23 +193,15 @@ def check_linker_insert_contract(linker, inserter):
     require(positions == sorted(positions), "linker text/BSS insertion layout order changed")
 
 
-def check_accepted_fresh_new_game_delta():
-    current = read("src/overworld.c")
-    include = '#include "../include/new/settings.h"'
-    require(current.splitlines().count(include) == 1,
-            "accepted #577 settings header must remain included exactly once")
-    current_frame = body(current, "TryRunOnFrameMapScript")
-    baseline = git("show", BASE + ":src/overworld.c")
-    baseline_frame = body(baseline, "TryRunOnFrameMapScript")
-    hook = "ApplyQueuedFreshNewGameSettings();"
-    require(current_frame.count(hook) == 1 and current_frame.lstrip().startswith(hook),
-            "accepted #577 lifecycle hook must appear exactly once at the frame-script entry")
-    normalized_frame = re.sub(r"(?m)^[ \t]*" + re.escape(hook) + r"\r?\n", "",
-                              current_frame, count=1)
-    require(normalized_frame == baseline_frame,
-            "TryRunOnFrameMapScript has an unapproved change outside the accepted #577 hook")
-    require(current_frame.index(hook) < current_frame.index("TryUpdateSwarm();"),
-            "accepted #577 lifecycle hook must precede post-load swarm processing")
+def check_stateless_frame_entry():
+    # #583 removes #577's ROM-backed queue. Keep the frame entry free of
+    # deferred settings work; settings belong to CB2_NewGame, not M-009.
+    current_frame = body(read("src/overworld.c"), "TryRunOnFrameMapScript")
+    require(current_frame.lstrip().startswith("TryUpdateSwarm();")
+            and current_frame.count("TryUpdateSwarm();") == 1,
+            "frame-script entry must retain one swarm update")
+    require(not re.search(r"FreshNewGame|SettingsPending", current_frame),
+            "Fresh New Game state must not be deferred to the frame path")
 
 
 def check_m009_feature_contract():
@@ -249,7 +241,7 @@ def check_m009_feature_contract():
 
     check_linker_insert_contract(read("linker.ld"), read("scripts/insert.py"))
     check_pewter_overlay_composition()
-    check_accepted_fresh_new_game_delta()
+    check_stateless_frame_entry()
 
     inserter = read("scripts/insert.py")
     require(inserter.count(INSERTION_PREFLIGHT) == 1, "M-009 insertion preflight must exist exactly once")
@@ -297,7 +289,7 @@ def check_m009_feature_contract():
     require("static u8 s" not in scan and "EWRAM_DATA" not in scan, "ROM-backed mutable static cache")
     require("#define M009_MAX_BG_EVENTS 36" in read("include/new/hidden_item_sparkle.h"),
             "M-009 scanner capacity no longer matches the source-backed BG-event bound")
-    print("M-009 frame, scanner, Pewter owner, #577 hook, and insertion invariants PASS")
+    print("M-009 frame, scanner, Pewter owner, stateless frame entry, and insertion invariants PASS")
 
 
 def check_source_contract():
@@ -434,12 +426,12 @@ def check_rejections():
                                        "M-009 frame replacement symbol missing", 1)),
         ("unrelated linker drift", "linker.ld",
          original("linker.ld").replace("ewram   : ORIGIN = 0x02000000", "ewram   : ORIGIN = 0x02001000", 1)),
-        ("misplaced #577 lifecycle hook", overworld_path,
-         original(overworld_path).replace("ApplyQueuedFreshNewGameSettings();\n\tTryUpdateSwarm();",
-                                          "TryUpdateSwarm();\n\tApplyQueuedFreshNewGameSettings();", 1)),
-        ("unknown #577 frame change", overworld_path,
+        ("deferred settings frame work", overworld_path,
          original(overworld_path).replace("TryUpdateSwarm();",
-                                          "TryUpdateSwarm();\n\tRunTasks();", 1)),
+                                          "ApplyFreshNewGameSettings();\n\tTryUpdateSwarm();", 1)),
+        ("duplicate frame swarm update", overworld_path,
+         original(overworld_path).replace("TryUpdateSwarm();",
+                                          "TryUpdateSwarm();\n\tTryUpdateSwarm();", 1)),
     ]
     overlay_source = original(overlay_path)
     pewter_rows = [line for line in PEWTER_OVERLAY_BLOCK.splitlines()

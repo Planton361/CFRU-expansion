@@ -52,10 +52,10 @@ def main():
             and 0 <= ADDRESS - 0x0203B174 < 0xEC4 - 1,
             "profile slot outside saved parasite")
     require("Memset((void*) SAVE_BLOCK_PARASITE, 0, 0x2EA4);" in save
-            and save.index("Memset((void*) SAVE_BLOCK_PARASITE, 0, 0x2EA4);")
-            < save.index("QueueFreshNewGameSettings();")
             and "ApplyFreshNewGameSettings();" not in save,
-            "fresh defaults are not queued after the expansion clear for post-event application")
+            "expansion wipe or separation from post-reset defaults changed")
+    from audit_early_running_lifecycle import check_source_contract
+    check_source_contract()
     require("NewGameSaveClearHook 8054A60 0" in (ROOT / "hooks").read_text()
             and "bl NewGameWipeNewSaveData" in hooks,
             "fresh new-game hook/clear path missing")

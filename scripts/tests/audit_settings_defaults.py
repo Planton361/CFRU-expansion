@@ -90,28 +90,10 @@ def main() -> int:
         "Wild Scaling raw is copied directly into a menu selection",
     )
 
-    wipe = save[save.index("void NewGameWipeNewSaveData(void)"):]
-    require("QueueFreshNewGameSettings();" in wipe, "fresh defaults are not queued by the wipe hook")
-    require(
-        wipe.index("QueueFreshNewGameSettings();") > wipe.index("#endif"),
-        "fresh defaults are not queued after both wipe branches",
-    )
-    require("ApplyFreshNewGameSettings();" not in wipe,
-            "fresh defaults are applied before vanilla event data initialization")
-    require("ApplyFreshNewGameSettings();" not in option_menu, "options entry applies fresh defaults")
-    require(
-        "NewGameSaveClearHook:" in hooks and "bl NewGameWipeNewSaveData" in hooks,
-        "the selected CFRU new-game clear hook does not call the wipe lifecycle",
-    )
-    require("ApplyFreshNewGameSettings();" not in scripting
-            and "QueueFreshNewGameSettings();" not in scripting,
-            "ordinary save-load code applies or queues fresh defaults")
-    overworld = read("src/overworld.c")
-    frame_script = overworld[overworld.index("bool8 TryRunOnFrameMapScript(void)"):]
-    frame_script = frame_script.split("// Whiteout Hack", 1)[0]
-    require(frame_script.index("ApplyQueuedFreshNewGameSettings();")
-            < frame_script.index("TryUpdateSwarm();"),
-            "fresh defaults are not applied on the post-New-Game field path")
+    from audit_early_running_lifecycle import check_source_contract
+    check_source_contract()
+    require("ApplyFreshNewGameSettings();" not in option_menu,
+            "options entry applies fresh defaults")
 
     require("VAR_GAME_DIFFICULTY, OPTIONS_VANILLA_DIFFICULTY" in settings, "fresh/preset Vanilla write missing")
     require(
@@ -131,16 +113,8 @@ def main() -> int:
     fresh_settings = settings[settings.index("void ApplyFreshNewGameSettings(void)"):]
     fresh_settings = fresh_settings.split("void ApplyIronmonSmartSettingsPreset(void)", 1)[0]
     preset_settings = settings[settings.index("void ApplyIronmonSmartSettingsPreset(void)"):]
-    require(
-        fresh_settings.count("FlagSet(") == 1
-        and "FlagSet(FLAG_RUNNING_ENABLED);" in fresh_settings,
-        "Fresh New Game does not set only the ordinary running-enabled flag",
-    )
-    require("QueueFreshNewGameSettings" in settings and "ApplyQueuedFreshNewGameSettings" in settings,
-            "post-reset Fresh New Game settings queue is missing")
-    require("sFreshNewGameSettingsPending = TRUE;" in settings
-            and "sFreshNewGameSettingsPending = FALSE;" in settings,
-            "Fresh New Game settings queue is not one-shot")
+    require("FlagSet(" not in fresh_settings and "FlagClear(" not in fresh_settings,
+            "Fresh New Game helper mutates flags")
     require("FLAG_AUTO_RUN" not in fresh_settings, "Fresh New Game settings enable Auto-Run")
     require("FlagSet(" not in preset_settings and "FlagClear(" not in preset_settings,
             "Ironmon Smart preset mutates running flags")

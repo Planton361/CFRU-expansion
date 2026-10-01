@@ -9,7 +9,6 @@
 #include "../include/new/dns.h"
 #include "../include/new/save.h"
 #include "../include/new/ram_locs_battle.h"
-#include "../include/new/settings.h"
 /*
 save.c
 	handles save block expansion functions/structures
@@ -511,7 +510,6 @@ void NewGameWipeNewSaveData(void)
 	#else
 	Memset((void*) SAVE_BLOCK_PARASITE, 0, 0x2EA4);
 	#endif
-	QueueFreshNewGameSettings();
 }
 
 static void Task_SaveErrorStatus_RunPrinter(unusedArg u8 taskId)
