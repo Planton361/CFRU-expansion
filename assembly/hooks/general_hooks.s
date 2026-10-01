@@ -358,6 +358,27 @@ NewGameSaveClearHook:
 	ldr r0, =0x8054A68 | 1
 	bx r0
 
+@ #583: CB2_NewGame after NewGameInitData (all save/event/map resets).
+@ The unaligned 10-byte trampoline touches three BLs; replay all three,
+@ then skip the remaining halfword of the third BL. Existing-save load
+@ never enters this call site. No state is carried between callbacks.
+.pool
+@0x8056656 with r0
+FreshNewGameSettingsHook:
+	bl ApplyFreshNewGameSettings
+	ldr r3, =ResetInitialPlayerAvatarState
+	bl FreshNewGameSettingsCallR3
+	ldr r3, =PlayTimeCounter_Start
+	bl FreshNewGameSettingsCallR3
+	ldr r3, =ScriptContext_Init
+	bl FreshNewGameSettingsCallR3
+	ldr r0, =0x8056662 | 1
+	bx r0
+
+@ Thumb-1 indirect call: absolute BPRE symbols must retain their Thumb bit.
+FreshNewGameSettingsCallR3:
+	bx r3
+
 .pool
 @0x80CEDD4 with r1
 EvolutionMovesHook:

@@ -321,6 +321,8 @@ HandleSavingData 80DA248 1
 LinkTradeSaveHook 805415E 0
 LinkBattleSaveHook 806FC84 0
 NewGameSaveClearHook 8054A60 0
+# #583: CB2_NewGame after NewGameInitData; settings Vars only, no latch.
+FreshNewGameSettingsHook 8056656 0
 ExpandedVarsHook 806E454 1
 ExpandedFlagsHook 806E5C0 1
 

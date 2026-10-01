@@ -20,8 +20,9 @@ bool8 VarSet(u16 var, u16 value)
 
 u8 FlagSet(u16 flag)
 {
-    syntheticFlags[flag] = TRUE;
-    return TRUE;
+    (void)flag;
+    assert(!"settings helpers must never mutate flags");
+    return FALSE;
 }
 
 bool8 FlagGet(u16 flag)
@@ -183,17 +184,15 @@ static void TestFreshDefaults(void)
     assert(syntheticVars[VAR_WILD_LEVEL_SCALING] == 0);
     assert(syntheticVars[VAR_TRAINER_AI_PROFILE] == TRAINER_AI_PROFILE_STANDARD + 1);
     assert(syntheticVars[unrelatedVar] == 0x1234);
-    assert(FlagGet(FLAG_RUNNING_ENABLED));
     assert(!FlagGet(FLAG_AUTO_RUN));
 
-    /* The fresh settings helper owns only the ordinary running unlock flag. */
+    /* The fresh settings helper owns only four Vars and no flags. */
     ResetSyntheticFlags();
     syntheticFlags[FLAG_AUTO_RUN] = TRUE;
     ApplyFreshNewGameSettings();
-    assert(FlagGet(FLAG_RUNNING_ENABLED));
     assert(FlagGet(FLAG_AUTO_RUN));
 
-    puts("Fresh-default raw witness: difficulty=4 trainer-scale=1 wild-scale=0 trainer-ai=7; running enabled; Auto-Run untouched: PASS");
+    puts("Fresh-default raw witness: difficulty=4 trainer-scale=1 wild-scale=0 trainer-ai=7; Auto-Run untouched: PASS");
 }
 
 static void TestIronmonPreset(void)

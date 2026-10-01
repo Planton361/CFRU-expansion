@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
-"""Bind the Fresh New Game flag repair to the full vanilla reset lifecycle."""
+"""#583 native running and stateless, post-reset settings owner contract.
 
+Public source witnesses and exact BPRE instruction/return reasoning are in
+scripts/tests/early_running_583_source_proof.md. No ROM is used by this audit.
+"""
 from pathlib import Path
+import re
 import subprocess
 
-
 ROOT = Path(__file__).resolve().parents[2]
-BASE_SHA = "c9a7f19f1e8aaebd33213503f32fa7bba59ce81c"
-PRET_SHA = "037335f4c725d7c9aecdac87066f2002b4bd7e14"
+BASE_SHA = "c208c4a05b2a70e3296fcbe90f061832fa4e0f8b"
+REMOVED = ("sFreshNewGameSettingsPending", "QueueFreshNewGameSettings",
+           "ApplyQueuedFreshNewGameSettings")
 
 
-def read(path: str) -> str:
-    return (ROOT / path).read_text(encoding="utf-8")
+def read(path):
+    return (ROOT / path).read_text()
 
 
-def c_function(source: str, signature: str) -> str:
-    start = source.index(signature)
+def c_function(source, signature):
+    match = re.search(re.escape(signature) + r"\s*\{", source)
+    require(match is not None, "missing definition: " + signature)
+    start = match.start()
     opening = source.index("{", start)
     depth = 0
     for pos in range(opening, len(source)):
@@ -25,97 +31,99 @@ def c_function(source: str, signature: str) -> str:
             depth -= 1
             if depth == 0:
                 return source[start:pos + 1]
-    raise AssertionError("unterminated C function: " + signature)
+    raise AssertionError("unterminated function: " + signature)
 
 
-def base_file(path: str) -> str:
-    return subprocess.check_output(
-        ["git", "show", f"{BASE_SHA}:{path}"], cwd=ROOT, text=True
-    )
-
-
-def require(condition: bool, message: str) -> None:
+def require(condition, message):
     if not condition:
-        raise SystemExit("early-running lifecycle audit failed: " + message)
+        raise AssertionError("#583 contract: " + message)
 
 
-def main() -> int:
-    save = read("src/save.c")
-    settings = read("src/settings.c")
-    overworld = read("src/overworld.c")
-    scripting = read("src/scripting.c")
-    manifest = read("hooks")
-    assembly = read("assembly/hooks/general_hooks.s")
+def active(source):
+    return re.sub(r"//[^\n]*|/\*.*?\*/|^\s*@[^\n]*", "", source, flags=re.S | re.M)
 
-    wipe = c_function(save, "void NewGameWipeNewSaveData(void)")
-    require("QueueFreshNewGameSettings();" in wipe,
-            "the genuine Fresh New Game wipe does not set the pending initializer")
-    require("ApplyFreshNewGameSettings();" not in wipe and "FlagSet(FLAG_RUNNING_ENABLED);" not in wipe,
-            "the running flag is written at the early save-clear hook")
 
-    queue = c_function(settings, "void QueueFreshNewGameSettings(void)")
-    apply = c_function(settings, "void ApplyFreshNewGameSettings(void)")
-    pending = c_function(settings, "void ApplyQueuedFreshNewGameSettings(void)")
-    require("sFreshNewGameSettingsPending = TRUE;" in queue,
-            "Fresh New Game does not set the one-shot pending state")
-    require("FlagSet(FLAG_RUNNING_ENABLED);" in apply,
-            "the existing running flag is no longer applied")
-    require("FLAG_AUTO_RUN" not in apply,
-            "Fresh New Game now mutates Auto-Run")
-    require(pending.index("if (!sFreshNewGameSettingsPending)")
-            < pending.index("sFreshNewGameSettingsPending = FALSE;")
-            < pending.index("ApplyFreshNewGameSettings();"),
-            "queued Fresh New Game settings are not guarded and consumed exactly once")
-
-    frame = c_function(overworld, "bool8 TryRunOnFrameMapScript(void)")
-    require(frame.index("ApplyQueuedFreshNewGameSettings();")
-            < frame.index("TryUpdateSwarm();")
-            < frame.index("MapHeaderCheckScriptTable(MAP_SCRIPT_ON_FRAME_TABLE)"),
-            "settings are not applied before the first post-load field input/script path")
-    require("TryRunOnFrameMapScript 8069C74 0" in manifest,
-            "the post-load input hook no longer binds this source function")
-    require("NewGameSaveClearHook 8054A60 0" in manifest
-            and "NewGameSaveClearHook:" in assembly
-            and "bl NewGameWipeNewSaveData" in assembly,
-            "the early New Game save-clear hook binding changed")
-    require("ApplyFreshNewGameSettings();" not in scripting
-            and "QueueFreshNewGameSettings();" not in scripting
-            and "ApplyQueuedFreshNewGameSettings();" not in scripting,
-            "ordinary existing-save load paths queue or apply Fresh New Game defaults")
-
-    # Pret/pokefirered at PRET_SHA establishes NewGameInitData ordering:
-    # ClearSav1 -> InitEventData -> explicit ResetAllMapFlags script -> return;
-    # InitEventData zeroes the saved flags/vars. CB2_NewGame returns to field
-    # input only after NewGameInitData, and FieldInputProcessInput tries the
-    # on-frame script before processing a step. The old early write therefore
-    # gets erased; the queued write is applied after that final reset.
-    require(PRET_SHA == "037335f4c725d7c9aecdac87066f2002b4bd7e14",
-            "the recorded public pret source witness changed")
-
-    hook = assembly.split("@0x805BA30 with r0", 1)[1].split(".pool", 1)[0]
-    require("AutoRunHook:" in hook and "bl ShouldPlayerRun" in hook
-            and "ldr r0, =0x805BA5A | 1" in hook
-            and "ldr r0, =0x805BA8C | 1" in hook,
-            "AutoRunHook no longer replaces the vanilla run/walk gate")
-    require("AutoRunHook 805BA30 0" in manifest,
-            "AutoRunHook moved from the accepted BPRE gate")
-
-    base_overworld = base_file("src/overworld.c")
-    for signature in (
-        "bool8 ShouldPlayerRun(u16 heldKeys)",
-        "static bool8 IsRunningDisabledByFlag(void)",
-        "bool8 IsRunningDisallowed(u8 tile)",
-    ):
-        require(c_function(overworld, signature) == c_function(base_overworld, signature),
-                "running behavior/restrictions changed in " + signature)
-    for path in ("src/read_keys.c", "assembly/hooks/general_hooks.s", "hooks",
-                 "assembly/overworld_scripts/pewter_running_shoes_cleanup.s",
-                 "mapobjectoverlays", "eventscripts"):
-        require(read(path) == base_file(path), "protected #538 behavior changed: " + path)
-
-    print("Fresh New Game full flag lifecycle ordering and negative-witness source audit: PASS")
-    return 0
+def check_source_contract():
+    config = active(read("src/config.h"))
+    require(not re.search(r"(?m)^\s*#\s*define\s+FLAG_RUNNING_ENABLED\b", config),
+            "native running progression gate is enabled")
+    require(re.search(r"(?m)^#define FLAG_AUTO_RUN 0x914\b", config), "Auto-Run flag changed")
+    require(re.search(r"(?m)^#define CAN_RUN_IN_BUILDINGS\b", config), "indoor running disabled")
+    settings = active(read("src/settings.c"))
+    helper = c_function(settings, "void ApplyFreshNewGameSettings(void)")
+    expected = '''void ApplyFreshNewGameSettings(void)
+{
+    VarSet(VAR_GAME_DIFFICULTY, OPTIONS_VANILLA_DIFFICULTY);
+    VarSet(VAR_TRAINER_LEVEL_SCALING_MODE, TRAINER_LEVEL_SCALING_OFF + 1);
+    VarSet(VAR_WILD_LEVEL_SCALING, 0);
+    VarSet(VAR_TRAINER_AI_PROFILE, TRAINER_AI_PROFILE_STANDARD + 1);
+}'''
+    require(re.sub(r"\s+", "", helper) == re.sub(r"\s+", "", expected),
+            "fresh helper must own exactly four VarSet calls")
+    # No replacement latch, linked static, heap or SaveBlock ownership can fit
+    # between these independently checked, complete function definitions.
+    signatures = re.findall(r"(?m)^(?:u16|void) \w+\([^\n]*\)", settings)
+    remainder = settings
+    for signature in signatures:
+        remainder = remainder.replace(c_function(settings, signature), "", 1)
+    remainder = re.sub(r"(?m)^#include[^\n]*", "", remainder)
+    require(not remainder.strip(), "settings translation unit acquired file-scope state")
+    require("FlagSet(" not in settings and "FlagClear(" not in settings
+            and "EWRAM_DATA" not in settings and "gSaveBlock" not in settings,
+            "settings acquired flag/RAM/SaveBlock ownership")
+    for directory in ("src", "include", "assembly"):
+        for path in (ROOT / directory).rglob("*"):
+            if path.suffix in (".c", ".h", ".s"):
+                source = path.read_text(errors="replace")
+                require(not any(name in source for name in REMOVED),
+                        "obsolete pending mechanism in " + str(path.relative_to(ROOT)))
+    call_sites = []
+    for path in (ROOT / "src").rglob("*.c"):
+        if "ApplyFreshNewGameSettings();" in active(path.read_text(errors="replace")):
+            call_sites.append(str(path.relative_to(ROOT)))
+    require(not call_sites, "fresh helper called outside New Game assembly owner")
+    hooks = active(read("assembly/hooks/general_hooks.s"))
+    hook = hooks.split("FreshNewGameSettingsHook:", 1)[1].split(".pool", 1)[0]
+    expected_hook = '''bl ApplyFreshNewGameSettings
+ldr r3, =ResetInitialPlayerAvatarState
+bl FreshNewGameSettingsCallR3
+ldr r3, =PlayTimeCounter_Start
+bl FreshNewGameSettingsCallR3
+ldr r3, =ScriptContext_Init
+bl FreshNewGameSettingsCallR3
+ldr r0, =0x8056662 | 1
+bx r0
+FreshNewGameSettingsCallR3:
+bx r3'''
+    require(re.sub(r"\s+", "", hook) == re.sub(r"\s+", "", expected_hook),
+            "settings hook changed replay/continuation or acquired state")
+    require(hooks.count("bl ApplyFreshNewGameSettings") == 1, "duplicate fresh owner")
+    rows = [line.split() for line in read("hooks").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")]
+    require([row for row in rows if row[0] == "FreshNewGameSettingsHook"]
+            == [["FreshNewGameSettingsHook", "8056656", "0"]], "fresh hook binding changed")
+    require([row for row in rows if int(row[1], 16) in range(0x8056652, 0x8056662)]
+            == [["FreshNewGameSettingsHook", "8056656", "0"]], "overlapping late hook")
+    require("AutoRunHook 805BA30 0" in read("hooks"), "movement hook binding changed")
+    running_hook = hooks.split("AutoRunHook:", 1)[1].split(".pool", 1)[0]
+    require("bl ShouldPlayerRun" in running_hook
+            and "0x805BA5A | 1" in running_hook and "0x805BA8C | 1" in running_hook,
+            "native movement dispatch changed")
+    # Existing semantics/restrictions and L behavior are implementation-owned;
+    # #583 changes their preprocessing configuration only.
+    for path, signatures in {
+        "src/overworld.c": ("bool8 ShouldPlayerRun(u16 heldKeys)",
+                            "static bool8 IsRunningDisabledByFlag(void)",
+                            "bool8 IsRunningDisallowed(u8 tile)",
+                            "bool8 IsRunningDisallowedByMetatile(u8 tile)"),
+        "src/read_keys.c": ("bool8 StartLButtonFunc(void)",),
+    }.items():
+        base = subprocess.check_output(["git", "show", f"{BASE_SHA}:{path}"], cwd=ROOT, text=True)
+        for signature in signatures:
+            require(c_function(read(path), signature) == c_function(base, signature),
+                    "movement implementation changed: " + signature)
+    print("#583 native config, four-Var helper, stateless late owner, removed queue: PASS")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    check_source_contract()
