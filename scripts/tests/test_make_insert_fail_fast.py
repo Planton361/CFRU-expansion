@@ -61,7 +61,7 @@ def test_build_nonzero_fails_make():
     old_rom_name = make.ROM_NAME
     make.ROM_NAME = "synthetic-source-fixture"
     try:
-        with with_fake_rom_open(), \
+        with patch.object(make, "CheckNativeSourceIdentity"), with_fake_rom_open(), \
                 patch.object(make, "EditLinker"), patch.object(make, "EditInsert"), \
                 patch.object(make.shutil, "which", return_value="synthetic-python"), \
                 patch.object(make.subprocess, "run",
@@ -76,11 +76,38 @@ def test_build_nonzero_fails_make():
         make.ROM_NAME = old_rom_name
 
 
+def test_source_identity_preflight_failure_stops_before_rom_and_children():
+    old_rom_name = make.ROM_NAME
+    make.ROM_NAME = "synthetic-source-fixture"
+    failure = subprocess.CalledProcessError(
+        4, ["python3", "scripts/check_native_source_identity.py"])
+    try:
+        with patch.object(make, "CheckNativeSourceIdentity", side_effect=failure), \
+                patch("builtins.open") as open_file, \
+                patch.object(make, "EditLinker") as edit_linker, \
+                patch.object(make, "EditInsert") as edit_insert, \
+                patch.object(make, "BuildCode") as build, \
+                patch.object(make, "InsertCode") as insert:
+            try:
+                make.main()
+            except subprocess.CalledProcessError as error:
+                require(error.returncode == 4, "source-identity failure did not propagate")
+            else:
+                raise AssertionError("make.py fail-fast regression: dirty tracked source was accepted")
+        open_file.assert_not_called()
+        edit_linker.assert_not_called()
+        edit_insert.assert_not_called()
+        build.assert_not_called()
+        insert.assert_not_called()
+    finally:
+        make.ROM_NAME = old_rom_name
+
+
 def test_build_and_insert_success():
     old_rom_name = make.ROM_NAME
     make.ROM_NAME = "synthetic-source-fixture"
     try:
-        with with_fake_rom_open(), \
+        with patch.object(make, "CheckNativeSourceIdentity"), with_fake_rom_open(), \
                 patch.object(make, "EditLinker"), patch.object(make, "EditInsert"), \
                 patch.object(make.shutil, "which", return_value="synthetic-python"), \
                 patch.object(make.subprocess, "run",
@@ -103,7 +130,8 @@ def test_stale_output_cannot_mask_failed_insert():
             stale_output = Path(temp) / "test.gba"
             stale_output.write_bytes(sentinel)
             make.ROM_NAME = str(stale_output)
-            with patch.object(make, "EditLinker"), patch.object(make, "EditInsert"), \
+            with patch.object(make, "CheckNativeSourceIdentity"), \
+                    patch.object(make, "EditLinker"), patch.object(make, "EditInsert"), \
                     patch.object(make.shutil, "which", return_value="synthetic-python"), \
                     patch.object(make.subprocess, "run",
                                  side_effect=[subprocess.CompletedProcess([], 0),
@@ -127,13 +155,14 @@ def main():
         test_insert_nonzero_fails,
         test_execution_error_fails,
         test_build_nonzero_fails_make,
+        test_source_identity_preflight_failure_stops_before_rom_and_children,
         test_build_and_insert_success,
         test_stale_output_cannot_mask_failed_insert,
     )
     for test in tests:
         test()
         print("PASS: " + test.__name__)
-    print("make.py fail-fast regression suite: PASS (6/6)")
+    print("make.py fail-fast regression suite: PASS (7/7)")
 
 
 if __name__ == "__main__":

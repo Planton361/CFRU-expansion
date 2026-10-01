@@ -13,10 +13,6 @@ REFERENCE = "b1156ff19204e48089e2384eb2c9c1a8004f57ce"
 TABLE = "src/Tables/level_up_learnsets.c"
 MANIFEST = "docs/coherent-learnsets-provenance.json"
 BLOCK = re.compile(r"static const struct LevelUpMove (s\w+)\[\] = \{.*?\};", re.S)
-CONFIG_DIAGNOSTIC_COMMENTS = {
-    "//#define TRAINER_AI_RUNTIME_DISPATCH_TRACE // Temporary Oak's-Lab three-turn move marker; enable only for a private diagnostic build.",
-    "//#define TRAINER_AI_RUNTIME_CAPPED_TAILWHIP_PROBE // Temporary Oak's-Lab Defense-floor probe; enable only for a private diagnostic build.",
-}
 BINDINGS = {
     "SPECIES_PIKACHU_COSPLAY": "sPikachuCosplayLevelUpLearnset",
     "SPECIES_PIKACHU_LIBRE": "sPikachuCosplayLevelUpLearnset",
@@ -72,28 +68,74 @@ def validate_source(before, after, record):
             "text outside approved tables/pointer rows changed")
 
 
-def validate_config(before, after):
-    """Ignore only the two known disabled diagnostic comments added after BASE."""
-    normalized = []
-    seen = set()
-    for line in after.splitlines(keepends=True):
-        content = line.rstrip("\r\n")
-        if content in CONFIG_DIAGNOSTIC_COMMENTS:
-            require(content not in seen, "duplicate disabled diagnostic comment: " + content)
-            seen.add(content)
-            continue
-        normalized.append(line)
-    require("".join(normalized) == before, "engine/layout/config changed: src/config.h")
+def numeric_constants(source, prefix):
+    definitions = {}
+    pattern = re.compile(
+        r"(?m)^\s*#define\s+(" + re.escape(prefix)
+        + r"[A-Z0-9_]+)\s+(0[xX][0-9a-fA-F]+|[0-9]+)(?:\s|$)"
+    )
+    for name, value in pattern.findall(source):
+        definitions.setdefault(name, []).append(int(value, 0))
+    return definitions
+
+
+def validate_numeric_constants(before, after, prefix):
+    """Keep prior data IDs stable while allowing compositional new IDs."""
+    old = numeric_constants(before, prefix)
+    current = numeric_constants(after, prefix)
+    for name, values in old.items():
+        require(len(values) == 1, "historical data ID is ambiguous: " + name)
+        require(current.get(name) == values, "data ID changed or duplicated: " + name)
+
+
+def c_struct_body(source, name):
+    source = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
+    match = re.search(r"\bstruct(?:\s+__attribute__\s*\(\([^)]*\)\))?\s+"
+                      + re.escape(name) + r"\s*\{", source)
+    require(match is not None, "missing layout declaration: " + name)
+    depth = 1
+    end = match.end()
+    while depth:
+        require(end < len(source), "unterminated layout declaration: " + name)
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    declaration = source[match.start():end]
+    return re.sub(r"\s+", "", declaration)
+
+
+def validate_learnset_layouts():
+    """Lock only the data structs and API used by the learnset contract."""
+    old_pokemon = baseline("include/pokemon.h")
+    current_pokemon = (ROOT / "include/pokemon.h").read_text()
+    for name in ("LevelUpMove", "BoxPokemon", "Pokemon"):
+        require(c_struct_body(old_pokemon, name) == c_struct_body(current_pokemon, name),
+                "learnset data layout changed: struct " + name)
+
+    old_header = baseline("include/new/learn_move.h")
+    current_header = (ROOT / "include/new/learn_move.h").read_text()
+    prototype = r"void\s+GiveBoxMonInitialMoveset\s*\(\s*struct\s+BoxPokemon\s*\*\s*boxMon\s*\)\s*;"
+    require(len(re.findall(prototype, old_header)) == 1
+            and len(re.findall(prototype, current_header)) == 1,
+            "initial-moveset API declaration changed or duplicated")
+    require(len(re.findall(r"(?m)^#define\s+MAX_LEARNABLE_MOVES\s+50\s*$", current_header)) == 1,
+            "MAX_LEARNABLE_MOVES must remain 50 for the table/stack bound")
+
+    for path, prefix in (("include/constants/moves.h", "MOVE_"),
+                         ("include/constants/species.h", "SPECIES_")):
+        validate_numeric_constants(baseline(path), (ROOT / path).read_text(), prefix)
 
 
 def check_source_contract():
     record = json.loads((ROOT / MANIFEST).read_text())
+    pins = record["reference_lock"]["canonical_pins"]
+    require(pins.get("CFRU") == BASE and pins.get("DPE") == "22ffa27ad09cfacbca841d90e6cbe31e6f9b7fdc",
+            "learnset data-owner pins differ from the accepted CFRU/DPE provenance")
+    require(record["reference_lock"]["policy"]["active_learnsets"]
+            == "CFRU src/Tables/level_up_learnsets.c only; DPE EXPAND_LEARNSETS is disabled",
+            "learnset table ownership changed")
     validate_source(baseline(TABLE), (ROOT / TABLE).read_text(), record)
-    for path in ("src/learn_move.c", "include/new/learn_move.h", "include/pokemon.h",
-                 "include/constants/moves.h", "include/constants/species.h"):
-        require((ROOT / path).read_text() == baseline(path), "engine/layout/config changed: " + path)
-    validate_config(baseline("src/config.h"), (ROOT / "src/config.h").read_text())
-    print("PASS: 820 exact table replacements, 2 new form tables, 7 rebindings, 1 existing-ID null-pointer repair; engine unchanged")
+    validate_learnset_layouts()
+    print("PASS: exact table bodies/pointers, stable existing IDs and learnset layouts; DPE/CFRU data owner verified")
 
 
 def function(source, name):
@@ -197,23 +239,17 @@ def check_rejections():
         raise AssertionError("unapproved edit accepted")
     print("PASS: invalid rows, outside edits, shared-pointer regressions and null-pointer regression rejected")
 
-    baseline_config = baseline("src/config.h")
-    current_config = (ROOT / "src/config.h").read_text()
-    config_cases = [
-        current_config.replace("//#define TRAINER_AI_RUNTIME_DISPATCH_TRACE", "#define TRAINER_AI_RUNTIME_DISPATCH_TRACE", 1),
-        current_config + "\n#define UNAPPROVED_LEARNSET_CONFIG_CHANGE\n",
-        current_config + "\n" + next(iter(CONFIG_DIAGNOSTIC_COMMENTS)) + "\n",
-        current_config.replace("private diagnostic build.", "different diagnostic behavior.", 1),
-    ]
-    for modified in config_cases:
-        require(modified != current_config, "config mutation fixture failed to modify source")
-        try:
-            validate_config(baseline_config, modified)
-        except ValueError:
-            continue
-        raise AssertionError("unapproved src/config.h mutation accepted")
-    validate_config(baseline_config, baseline_config)
-    print("PASS: exact disabled diagnostic comments tolerated; active, unrelated, duplicate and mutated config changes rejected")
+    baseline_moves = baseline("include/constants/moves.h")
+    current_moves = (ROOT / "include/constants/moves.h").read_text()
+    mutated_moves = current_moves.replace("#define MOVE_SCRATCH 0xA", "#define MOVE_SCRATCH 0xB", 1)
+    try:
+        validate_numeric_constants(baseline_moves, mutated_moves, "MOVE_")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("changed historical move ID accepted")
+    validate_numeric_constants(baseline_moves, current_moves + "\n#define MOVE_FUTURE_ADDITION 0xFFF\n", "MOVE_")
+    print("PASS: historical move/species IDs stay stable while new IDs compose")
 
 
 if __name__ == "__main__":
