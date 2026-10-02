@@ -66,6 +66,7 @@ static void CloseMaxMoveDetails(void);
 static void HighlightPossibleTargets(void);
 static void LoadShadowColourForGreyedOutBagText(void);
 static bool8 CanUseBQuickRunHere(void);
+static void RemapBQuickRunHint(void);
 #ifdef TEAM_PREVIEW_TRIGGER
 static void HandleInputTeamPreview(void);
 static void ChangeBattlerSpritesInvisibilities(bool8 invisible);
@@ -1972,13 +1973,6 @@ void PlayerHandleChooseAction(void)
 	else
 	{
 		bool8 bQuickRun = CanUseBQuickRunHere();
-		if (bQuickRun)
-		{
-			// Keypad glyphs use raw indices 1/2/3, not the text foreground/shadow.
-			static const u16 bButtonPalette[] = {RGB(31, 31, 31), RGB(9, 9, 9), RGB(26, 26, 25)};
-			LoadPalette(bButtonPalette, 5 * 0x10 + 1, sizeof(bButtonPalette));
-		}
-
 		if (IsBagDisabled())
 		{
 			BattlePutTextOnWindow(bQuickRun ? gText_BattleMenuNoItemsBQuickRun : gText_BattleMenuNoItems, 2);
@@ -1986,6 +1980,9 @@ void PlayerHandleChooseAction(void)
 		}
 		else
 			BattlePutTextOnWindow(bQuickRun ? gText_BattleMenuBQuickRun : gText_BattleMenu, 2);
+
+		if (bQuickRun)
+			RemapBQuickRunHint();
 	}
 
 	for (i = 0; i < MAX_MON_MOVES; i++)
@@ -2006,6 +2003,30 @@ void PlayerHandleChooseAction(void)
 	#ifdef TEAM_PREVIEW_TRIGGER
 	TryLoadTeamPreviewTrigger();
 	#endif
+}
+
+static void RemapBQuickRunHint(void)
+{
+	// The built-in [B_BUTTON] was printed at (79, 20), size 8 x 12.
+	// Remap its pixels locally; palette 5 entries 1/3 also serve PSS icons.
+	static const u8 colors[] = {0, 14, 13, 15};
+	u8* tiles = (u8*) GetWindowAttribute(2, WINDOW_TILE_DATA);
+	u32 width = GetWindowAttribute(2, WINDOW_WIDTH);
+	u32 x, y;
+
+	for (y = 20; y < 32; ++y)
+	{
+		for (x = 79; x < 87; ++x)
+		{
+			u32 offset = ((y / 8) * width + x / 8) * 32 + (y % 8) * 4 + (x % 8) / 2;
+			u32 shift = (x & 1) * 4;
+			u8 pixel = (tiles[offset] >> shift) & 0xF;
+			if (pixel > 0 && pixel < 4)
+				tiles[offset] = (tiles[offset] & ~(0xF << shift)) | (colors[pixel] << shift);
+		}
+	}
+
+	CopyWindowToVram(2, COPYWIN_GFX);
 }
 
 static void LoadShadowColourForGreyedOutBagText(void)
