@@ -42,6 +42,8 @@ extern const u8 gDynamaxMovePowers[MOVES_COUNT];
 extern const u8 sTargetIdentities[];
 extern const u16 gUserInterfaceGfx_TypeHighlightingPal[];
 extern const u8 PSSIconsTiles[];
+extern const u8 gText_BattleMenuBQuickRun[];
+extern const u8 gText_BattleMenuNoItemsBQuickRun[];
 
 // For Terastallization
 extern u8 GetTeraType(u8 bank);
@@ -63,6 +65,7 @@ static void CloseZMoveDetails(void);
 static void CloseMaxMoveDetails(void);
 static void HighlightPossibleTargets(void);
 static void LoadShadowColourForGreyedOutBagText(void);
+static bool8 CanUseBQuickRunHere(void);
 #ifdef TEAM_PREVIEW_TRIGGER
 static void HandleInputTeamPreview(void);
 static void ChangeBattlerSpritesInvisibilities(bool8 invisible);
@@ -1968,13 +1971,21 @@ void PlayerHandleChooseAction(void)
 	}
 	else
 	{
+		bool8 bQuickRun = CanUseBQuickRunHere();
+		if (bQuickRun)
+		{
+			// Keypad glyphs use raw indices 1/2/3, not the text foreground/shadow.
+			static const u16 bButtonPalette[] = {RGB(31, 31, 31), RGB(9, 9, 9), RGB(26, 26, 25)};
+			LoadPalette(bButtonPalette, 5 * 0x10 + 1, sizeof(bButtonPalette));
+		}
+
 		if (IsBagDisabled())
 		{
-			BattlePutTextOnWindow(gText_BattleMenuNoItems, 2);
+			BattlePutTextOnWindow(bQuickRun ? gText_BattleMenuNoItemsBQuickRun : gText_BattleMenuNoItems, 2);
 			LoadShadowColourForGreyedOutBagText();
 		}
 		else
-			BattlePutTextOnWindow(gText_BattleMenu, 2);
+			BattlePutTextOnWindow(bQuickRun ? gText_BattleMenuBQuickRun : gText_BattleMenu, 2);
 	}
 
 	for (i = 0; i < MAX_MON_MOVES; i++)
