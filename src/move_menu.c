@@ -2003,6 +2003,14 @@ static void LoadShadowColourForGreyedOutBagText(void)
 	CpuCopy16(&gPlttBufferUnfaded[5 * 0x10 + 11], &gPlttBufferFaded[5 * 0x10 + 11], sizeof(u16));
 }
 
+static bool8 CanUseBQuickRunHere(void)
+{
+	// Standard wild singles/local doubles only; unknown and special flags fail closed.
+	// Raids also have separate flag-based detection, independent of battle type flags.
+	return !IsRaidBattle()
+		&& !(gBattleTypeFlags & ~(BATTLE_TYPE_IS_MASTER | BATTLE_TYPE_DOUBLE));
+}
+
 void HandleInputChooseAction(void)
 {
 	DoBounceEffect(gActiveBattler, BOUNCE_HEALTHBOX, 7, 1);
@@ -2129,6 +2137,12 @@ void HandleInputChooseAction(void)
 			ActionSelectionCreateCursorAt(gActionSelectionCursor[gActiveBattler], 0);
 		}
 		#endif
+		// Keep an explicitly configured B + A cursor shortcut above B-only Run.
+		else if (CanUseBQuickRunHere())
+		{
+			PlaySE(SE_SELECT);
+			goto NORMAL_RUN;
+		}
 	}
 	else if (gMain.newKeys & START_BUTTON)
 	{
