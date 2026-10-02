@@ -2865,7 +2865,8 @@ bool8 scrB3_CheckCoins(struct ScriptContext *ctx)
 {
 	#ifndef REPLACE_SOME_VANILLA_SPECIALS
 	u16 *ptr = GetVarPointer(ScriptReadHalfword(ctx));
-	*ptr = GetCoins();
+	u32 coins = GetCoins();
+	*ptr = coins > 0xFFFF ? 0xFFFF : (u16) coins;
 	#else
 	u32 amount, arg;
 
