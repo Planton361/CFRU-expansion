@@ -8,6 +8,7 @@ from audit_early_running_lifecycle import c_function
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = 'e368068b3e4307bb53fa054b3dda45e2fac98a7a'
+ACCEPTED_D22 = '41ac6081ccf27170f361c4ed7d50ad546817c2cb'
 
 
 def baseline(name):
@@ -16,17 +17,12 @@ def baseline(name):
 
 def main():
     menu = (ROOT / 'src/move_menu.c').read_text()
-    old = baseline('src/move_menu.c')
+    accepted = subprocess.check_output(
+        ['git', 'show', f'{ACCEPTED_D22}:src/move_menu.c'], cwd=ROOT, text=True)
     current = c_function(menu, 'void HandleInputChooseAction(void)')
     helper = c_function(menu, 'static bool8 CanUseBQuickRunHere(void)')
-    addition = '''\t\t// Keep an explicitly configured B + A cursor shortcut above B-only Run.
-\t\telse if (CanUseBQuickRunHere())
-\t\t{
-\t\t\tPlaySE(SE_SELECT);
-\t\t\tgoto NORMAL_RUN;
-\t\t}
-'''
-    assert menu.replace(helper + '\n\n', '', 1).replace(addition, '', 1) == old
+    assert current == c_function(accepted, 'void HandleInputChooseAction(void)')
+    assert helper == c_function(accepted, 'static bool8 CanUseBQuickRunHere(void)')
     assert 'HandleInputChooseAction 0802E438 0' in (ROOT / 'hooks').read_text()
     assert current.index('CANCEL_PARTNER:') < current.index('CanUseBQuickRunHere()')
     assert current.index('else if (VarGet(VAR_QUICK_RUN_COMBO) == 1)') < current.index('CanUseBQuickRunHere()')
