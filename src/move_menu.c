@@ -2037,10 +2037,12 @@ static void LoadShadowColourForGreyedOutBagText(void)
 
 static bool8 CanUseBQuickRunHere(void)
 {
-	// Standard wild singles/local doubles only; unknown and special flags fail closed.
+	u32 context = gBattleTypeFlags & ~(BATTLE_TYPE_IS_MASTER | BATTLE_TYPE_DOUBLE);
+	// Ordinary wild or the exact consumed random-prebattle origin pair only.
 	// Raids also have separate flag-based detection, independent of battle type flags.
 	return !IsRaidBattle()
-		&& !(gBattleTypeFlags & ~(BATTLE_TYPE_IS_MASTER | BATTLE_TYPE_DOUBLE));
+		&& (context == 0
+			|| context == (BATTLE_TYPE_SCRIPTED_WILD_2 | BATTLE_TYPE_WILD_PREBATTLE));
 }
 
 void HandleInputChooseAction(void)

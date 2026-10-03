@@ -64,6 +64,7 @@
 #define BATTLE_TYPE_SCRIPTED_WILD_2    	0x20000
 #define BATTLE_TYPE_LEGENDARY_FRLG    	0x40000
 #define BATTLE_TYPE_TRAINER_TOWER		0x80000
+#define BATTLE_TYPE_WILD_PREBATTLE		0x100000 // Random wild Engage origin; battle-local only.
 
 #define BATTLE_TYPE_TWO_OPPONENTS   	0x200000 //Chosen number for FR, in Emerald its 0x8000
 #define BATTLE_TYPE_INGAME_PARTNER  	0x400000

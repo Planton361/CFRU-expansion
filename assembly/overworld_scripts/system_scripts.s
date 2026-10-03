@@ -1291,6 +1291,7 @@ SystemScript_DebugMenu_StartWildBattleNow:
 .global SystemScript_PokemonEncounter
 SystemScript_PokemonEncounter:
 	lock
+	setvar 0x800B 0x0 @;Discard prior scratch use; Ignore never owns provenance.
 	call 0x020370B9
 	callasm CheckIfFirstEnemyMonShiny
 	compare 0x8000 0x1
@@ -1323,6 +1324,7 @@ selectedOption1:
 
 selectedOption2:
 	hidepokepic
+	setvar 0x800B 0xB632 @;One-command handshake, consumed before battle execution.
 	dowildbattle
 	release
 	end
