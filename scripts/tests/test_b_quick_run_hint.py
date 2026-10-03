@@ -54,20 +54,17 @@ def main():
     menu = (ROOT / 'src/move_menu.c').read_text()
     old = snapshot('src/move_menu.c')
     helper = c_function(menu, 'static bool8 CanUseBQuickRunHere(void)')
-    assert helper == c_function(old, 'static bool8 CanUseBQuickRunHere(void)')
+    old_helper = c_function(old, 'static bool8 CanUseBQuickRunHere(void)')
     assert c_function(menu, 'void HandleInputChooseAction(void)') == c_function(old, 'void HandleInputChooseAction(void)')
     # Exactly one definition, one prototype, and the rendering/input callers.
     assert len(re.findall(r'static bool8 CanUseBQuickRunHere\(void\)\s*\{', menu)) == 1
     assert menu.count('CanUseBQuickRunHere()') == 2
-    d22_test = (ROOT / 'scripts/tests/test_b_quick_run.py').read_text()
-    marker = "    assert 'HandleInputChooseAction"
-    assert d22_test.split(marker, 1)[1] == snapshot('scripts/tests/test_b_quick_run.py').split(marker, 1)[1]
     block = rendering(menu)
     original_block = rendering(old)
     assert block[:block.index('\n\telse\n\t{')] == original_block[:original_block.index('\n\telse\n\t{')]
     remap = c_function(menu, 'static void RemapBQuickRunHint(void)')
     assert 'LoadPalette' not in block + remap
-    normalized = menu.replace(block, original_block).replace(remap + '\n\n', '', 1)
+    normalized = menu.replace(helper, old_helper, 1).replace(block, original_block).replace(remap + '\n\n', '', 1)
     normalized = normalized.replace('extern const u8 gText_BattleMenuBQuickRun[];\n', '')
     normalized = normalized.replace('extern const u8 gText_BattleMenuNoItemsBQuickRun[];\n', '')
     normalized = normalized.replace('static bool8 CanUseBQuickRunHere(void);\n', '')
@@ -228,6 +225,21 @@ static void check(unsigned flags,int isRaid,int end,int right,int absent,int ite
     }
 }
 int main(void) {
+    unsigned origin=BATTLE_TYPE_SCRIPTED_WILD_2|BATTLE_TYPE_WILD_PREBATTLE;
+    for(int dbl=0;dbl<2;dbl++) for(int master=0;master<2;master++)
+    for(int disabled=0;disabled<2;disabled++) {
+        unsigned flags=origin|(dbl?BATTLE_TYPE_DOUBLE:0)|(master?BATTLE_TYPE_IS_MASTER:0);
+        gBattleTypeFlags=flags; raid=0; assert(CanUseBQuickRunHere());
+        check(flags,0,0,0,0,0,disabled);
+        check(flags,0,0,1,0,0,disabled);
+        for(int bit=0;bit<32;bit++) {
+            unsigned special=(unsigned)1<<bit;
+            if(special&(origin|BATTLE_TYPE_IS_MASTER|BATTLE_TYPE_DOUBLE)) continue;
+            gBattleTypeFlags=flags|special; assert(!CanUseBQuickRunHere());
+            check(flags|special,0,0,0,0,0,disabled);
+        }
+        check(flags,1,0,0,0,0,disabled);
+    }
     for(int bit=-1;bit<32;bit++) for(int master=0;master<2;master++)
     for(int dbl=0;dbl<2;dbl++) for(int right=0;right<2;right++)
     for(int disabled=0;disabled<2;disabled++) for(int absent=0;absent<2;absent++)

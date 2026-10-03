@@ -1421,6 +1421,26 @@ void sp118_StartRaidBattle(void)
 	IncrementGameStat(GAME_STAT_RAID_BATTLES);
 }
 
+// BPRE ScrCmd_dowildbattle (0x0806C39C): retain vanilla scripted-wild setup.
+// Var800B is only a pre-start handshake, never the battle-time policy owner.
+bool8 ScrCmd_dowildbattle(struct ScriptContext* ctx)
+{
+	bool8 fromPrebattle = Var800B == 0xB632;
+	Var800B = 0; // Clear before starting; whiteout/nonresume cannot leak origin.
+	(void) ctx;
+
+	ScriptContext2_Enable();
+	gMain.savedCallback = CB2_EndScriptedWildBattle;
+	gBattleTypeFlags = BATTLE_TYPE_SCRIPTED_WILD_2;
+	if (fromPrebattle)
+		gBattleTypeFlags |= BATTLE_TYPE_WILD_PREBATTLE;
+	CreateBattleStartTask(GetWildBattleTransition(), 0);
+	IncrementGameStat(GAME_STAT_TOTAL_BATTLES);
+	IncrementGameStat(GAME_STAT_WILD_BATTLES);
+	ScriptContext1_Stop();
+	return TRUE;
+}
+
 //setwildbattle SPECIES LEVEL ITEM
 //setwildbattle 0xFFFF 0x0 0x0 0x0 SPECIES_1 LEVEL_1 ITEM_1 0x0 SPECIES_2 LEVEL2 ITEM_2
 bool8 ScrCmd_setwildbattle(struct ScriptContext* ctx)

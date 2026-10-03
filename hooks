@@ -290,6 +290,8 @@ DoesCurrentMapHaveFishingMons 8082F78 0
 FishingWildEncounter 8082FB0 1
 TryStandardWildEncounter 80833B0 1
 ScrCmd_setwildbattle 806C368 1
+## #632: 8-byte entry hook fits the 16-byte BPRE command; preserve ctx in r0.
+ScrCmd_dowildbattle 806C39C 1
 sp138_StartLegendaryBattle 807F9D8 0
 CreateWildMon 80829FC 2
 GetLocalWildMon 8082FE8 1
