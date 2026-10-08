@@ -70,7 +70,7 @@ static bool8 IsSingleTargetOfDoublesSpreadMove(void);
 static bool8 IsDoubleSpreadMove(void);
 static bool8 DoesBankNegateDamage(u8 bank, u16 move);
 static void TryContraryChangeStatAnim(u8 bank, u16* argumentPtr);
-static item_t ChoosePickupItem(u8 level);
+static item_t ChoosePickupItem(u8 level, const volatile struct PickupDescriptor* pickup);
 
 // For Terastallization
 extern bool8 IsTerastallized(u8 bank);
@@ -5317,7 +5317,7 @@ void atkE4_getsecretpowereffect(void)
 	gBattlescriptCurrInstr++;
 }
 
-void atkE5_pickupitemcalculation(void)
+void PickupItemCalculation(const volatile struct PickupDescriptor* pickup)
 {
 	for (; gNewBS->pickupMonId < PARTY_SIZE; ++gNewBS->pickupMonId)
 	{
@@ -5338,7 +5338,7 @@ void atkE5_pickupitemcalculation(void)
 		{
 			case ABILITY_PICKUP:
 				chance = 10; // ~10% chance of pickup to activate
-				item = ChoosePickupItem(level);
+				item = ChoosePickupItem(level, pickup);
 				break;
 			case ABILITY_HONEYGATHER:
 				chance = 5 + 5 * ((level - 1) / 10);
@@ -5388,20 +5388,24 @@ void atkE5_pickupitemcalculation(void)
 	#endif
 }
 
-static item_t ChoosePickupItem(u8 level)
+static item_t ChoosePickupItem(u8 level, const volatile struct PickupDescriptor* pickup)
 {
 	u32 row_num = (level - 1) / 10;
-	const item_t* const common_row = sPickupCommonItems + row_num;
-	const item_t* const rare_row = sPickupRareItems + row_num;
+	/* Volatile descriptor loads keep the E5-supplied indirection observable,
+	 * whether this chooser is inlined or emitted as a separate function. */
+	const item_t* const common_row = pickup->commonItems + row_num;
+	const item_t* const rare_row = pickup->rareItems + row_num;
+	const u32* const common_ceilings = pickup->commonCeilings;
+	const u32* const rare_ceilings = pickup->rareCeilings;
 
 	u16 k = Random();
 
 	for (u32 i = 0; i < PU_COMMON_PER_ROW; ++i)
-		if (k < pickup_common_item_ceilings[i])
+		if (k < common_ceilings[i])
 			return common_row[i];
 
 	for (u32 i = 0; i < PU_RARE_PER_ROW; ++i)
-		if (k < pickup_rare_item_ceilings[i])
+		if (k < rare_ceilings[i])
 			return rare_row[i];
 
 	// will never be reached

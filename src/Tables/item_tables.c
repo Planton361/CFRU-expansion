@@ -111,6 +111,46 @@ const u32 pickup_rare_item_ceilings[PU_RARE_PER_ROW] =
 	64881, 65536
 };
 
+const struct PickupDescriptor gPickupDescriptor =
+{
+	.magic = PU_DESCRIPTOR_MAGIC,
+	.version = PU_DESCRIPTOR_VERSION,
+	.size = PU_DESCRIPTOR_SIZE,
+	.config = 0
+#ifdef UNBOUND
+		| PU_CONFIG_UNBOUND
+#endif
+#ifdef PICKUP_ITEMS_STRAIGHT_TO_BAG
+		| PU_CONFIG_STRAIGHT_TO_BAG
+#endif
+#ifdef PICK_UP_KNOCKED_OFF_ITEMS
+		| PU_CONFIG_KNOCKED_OFF
+#endif
+		,
+	.itemSchema = PU_DESCRIPTOR_ITEM_SCHEMA,
+	.commonItems = sPickupCommonItems,
+	.rareItems = sPickupRareItems,
+	.commonCeilings = pickup_common_item_ceilings,
+	.rareCeilings = pickup_rare_item_ceilings,
+	.commonCount = PU_NUM_COMMON_ITEMS,
+	.rareCount = PU_NUM_RARE_ITEMS,
+	.commonCeilingCount = PU_COMMON_PER_ROW,
+	.rareCeilingCount = PU_RARE_PER_ROW,
+	.pointerWidth = 4,
+	.itemWidth = sizeof(item_t),
+	.ceilingWidth = sizeof(u32),
+	.levelRanges = 10,
+	.levelStep = 10,
+	.commonWindow = PU_COMMON_PER_ROW,
+	.rareWindow = PU_RARE_PER_ROW,
+	.minLevel = 1,
+	.maxLevel = 100,
+	.reserved = {0, 0, 0},
+	.itemCount = ITEMS_COUNT,
+	.consumer = PickupItemCalculation,
+	.anchor = atkE5_pickupitemcalculation,
+};
+
 //Any values not listed default to BP 30
 const struct FlingStruct gFlingTable[ITEMS_COUNT] =
 {
