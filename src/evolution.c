@@ -1,6 +1,7 @@
 #include "defines.h"
 #include "defines_battle.h"
 #include "../include/battle.h"
+#include "../include/coins.h"
 #include "../include/field_weather.h"
 #include "../include/field_player_avatar.h"
 #include "../include/fieldmap.h"
@@ -22,6 +23,29 @@ evolution.c
 	handles old and new evolution methods
 */
 
+typedef char EvolutionMethodIdsMustMatchDpe[
+	(EVO_ITEM_NIGHT == 39 && EVO_COINS == 40
+	 && EVO_MAUSHOLD_THREE == 41 && EVO_MAUSHOLD_FOUR == 42) ? 1 : -1];
+typedef char EvolutionRowAbiMustRemainEightBytes[
+	(sizeof(struct Evolution) == 8 && EVOS_PER_MON == 16
+	 && __builtin_offsetof(struct Evolution, param) == 2
+	 && __builtin_offsetof(struct Evolution, targetSpecies) == 4
+	 && __builtin_offsetof(struct Evolution, unknown) == 6) ? 1 : -1];
+typedef char EvolutionFriendshipContractLayoutMustMatchAnchor[
+	(sizeof(struct EvolutionFriendshipContract) == EVOLUTION_FRIENDSHIP_CONTRACT_SIZE
+	 && __builtin_offsetof(struct EvolutionFriendshipContract, threshold)
+		== EVOLUTION_FRIENDSHIP_THRESHOLD_OFFSET) ? 1 : -1];
+
+static u8 GetEvolutionFriendshipThreshold(void)
+{
+	u8 threshold = gEvolutionFriendshipContract.threshold;
+
+	// Invalid data must never silently enable an easier evolution.
+	if (threshold == EVOLUTION_FRIENDSHIP_DEFAULT || threshold == EVOLUTION_FRIENDSHIP_EASIER)
+		return threshold;
+	return EVOLUTION_FRIENDSHIP_DEFAULT;
+}
+
 u16 GetEvolutionTargetSpecies(struct Pokemon* mon, u8 type, u16 evolutionItem)
 {
 	u32 i, j;
@@ -31,6 +55,7 @@ u16 GetEvolutionTargetSpecies(struct Pokemon* mon, u8 type, u16 evolutionItem)
 	u16 heldItem = mon->item;
 	u8 level;
 	u16 friendship;
+	u8 friendshipThreshold;
 	u8 beauty = mon->beauty;
 	u16 upperPersonality = personality >> 16;
 	u8 holdEffect = ItemId_GetHoldEffect(heldItem);
@@ -43,26 +68,27 @@ u16 GetEvolutionTargetSpecies(struct Pokemon* mon, u8 type, u16 evolutionItem)
 	case EVO_MODE_NORMAL:
 		level = mon->level;
 		friendship = mon->friendship;
+		friendshipThreshold = GetEvolutionFriendshipThreshold();
 
 		for (i = 0; i < EVOS_PER_MON; ++i)
 		{
 			switch (gEvolutionTable[species][i].method)
 			{
 				case EVO_FRIENDSHIP:
-					if (friendship >= 220)
+					if (friendship >= friendshipThreshold)
 						targetSpecies = gEvolutionTable[species][i].targetSpecies;
 					break;
 
 				case EVO_FRIENDSHIP_DAY:
 				#ifdef TIME_ENABLED
-					if (IsDayTime() && friendship >= 220)
+					if (IsDayTime() && friendship >= friendshipThreshold)
 						targetSpecies = gEvolutionTable[species][i].targetSpecies;
 				#endif
 					break;
 
 				case EVO_FRIENDSHIP_NIGHT:
 				#ifdef TIME_ENABLED
-					if (IsNightTime() && friendship >= 220)
+					if (IsNightTime() && friendship >= friendshipThreshold)
 						targetSpecies = gEvolutionTable[species][i].targetSpecies;
 				#endif
 					break;
@@ -123,7 +149,7 @@ u16 GetEvolutionTargetSpecies(struct Pokemon* mon, u8 type, u16 evolutionItem)
 					break;
 
 				case EVO_MOVE_TYPE:	// expanded for custom evolutions of any move type
-					if (gEvolutionTable[species][i].unknown && friendship < 220) //Needs High Friendship & Move Type
+					if (gEvolutionTable[species][i].unknown && friendship < friendshipThreshold) //Needs High Friendship & Move Type
 						break;
 
 					// move type to know in param
@@ -295,6 +321,21 @@ u16 GetEvolutionTargetSpecies(struct Pokemon* mon, u8 type, u16 evolutionItem)
 				case EVO_NATURE_LOW:
 					if (level >= gEvolutionTable[species][i].param
 					&& !HasHighNature(mon))
+						targetSpecies = gEvolutionTable[species][i].targetSpecies;
+					break;
+
+				case EVO_COINS:
+					if (GetCoins() >= gEvolutionTable[species][i].param)
+						targetSpecies = gEvolutionTable[species][i].targetSpecies;
+					break;
+
+				case EVO_MAUSHOLD_THREE:
+					if (level >= gEvolutionTable[species][i].param && personality % 100 == 0)
+						targetSpecies = gEvolutionTable[species][i].targetSpecies;
+					break;
+
+				case EVO_MAUSHOLD_FOUR:
+					if (level >= gEvolutionTable[species][i].param && personality % 100 != 0)
 						targetSpecies = gEvolutionTable[species][i].targetSpecies;
 					break;
 
@@ -494,6 +535,9 @@ bool8 EvolutionMethodRequiresLevelUp(u8 method)
 		|| method == EVO_MOVE_MALE
 		|| method == EVO_MOVE_FEMALE
 		|| method == EVO_OTHER_PARTY_MON
+		|| method == EVO_COINS // param is a coin count, not a minimum level
+		|| method == EVO_MAUSHOLD_THREE
+		|| method == EVO_MAUSHOLD_FOUR
 		|| method == EVO_FLAG_SET;
 }
 
@@ -627,7 +671,10 @@ u8 GetMinimumLevel(u16 species)
 			{
 				u8 method = gEvolutionTable[devolutionSpecies][i].method;
 
-				if (IsLevelUpEvolutionMethod(method))
+				// These identity-dependent methods have real level thresholds, but
+				// must not enter util.c's species-only forced-evolution grouping.
+				if (IsLevelUpEvolutionMethod(method)
+				|| method == EVO_MAUSHOLD_THREE || method == EVO_MAUSHOLD_FOUR)
 					return gEvolutionTable[devolutionSpecies][i].param + increase; //The minimum level is the one that it was when it evolved
 				else if (EvolutionMethodRequiresLevelUp(method))
 					increase = 1; //Must have leveled up at least once to evolve
