@@ -624,6 +624,9 @@ enum EvolutionMethods
 	EVO_MOVE_MALE, // Knows a given move and is male
 	EVO_MOVE_FEMALE, // Knows a given move and is female
 	EVO_ITEM_NIGHT, // Item is used on it at night
+	EVO_COINS = 40, // Level up while having param Coin Case coins; no deduction
+	EVO_MAUSHOLD_THREE = 41, // Level >= param and personality % 100 == 0
+	EVO_MAUSHOLD_FOUR = 42, // Level >= param and personality % 100 != 0
 };
 #define EVO_GIGANTAMAX 0xFD
 #define EVO_MEGA 0xFE
