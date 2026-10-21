@@ -53,6 +53,7 @@
 #include "../include/new/mid_battle_evo.h"
 #include "../include/new/multi.h"
 #include "../include/new/overworld.h"
+#include "../include/new/oak_intro.h"
 #include "../include/new/pokemon_storage_system.h"
 #include "../include/new/ram_locs_battle.h"
 #include "../include/new/read_keys.h"
@@ -3251,13 +3252,40 @@ struct OakSpeechResources
 #define gMonFrontPicTable ((const struct CompressedSpriteSheet*) *((u32*) 0x8000128))
 #define tNidoranFSpriteId           data[4]
 
-void CreateOakIntroPokemonSprite(u8 taskId)
+/* Both real consumers read the bridge argument, never a second selector. */
+static u16 OakIntroSelectedSpecies(const volatile struct OakIntroContractV1 *intro)
+{
+    u16 species;
+
+    /* Reject a copied/foreign record before dereferencing it. Immutable header
+     * and consumer/interval provenance still require the later ownership gate. */
+    if (intro != &gOakIntroContract)
+        return OAK_INTRO_DEFAULT_SPECIES;
+    species = intro->selectedSpecies; /* external volatile u16, not folded */
+    if (species >= OAK_INTRO_SPECIES_CAPACITY
+        || !(gOakIntroEligibility[species >> 3] & (1u << (species & 7))))
+        return OAK_INTRO_DEFAULT_SPECIES;
+    return species;
+}
+
+/* Assembly owns CreateOakIntroPokemonSprite, the unchanged rewrite entry. */
+void OakIntroSpriteConsumer(u8 taskId, const volatile struct OakIntroContractV1 *intro)
 {
     u8 spriteId;
+    u16 species = OakIntroSelectedSpecies(intro);
+    const struct CompressedSpriteSheet *front = &gMonFrontPicTable[species];
+    const struct CompressedSpritePalette *palette = &gMonPaletteTable[species];
 
-    DecompressPicFromTable(&gMonFrontPicTable[OAK_INTRO_SPECIES], MonSpritesGfxManager_GetSpritePtr(0), OAK_INTRO_SPECIES);
-    LoadCompressedSpritePaletteUsingHeap(&gMonPaletteTable[OAK_INTRO_SPECIES]);
-    SetMultiuseSpriteTemplateToPokemon(OAK_INTRO_SPECIES, 0);
+    /* Use the complete native sheet (data/size/tag), not a pointer-only copy.
+     * The tagged sheet owns its OBJ tiles until the scene's ResetSpriteData.
+     * SetMultiuse supplies the original OAM/anims/callback/affine setup. Its
+     * existing RAM template outlives this call and the hidden sprite. */
+    LoadCompressedSpriteSheetUsingHeap(front);
+    LoadCompressedSpritePaletteUsingHeap(palette);
+    SetMultiuseSpriteTemplateToPokemon(front->tag, 0);
+    gMultiuseSpriteTemplate->tileTag = front->tag;
+    gMultiuseSpriteTemplate->paletteTag = palette->tag;
+    gMultiuseSpriteTemplate->images = NULL;
     spriteId = CreateSprite(gMultiuseSpriteTemplate, 96, 96, 1);
     gSprites[spriteId].callback = SpriteCallbackDummy;
     gSprites[spriteId].oam.priority = 1;
@@ -3282,7 +3310,8 @@ void CreateOakIntroPokemonSprite(u8 taskId)
 #define tTimer 	data[3]
 extern const u8 gOakSpeech_Text_IsInhabitedFarAndWide[];
 extern const struct OakSpeechResources *sOakSpeechResources;
-void Task_OakSpeech_IsInhabitedFarAndWide(u8 taskId)
+/* Assembly owns Task_OakSpeech_IsInhabitedFarAndWide. */
+void OakIntroCryConsumer(u8 taskId, const volatile struct OakIntroContractV1 *intro)
 {
     if (IsCryFinished())
     {
@@ -3295,7 +3324,7 @@ void Task_OakSpeech_IsInhabitedFarAndWide(u8 taskId)
         if (gTasks[taskId].tTimer == 32)
         {
             OakSpeechPrintMessage(gOakSpeech_Text_IsInhabitedFarAndWide, sOakSpeechResources->textSpeed);
-            PlayCry1(OAK_INTRO_SPECIES, 0);
+            PlayCry1(OakIntroSelectedSpecies(intro), 0);
         }
     }
 }
