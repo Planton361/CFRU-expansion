@@ -3255,12 +3255,46 @@ struct OakSpeechResources
 /* Both real consumers read the bridge argument, never a second selector. */
 static u16 OakIntroSelectedSpecies(const volatile struct OakIntroContractV1 *intro)
 {
+    static const u8 expectedIdentity[8] = "CFROAK01";
+    u32 i;
     u16 species;
 
-    /* Reject a copied/foreign record before dereferencing it. Immutable header
-     * and consumer/interval provenance still require the later ownership gate. */
+    /* Establish the sole readable record before touching any of its fields.
+     * All embedded pointers below are compared with compiled symbol addresses;
+     * none is dereferenced or called, even after it has been checked. */
     if (intro != &gOakIntroContract)
         return OAK_INTRO_DEFAULT_SPECIES;
+    for (i = 0; i < sizeof(expectedIdentity); ++i)
+        if (intro->identity[i] != expectedIdentity[i])
+            return OAK_INTRO_DEFAULT_SPECIES;
+    if (intro->self != &gOakIntroContract
+        || intro->version != OAK_INTRO_ABI_VERSION
+        || intro->size != OAK_INTRO_ABI_SIZE
+        || intro->profile != OAK_INTRO_PROFILE
+        || intro->speciesCapacity != OAK_INTRO_SPECIES_CAPACITY
+        || intro->defaultSpecies != OAK_INTRO_DEFAULT_SPECIES
+        || intro->selectorOffset != OAK_INTRO_SELECTOR_OFFSET
+        || intro->selectorWidth != OAK_INTRO_SELECTOR_WIDTH
+        || intro->eligibility != gOakIntroEligibility
+        || intro->eligibilityBytes != OAK_INTRO_BITMAP_BYTES
+        || intro->policyVersion != OAK_INTRO_POLICY_VERSION
+        || intro->spriteBridge != CreateOakIntroPokemonSprite
+        || intro->spriteConsumer != OakIntroSpriteConsumer
+        || intro->cryBridge != Task_OakSpeech_IsInhabitedFarAndWide
+        || intro->cryConsumer != OakIntroCryConsumer
+        || intro->frontTablePointerSlot != 0x08000128
+        || intro->paletteTablePointerSlot != 0x08000130
+        || intro->frontRowSize != sizeof(struct CompressedSpriteSheet)
+        || intro->paletteRowSize != sizeof(struct CompressedSpritePalette)
+        || intro->bridgeSize != OAK_INTRO_BRIDGE_SIZE
+        || intro->bridgeDescriptorOffset != OAK_INTRO_BRIDGE_DESCRIPTOR_OFFSET
+        || intro->bridgeConsumerOffset != OAK_INTRO_BRIDGE_CONSUMER_OFFSET
+        || intro->pointerWidth != sizeof(void *)
+        || intro->reservedTail != 0)
+        return OAK_INTRO_DEFAULT_SPECIES;
+    for (i = 0; i < sizeof(intro->reserved); ++i)
+        if (intro->reserved[i] != 0)
+            return OAK_INTRO_DEFAULT_SPECIES;
     species = intro->selectedSpecies; /* external volatile u16, not folded */
     if (species >= OAK_INTRO_SPECIES_CAPACITY
         || !(gOakIntroEligibility[species >> 3] & (1u << (species & 7))))
