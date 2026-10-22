@@ -563,12 +563,24 @@ class CombinedSourceContracts(unittest.TestCase):
         self.assertEqual(actual_hook(ORIGIN + 0x901), bytes.fromhex("004b1847") + (ORIGIN + 0x901).to_bytes(4, "little"))
 
     def test_dispatch_hooks_config_and_insertion_inputs_are_base_exact(self):
+        reviewed_oak = "e264a64c4fd3e1615669e139f1b3d4bc1df13b3b"
         for path in ("assembly/data/battle_script_commands_table.s", "repoints", "hooks", "functionrewrites",
                      "routinepointers", "repointall", "linker.ld", "BPRE.ld", "scripts/build.py",
                      "scripts/insert.py", "scripts/make.py", "src/config.h", "include/config.h",
                      "include/gba/types.h", "src/scripting.c", "src/util.c"):
-            self.assertEqual((ROOT / path).read_bytes(), subprocess.check_output(
-                ["git", "show", BASE + ":" + path], cwd=ROOT), path)
+            # Only scripting.c has a CONTROL-reviewed Oak exception; every
+            # other dispatch/config/insertion owner retains the original base.
+            reference = reviewed_oak if path == "src/scripting.c" else BASE
+            expected = subprocess.check_output(["git", "show", reference + ":" + path], cwd=ROOT)
+            def assert_exact(source):
+                self.assertEqual(source, expected, path)
+            assert_exact((ROOT / path).read_bytes())
+            # In-memory drift must fail the same equality check for every owner.
+            with self.assertRaises(AssertionError):
+                assert_exact(expected + b"\n/* unauthorized drift */\n")
+            if path == "src/scripting.c":
+                with self.assertRaises(AssertionError):
+                    assert_exact(subprocess.check_output(["git", "show", BASE + ":" + path], cwd=ROOT))
         self.assertIn("GetEvolutionTargetSpecies 08042EC4 3", read("hooks"))
         sites = re.findall(r"(?m)^gBattleScriptingCommandsTable (\w+)$", read("repoints"))
         self.assertEqual(sites, ["08014C1C", "08015A28", "08015C6C", "08015C98", "0801D054"])
