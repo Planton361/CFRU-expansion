@@ -2,10 +2,17 @@
 
 Authority: [Workspace #727, Stage A authorization](https://github.com/Planton361/firered-gen9-randomizer-workspace/issues/727#issuecomment-6318621103).
 Base: CFRU Draft #77 `e27e2113e4d59dc76cf5da8d4c43b067addae348`,
-branch `integration/726-cfru-pickup-evolution`. New branch:
+branch `integration/726-cfru-pickup-evolution`. Implementation branch:
 `fix/727-cfru-oak-intro-abi-v1`. Exactly five authorized source/test/doc files.
 No DPE/UPR implementation, hook, linker, inserter, Pickup/Evolution or Gitlink
 change. Never merge this candidate from an agent.
+
+Safety-repair authority: [CONTROL same-contract repair](https://github.com/Planton361/firered-gen9-randomizer-workspace/issues/727#issuecomment-6319777043).
+Repair base is `fda64ec5068f5adcad7685001854854d14e1d509` on the same branch.
+Only the selector helper in `src/scripting.c`, its existing ABI test file and
+this document change in the repair. Header, 96-byte record, selector write
+budget, bitmap, both bridges, both actual consumers and intro flow remain
+source-identical to that repair base.
 
 **CONFIRMED CURRENT STATE — source only:** one assembly-owned descriptor, one
 immutable bitmap, two real bridges, two distinct C consumers. Tests below
@@ -79,12 +86,29 @@ public entry symbols. Each bridge calls its matching C consumer as
 `r0` retains the task ID; `r1` receives the same `gOakIntroContract`; `r3`
 receives that bridge's C function address. Both C functions pass `intro` to
 `OakIntroSelectedSpecies`; neither uses a private selection or a replacement
-Nidoran♀ row. The helper rejects a foreign record pointer before dereference,
-reads exactly `intro->selectedSpecies`, checks the fixed 1440 bound before
-indexing the immutable bitmap, and falls back to 29 for any invalid native ID.
-It does **not** validate every immutable header byte at runtime; those bytes
-require the future external ownership preflight. Malformed-header negative
-tests describe that preflight model, not additional in-game validation.
+Nidoran♀ row. The repaired helper establishes `intro == &gOakIntroContract`
+before any record dereference. A foreign, null, copied or unaligned address
+returns the **compiled** default 29 without reading the supplied record.
+
+At the known record, runtime C checks all immutable metadata against compiled
+expectations: all eight identity bytes; self pointer; ABI version, size,
+profile and native capacity; default species; selector offset/width;
+eligibility pointer, byte count and policy version; both bridge and both
+consumer addresses; both table-pointer-slot numbers; native row sizes; bridge
+size/literal offsets; pointer width; every reserved byte and reserved tail.
+The loops use compiled `sizeof` bounds, never a size read from the record.
+Pointer fields are compared with known symbols only: **no stored pointer is
+dereferenced or called**, even after comparison. The public table-slot numbers
+are compared as integers; this does not validate their installed contents.
+
+Any mismatch returns `OAK_INTRO_DEFAULT_SPECIES`, not `intro->defaultSpecies`,
+before reading `selectedSpecies` or the bitmap. Only a valid immutable header
+allows the volatile u16 selector read. The fixed compiled 1440 bound is checked
+before indexing the source-owned `gOakIntroEligibility` directly; the helper
+never follows `intro->eligibility`. Invalid selections also return 29. This
+repair does not rehash bitmap payloads or prove installed asset/table contents;
+the source-owned bitmap is unchanged and full link/output ownership remains
+a separate external preflight/witness requirement.
 
 Each bridge is 4-aligned and declares `.thumb_func` / `%function`:
 
@@ -221,15 +245,37 @@ python3 -B scripts/tests/test_evolution_runtime_compat.py \
 git diff --check
 ```
 
-Only pinned public text objects and synthetic buffers are used. There is no
-private-input mode. The test models specify source contracts; they do not
-compile C/ARM, discover an ABI in a ROM, run the inserter or establish physical
-ownership. The tests include the actual public `FunctionWrap` function executed only
+Only public text sources and synthetic buffers are used. There is no
+private-input mode. Tests require Python plus the already available public
+`pycparser` package (installed version in this repair run: 3.11). No package
+was installed or changed. The parser reads the actual selector helper and
+header/native-row declarations without a C preprocessor or compiler. A bounded
+interpreter executes that C AST's branches, loops, comparisons, field reads,
+array accesses and returns over synthetic ARM-width objects; unsupported nodes
+fail closed. It records reads and rejects any foreign-record dereference or
+attempt to follow a stored pointer. This is source interpretation, not compiled
+C/ARM execution, ROM discovery, an inserter run or physical ownership proof.
+The tests include the actual public `FunctionWrap` function executed only
 against `BytesIO`, followed by a bounded model of nested wrapper/bridge calls
 with scratch-register clobbering, 8-byte stack alignment and LR state controls.
-This still is not emitted hook execution. The model's 64-byte consumer intervals are arbitrary synthetic
-fixtures, not asserted native code sizes. Negative copied/duplicate/aliased/
-malformed records test an external preflight specification only.
+This still is not emitted hook execution. The model's 64-byte consumer
+intervals are arbitrary synthetic fixtures, not asserted native code sizes.
+The original external-preflight model remains separate. The repair's runtime
+regressions do not use `validate_record`: they execute the parsed production C
+helper, using a valid non-default species so a missing fallback is observable.
+They cover all 65,536 u16 selections; 94 immutable descriptor bytes x 8 bit
+changes = 752 bad-header cases; null/foreign/unaligned record addresses; forged
+self/bitmap/bridge/consumer/root fields; compiled fallback despite a corrupted
+default; and no bitmap read for out-of-capacity IDs even with every bitmap bit
+set. Read traces require header validation before selector/bitmap access.
+
+Mutation controls execute the actual pre-repair helper, which wrongly accepts
+species 277 with a bad version, and variants with version/consumer/bitmap-owner
+checks removed. These reproduce the safety defect and demonstrate that the new
+assertions detect it. Removing the foreign-pointer guard or introducing a
+stored-pointer dereference is rejected by the interpreter. Descriptor, bitmap,
+bridges, consumers and the read-only Evolution test are checked against the
+exact repair base; only the selector helper may change in `scripting.c`.
 
 The Workspace safety helper passes at the Workspace root. A component-local
 run still rejects inherited tracked `deps/*.exe`/`deps/*.dll` names; this is
@@ -241,7 +287,9 @@ mismatches remain `CONFLICT/NOT_RECONCILED`, unchanged by this candidate.
 
 ### Recorded local source results
 
-- New ABI/source suite: **19/19 PASS**, exit 0, no skips.
+- Repaired ABI/source suite, command above: **25/25 PASS**, exit 0,
+  no failures/errors/skips. Original Stage-A result was 19/19 at `fda64ec5...`;
+  that historical result did not establish immutable-header runtime fallback.
 - Existing Pickup suite: **13/13 PASS**, exit 0, no skips.
 - Existing full Evolution/combined suite: **21/23 PASS, 2 FAIL**, exit 1,
   no errors/skips. This invocation is **not a full-suite PASS**. Its
@@ -255,8 +303,17 @@ mismatches remain `CONFLICT/NOT_RECONCILED`, unchanged by this candidate.
   the exact allowed regions of `scripting.c`, and the exact pinned public DPE
   enum/16x8 evolution-row contract via Git objects. No legacy test file or
   DPE checkout was changed to make its incompatible prerequisite pass.
-- `git diff --check`: PASS. Five-file allowlist, no Gitlink or mode changes,
-  exact #77 ancestry and clean initial target-worktree checks: PASS.
+- `git diff --check`: **PASS**, exit 0. Repair three-file subset of the
+  unchanged five-file allowlist; no Gitlink or mode changes; exact `fda64ec5...`
+  repair ancestry and clean initial target-worktree checks: PASS.
+- Workspace-root `python3 -B 07_scripts/bootstrap/check_git_safety.py`:
+  **PASS**, exit 0. Component-root
+  `python3 -B ../07_scripts/bootstrap/check_git_safety.py`: **FAIL**, exit 1,
+  only the inherited tracked `deps` binary names described above. Those blobs
+  remain omitted and untouched; no component-wide safety PASS is claimed.
+- Native C/ARM compilation, full CFRU/DPE build, link, insert, binary/map/ROM
+  inspection, emulator/gameplay and selected-output ownership: **NOT_RUN**
+  (outside this authorization; no exit code). No private artifacts accessed.
 
 These are source/synthetic results only. The legacy suite's two failures and
 the component safety helper's inherited binary-name rejection remain explicit

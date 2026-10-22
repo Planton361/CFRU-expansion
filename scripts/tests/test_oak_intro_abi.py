@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""#727 Stage A: public text sources and synthetic memory ONLY (stdlib).
+"""#727 Stage A: public text sources and synthetic memory ONLY (stdlib + public pycparser).
 
 No compiler, linker, inserter, binary, ROM, map or runtime inputs. Thumb words
 below model the declared fixed bridge; they do not establish assembled output.
@@ -18,8 +18,11 @@ import struct
 import subprocess
 import unittest
 
+from pycparser import CParser, c_ast
+
 ROOT = Path(__file__).resolve().parents[2]
 BASE = "e27e2113e4d59dc76cf5da8d4c43b067addae348"
+REPAIR_BASE = "fda64ec5068f5adcad7685001854854d14e1d509"
 DPE_SHA = "d887185de1f6ae6a78e85c4311bbadde17041d00"
 UPR_SHA = "e1127cfde58af359e458f8d6a19339f3db3c8589"
 DPE = UPR = None
@@ -235,38 +238,202 @@ def source_bindings(c):
     require("gTasks[taskId].tNidoranFSpriteId = spriteId;" in sprite)
 
 
-@lru_cache(maxsize=4)
-def selection_predicate(c):
-    # Fail if the implementation no longer matches this bounded model.
-    require(clean(body(c, "OakIntroSelectedSpecies")) == clean('''
-        u16 species;
-        if (intro != &gOakIntroContract) return OAK_INTRO_DEFAULT_SPECIES;
-        species = intro->selectedSpecies;
-        if (species >= OAK_INTRO_SPECIES_CAPACITY
-            || !(gOakIntroEligibility[species >> 3] & (1u << (species & 7))))
-            return OAK_INTRO_DEFAULT_SPECIES;
-        return species;
-    '''))
-    predicate = body(c, "OakIntroSelectedSpecies").split("if (species", 1)[1].split("return", 1)[0]
-    predicate = ("species" + predicate).strip().removesuffix(")")
-    predicate = predicate.replace("||", " or ").replace("!(", "not (").replace("1u", "1")
-    predicate = predicate.replace("gOakIntroEligibility", "bits")
-    tree = ast.parse(re.sub(r"\s+", " ", predicate), mode="eval")
-    allowed = (ast.Expression, ast.BoolOp, ast.Or, ast.UnaryOp, ast.Not,
-               ast.Compare, ast.GtE, ast.BinOp, ast.BitAnd, ast.LShift,
-               ast.RShift, ast.Subscript, ast.Name, ast.Load, ast.Constant)
-    require(all(isinstance(node, allowed) for node in ast.walk(tree)))
-    return compile(tree, "<extracted Oak selection predicate>", "eval")
+class CArray:
+    """Bounded synthetic source object; no native pointers or host memory."""
+    def __init__(self, data, name, reads, address=0):
+        self.data, self.name, self.reads, self.address = data, name, reads, address
+
+    def get(self, index):
+        require(0 <= index < len(self.data))
+        if self.reads is not None:
+            self.reads.append((self.name, index))
+        return self.data[index]
+
+
+class CReturn(Exception):
+    pass
+
+
+class CSelectionProgram:
+    """Interpret the actual helper's C AST over explicit synthetic objects.
+
+    No C compiler, preprocessor, host executable or emitted ARM is involved.
+    Unsupported C nodes fail closed. Field offsets/types come from the real
+    header; checks/control flow come from scripting.c, never validate_record.
+    """
+    def __init__(self, c):
+        self.constants = {k: int(v) for k, v in re.findall(
+            r"^#define (OAK_INTRO_\w+) (\d+)$", read(HEADER), re.M)}
+        header = read(HEADER).split("struct OakIntroContractV1;", 1)[1].split("#if !defined", 1)[0]
+        rows = ""
+        for name in ("CompressedSpriteSheet", "CompressedSpritePalette"):
+            row = read("include/sprite.h").split("struct " + name + "\n{", 1)[1].split("};", 1)[0]
+            rows += "struct " + name + " {" + row + "};\n"
+        helper = "static u16 OakIntroSelectedSpecies(const volatile struct OakIntroContractV1 *intro) {"
+        helper += body(c, "OakIntroSelectedSpecies") + "}"
+        unit = "typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32;\n"
+        unit += "struct OakIntroContractV1;" + header + rows + helper
+        unit = re.sub(r"/\*.*?\*/|//[^\n]*", "", unit, flags=re.S)
+        tree = CParser().parse(unit)
+        self.typedefs = {node.name: node.type for node in tree.ext if isinstance(node, c_ast.Typedef)}
+        self.structs = {node.type.name: node.type for node in tree.ext
+                        if isinstance(node, c_ast.Decl) and isinstance(node.type, c_ast.Struct)
+                        and node.type.decls is not None}
+        self.function = next(node for node in tree.ext if isinstance(node, c_ast.FuncDef))
+        self.fields = self.struct_layout("OakIntroContractV1")[2]
+
+    def layout(self, node):
+        if isinstance(node, (c_ast.Decl, c_ast.Typename, c_ast.TypeDecl)):
+            return self.layout(node.type)
+        if isinstance(node, c_ast.IdentifierType):
+            scalars = {"u8": (1, 1), "u16": (2, 2), "u32": (4, 4)}
+            if node.names[0] in scalars:
+                return scalars[node.names[0]]
+            return self.layout(self.typedefs[node.names[0]])
+        if isinstance(node, c_ast.PtrDecl):
+            return 4, 4  # asserted ARM wire width, not host sizeof(void*)
+        if isinstance(node, c_ast.ArrayDecl):
+            count = self.constants[node.dim.name] if isinstance(node.dim, c_ast.ID) else int(node.dim.value)
+            size, alignment = self.layout(node.type)
+            return size * count, alignment
+        if isinstance(node, c_ast.Struct):
+            return self.struct_layout(node.name)[:2]
+        raise ValueError("unsupported C type " + type(node).__name__)
+
+    def struct_layout(self, name):
+        offset, alignment, fields = 0, 1, {}
+        for field in self.structs[name].decls:
+            size, align = self.layout(field.type)
+            offset = (offset + align - 1) // align * align
+            fields[field.name] = (offset, size, field.type)
+            offset += size
+            alignment = max(alignment, align)
+        return (offset + alignment - 1) // alignment * alignment, alignment, fields
+
+    def run(self, record, bits, descriptor_address=None, *, trace=False):
+        require(len(record) == 96 and len(bits) == 180)
+        if descriptor_address is None:
+            descriptor_address = SYMBOLS["gOakIntroContract"]
+        reads = [] if trace else None
+        env = {"intro": descriptor_address, **self.constants}
+        types = {}
+        env.update({k: v for k, v in SYMBOLS.items() if k != "gOakIntroContract"})
+        env["gOakIntroEligibility"] = CArray(bits, "bitmap", reads, SYMBOLS["gOakIntroEligibility"])
+
+        def decay(value):
+            return value.address if isinstance(value, CArray) else value
+
+        def expression(node):
+            if isinstance(node, c_ast.ID):
+                require(node.name in env)
+                return env[node.name]
+            if isinstance(node, c_ast.Constant):
+                if node.type in ("string", "char"):
+                    value = ast.literal_eval(node.value)
+                    return value.encode("ascii") if node.type == "string" else ord(value)
+                return int(re.sub(r"[uUlL]+$", "", node.value), 0)
+            if isinstance(node, c_ast.StructRef):
+                require(node.type == "->" and isinstance(node.name, c_ast.ID) and node.name.name == "intro")
+                require(env["intro"] == SYMBOLS["gOakIntroContract"])
+                name = node.field.name
+                offset, width, kind = self.fields[name]
+                if isinstance(kind, c_ast.ArrayDecl):
+                    return CArray(record[offset:offset + width], name, reads)
+                if reads is not None:
+                    reads.append((name, offset))
+                return int.from_bytes(record[offset:offset + width], "little")
+            if isinstance(node, c_ast.ArrayRef):
+                array = expression(node.name)
+                require(isinstance(array, CArray))  # cannot follow descriptor pointer values
+                return array.get(expression(node.subscript))
+            if isinstance(node, c_ast.UnaryOp):
+                if node.op == "&":
+                    require(isinstance(node.expr, c_ast.ID) and node.expr.name in SYMBOLS)
+                    return SYMBOLS[node.expr.name]
+                if node.op == "sizeof":
+                    child = node.expr
+                    if isinstance(child, c_ast.ID):
+                        return self.layout(types[child.name])[0]
+                    if isinstance(child, c_ast.StructRef):
+                        return self.fields[child.field.name][1]  # unevaluated operand
+                    require(isinstance(child, c_ast.Typename))
+                    return self.layout(child)[0]
+                if node.op == "!":
+                    return not expression(node.expr)
+                if node.op == "++":
+                    require(isinstance(node.expr, c_ast.ID))
+                    env[node.expr.name] += 1
+                    return env[node.expr.name]
+                raise ValueError("unsupported C unary operation " + node.op)
+            if isinstance(node, c_ast.BinaryOp):
+                left = decay(expression(node.left))
+                if node.op == "||":
+                    return bool(left) or bool(decay(expression(node.right)))
+                if node.op == "&&":
+                    return bool(left) and bool(decay(expression(node.right)))
+                right = decay(expression(node.right))
+                operations = {"!=": lambda: left != right, "==": lambda: left == right,
+                              ">=": lambda: left >= right, "<": lambda: left < right,
+                              "&": lambda: left & right, "<<": lambda: left << right,
+                              ">>": lambda: left >> right}
+                require(node.op in operations)
+                return operations[node.op]()
+            raise ValueError("unsupported C expression " + type(node).__name__)
+
+        def statement(node):
+            if isinstance(node, c_ast.Compound):
+                for child in node.block_items or []:
+                    statement(child)
+            elif isinstance(node, c_ast.Decl):
+                types[node.name] = node.type
+                if node.init is not None:
+                    value = expression(node.init)
+                    if isinstance(node.type, c_ast.ArrayDecl):
+                        require(len(value) == self.layout(node.type)[0])
+                        value = CArray(value, node.name, reads)
+                    env[node.name] = value
+            elif isinstance(node, c_ast.Assignment):
+                require(node.op == "=" and isinstance(node.lvalue, c_ast.ID))
+                env[node.lvalue.name] = expression(node.rvalue)
+            elif isinstance(node, c_ast.If):
+                branch = node.iftrue if expression(node.cond) else node.iffalse
+                if branch is not None:
+                    statement(branch)
+            elif isinstance(node, c_ast.For):
+                statement(node.init)
+                iterations = 0
+                while expression(node.cond):
+                    iterations += 1
+                    require(iterations <= 128)
+                    statement(node.stmt)
+                    expression(node.next)
+            elif isinstance(node, c_ast.Return):
+                raise CReturn(expression(node.expr))
+            else:
+                raise ValueError("unsupported C statement " + type(node).__name__)
+
+        try:
+            statement(self.function.body)
+        except CReturn as returned:
+            return returned.args[0], reads
+        raise ValueError("C helper did not return")
+
+
+@lru_cache(maxsize=8)
+def selection_program(c):
+    return CSelectionProgram(c)
+
+
+@lru_cache(maxsize=1)
+def runtime_record():
+    return bytes(data_section(read(ASM), "gOakIntroContract", ".Loak_contract_end"))
 
 
 def selected(c, descriptor_address, species, bits):
     require(0 <= species <= 65535)
-    predicate = selection_predicate(c)
-    if descriptor_address != SYMBOLS["gOakIntroContract"]:
-        return 29
-    invalid = eval(predicate, {"__builtins__": {}},
-                   {"species": species, "bits": bits, "OAK_INTRO_SPECIES_CAPACITY": 1440})
-    return 29 if invalid else species
+    record = bytearray(runtime_record())
+    struct.pack_into("<H", record, 92, species)
+    return selection_program(c).run(record, bits, descriptor_address)[0]
 
 
 def definitions(c, asm):
@@ -666,6 +833,115 @@ class OakIntroAbiTests(unittest.TestCase):
             for i in eligible:
                 self.assertRegex(rows[i], r"\.wav\s*=\s*(?:gCry\w+|\(u8\*\) 0x[0-9A-Fa-f]+)")
         self.assertRegex(read("include/sound.h"), r"PlayCry1\(u16 species, s8 pan\)")
+
+    def test_20_runtime_c_rejects_every_immutable_byte_before_selector_or_bitmap_read(self):
+        program = selection_program(read("src/scripting.c"))
+        record, bits = bytearray(runtime_record()), bitmap()
+        struct.pack_into("<H", record, 92, 277)  # valid non-default ID detects missing fallback
+        self.assertEqual(program.run(record, bits)[0], 277)
+        for offset in list(range(92)) + [94, 95]:
+            for bit in range(8):
+                broken = bytearray(record)
+                broken[offset] ^= 1 << bit
+                value, reads = program.run(broken, bits, trace=True)
+                self.assertEqual(value, 29, (offset, bit))
+                self.assertNotIn("selectedSpecies", {name for name, _ in reads}, (offset, bit))
+                self.assertNotIn("bitmap", {name for name, _ in reads}, (offset, bit))
+        # Valid execution covers the same complete layout as the header asserts.
+        value, reads = program.run(record, bits, trace=True)
+        self.assertEqual(value, 277)
+        self.assertEqual({name for name, _ in reads} - {"bitmap", "expectedIdentity"}, set(program.fields))
+        self.assertEqual([i for name, i in reads if name == "identity"], list(range(8)))
+        self.assertEqual([i for name, i in reads if name == "reserved"], list(range(20)))
+        selector_position = next(i for i, entry in enumerate(reads) if entry[0] == "selectedSpecies")
+        self.assertTrue(all(name == "bitmap" for name, _ in reads[selector_position + 1:]))
+
+    def test_21_runtime_c_foreign_null_unaligned_records_never_dereferenced(self):
+        program = selection_program(read("src/scripting.c"))
+        record = bytearray(runtime_record())
+        struct.pack_into("<H", record, 92, 277)
+        for pointer in (0, 1, 3, 0xDEADBEEF, SYMBOLS["gOakIntroContract"] - 4,
+                        SYMBOLS["gOakIntroContract"] + 1, SYMBOLS["gOakIntroContract"] + 2,
+                        SYMBOLS["gOakIntroEligibility"], SYMBOLS["OakIntroSpriteConsumer"]):
+            value, reads = program.run(record, bitmap(), pointer, trace=True)
+            self.assertEqual((value, reads), (29, []), hex(pointer))
+
+    def test_22_runtime_c_rejects_forged_pointer_fields_and_bindings_without_following(self):
+        program = selection_program(read("src/scripting.c"))
+        record = bytearray(runtime_record())
+        struct.pack_into("<H", record, 92, 1439)
+        pointer_fields = ("self", "eligibility", "spriteBridge", "spriteConsumer", "cryBridge", "cryConsumer",
+                          "frontTablePointerSlot", "paletteTablePointerSlot")
+        for name in pointer_fields:
+            offset, width, _ = program.fields[name]
+            self.assertEqual(width, 4)
+            expected = struct.unpack_from("<I", record, offset)[0]
+            for value in {0, 1, 0xFFFFFFFF, 0xDEADBEEF, expected ^ 1, *SYMBOLS.values()} - {expected}:
+                broken = bytearray(record)
+                struct.pack_into("<I", broken, offset, value)
+                returned, reads = program.run(broken, bitmap(), trace=True)
+                self.assertEqual(returned, 29, (name, hex(value)))
+                self.assertFalse({"selectedSpecies", "bitmap"} & {x for x, _ in reads})
+
+    def test_23_runtime_c_bounds_and_compiled_fallback_do_not_trust_bad_metadata(self):
+        program = selection_program(read("src/scripting.c"))
+        record = bytearray(runtime_record())
+        # Even a bitmap with every bit set cannot permit an out-of-capacity read.
+        for species in (1440, 1441, 32768, 65535):
+            struct.pack_into("<H", record, 92, species)
+            returned, reads = program.run(record, bytes([255]) * 180, trace=True)
+            self.assertEqual(returned, 29)
+            self.assertNotIn("bitmap", {name for name, _ in reads})
+        for name, value in (("defaultSpecies", 1439), ("speciesCapacity", 65535),
+                            ("eligibilityBytes", 65535), ("selectorOffset", 0), ("selectorWidth", 4)):
+            broken = bytearray(record)
+            offset, _, _ = program.fields[name]
+            struct.pack_into("<H", broken, offset, value)
+            returned, reads = program.run(broken, bitmap(), trace=True)
+            self.assertEqual(returned, 29, name)  # compiled default, never record.defaultSpecies
+            self.assertFalse({"selectedSpecies", "bitmap"} & {x for x, _ in reads})
+
+    def test_24_runtime_c_regressions_detect_original_gap_and_removed_checks(self):
+        current = read("src/scripting.c")
+        record = bytearray(runtime_record())
+        struct.pack_into("<H", record, 92, 277)
+        # This is the real old helper, not the Python preflight specification.
+        old = selection_program(pinned(ROOT, REPAIR_BASE, "src/scripting.c"))
+        broken = bytearray(record)
+        broken[12] ^= 1
+        self.assertEqual(old.run(broken, bitmap())[0], 277)
+        self.assertEqual(selection_program(current).run(broken, bitmap())[0], 29)
+        for field, check in (("version", "OAK_INTRO_ABI_VERSION"), ("spriteConsumer", "OakIntroSpriteConsumer"),
+                             ("eligibility", "gOakIntroEligibility")):
+            guard = "        || intro->" + field + " != " + check + "\n"
+            self.assertIn(guard, current)
+            mutant = selection_program(current.replace(guard, "", 1))
+            broken = bytearray(record)
+            broken[mutant.fields[field][0]] ^= 1
+            # Removing each production guard demonstrably defeats the assertion.
+            self.assertEqual(mutant.run(broken, bitmap())[0], 277, field)
+        foreign_guard = "    if (intro != &gOakIntroContract)\n        return OAK_INTRO_DEFAULT_SPECIES;\n"
+        self.assertIn(foreign_guard, current)
+        with self.assertRaises(ValueError):
+            selection_program(current.replace(foreign_guard, "", 1)).run(record, bitmap(), 0)
+        # Following a pointer stored inside the descriptor is forbidden in this
+        # harness even when it happens to equal a known symbol address.
+        with self.assertRaises(ValueError):
+            selection_program(current.replace("gOakIntroEligibility[species >> 3]",
+                                              "intro->eligibility[species >> 3]")).run(record, bitmap())
+
+    def test_25_repair_preserves_descriptor_bridges_bitmap_consumers_and_read_only_tests(self):
+        for path in (HEADER, ASM, "scripts/tests/test_evolution_runtime_compat.py",
+                     "src/oak_minimal_exposition.c", "functionrewrites", "hooks", "linker.ld", "scripts/insert.py"):
+            self.assertEqual(read(path), pinned(ROOT, REPAIR_BASE, path), path)
+        current, old = read("src/scripting.c"), pinned(ROOT, REPAIR_BASE, "src/scripting.c")
+        restored = current.replace(body(current, "OakIntroSelectedSpecies"), body(old, "OakIntroSelectedSpecies"), 1)
+        self.assertEqual(restored, old)  # no repair changes outside the helper
+        for name in ("OakIntroSpriteConsumer", "OakIntroCryConsumer"):
+            self.assertEqual(body(current, name), body(old, name))
+        self.assertEqual(git(ROOT, "merge-base", REPAIR_BASE, "HEAD").strip(), REPAIR_BASE)
+        self.assertLessEqual(set(git(ROOT, "diff", REPAIR_BASE, "--name-only").splitlines()),
+                             {"src/scripting.c", "scripts/tests/test_oak_intro_abi.py", "docs/testing/oak-intro-abi-v1.md"})
 
     def test_15_exact_allowlist_ancestry_modes_and_no_gitlinks(self):
         self.assertEqual(git(ROOT, "merge-base", BASE, "HEAD").strip(), BASE)
