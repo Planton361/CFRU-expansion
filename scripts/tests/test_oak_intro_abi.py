@@ -23,13 +23,15 @@ from pycparser import CParser, c_ast
 ROOT = Path(__file__).resolve().parents[2]
 BASE = "e27e2113e4d59dc76cf5da8d4c43b067addae348"
 REPAIR_BASE = "fda64ec5068f5adcad7685001854854d14e1d509"
+REVIEWED_HEAD = "e264a64c4fd3e1615669e139f1b3d4bc1df13b3b"
+EVOLUTION_TEST = "scripts/tests/test_evolution_runtime_compat.py"
 DPE_SHA = "d887185de1f6ae6a78e85c4311bbadde17041d00"
 UPR_SHA = "e1127cfde58af359e458f8d6a19339f3db3c8589"
 DPE = UPR = None
 ASM = "assembly/data/oak_intro_contract.s"
 HEADER = "include/new/oak_intro.h"
 ALLOWLIST = {"src/scripting.c", HEADER, ASM,
-             "scripts/tests/test_oak_intro_abi.py", "docs/testing/oak-intro-abi-v1.md"}
+             "scripts/tests/test_oak_intro_abi.py", "docs/testing/oak-intro-abi-v1.md", EVOLUTION_TEST}
 PAIRS = (("CreateOakIntroPokemonSprite", "OakIntroSpriteConsumer", "sprite"),
          ("Task_OakSpeech_IsInhabitedFarAndWide", "OakIntroCryConsumer", "cry"))
 # Deliberately synthetic labels. No selected output identity/ownership implied.
@@ -57,6 +59,26 @@ def pinned(root, sha, path):
 def require(value):
     if not value:
         raise ValueError("source/synthetic contract rejected")
+
+
+def require_approved_evolution_test(source):
+    """Reverse only the exact approved test-body replacement, then compare bytes."""
+    original = subprocess.check_output(["git", "show", REVIEWED_HEAD + ":" + EVOLUTION_TEST], cwd=ROOT)
+    begin = b"    def test_dispatch_hooks_config_and_insertion_inputs_are_base_exact(self):\n"
+    end = b"    def combined_fixture(self):\n"
+    def region(text):
+        require(text.count(begin) == 1 and text.count(end) == 1)
+        start = text.index(begin)
+        stop = text.index(end, start)
+        return start, stop
+    start, stop = region(source)
+    old_start, old_stop = region(original)
+    # SHA-256 binds the entire replacement method (including its negative
+    # controls) byte-for-byte; all other methods, DPE_SHA and imports stay exact.
+    require(hashlib.sha256(source[start:stop]).hexdigest() ==
+            "85bba506dafa82c835dd2e324b3c532ed1f7f4324ed05f122f9cf4752786ef1a")
+    restored = source[:start] + original[old_start:old_stop] + source[stop:]
+    require(restored == original)
 
 
 def body(text, name):
@@ -931,23 +953,49 @@ class OakIntroAbiTests(unittest.TestCase):
                                               "intro->eligibility[species >> 3]")).run(record, bitmap())
 
     def test_25_repair_preserves_descriptor_bridges_bitmap_consumers_and_read_only_tests(self):
-        for path in (HEADER, ASM, "scripts/tests/test_evolution_runtime_compat.py",
+        for path in (HEADER, ASM,
                      "src/oak_minimal_exposition.c", "functionrewrites", "hooks", "linker.ld", "scripts/insert.py"):
             self.assertEqual(read(path), pinned(ROOT, REPAIR_BASE, path), path)
+        original_test = subprocess.check_output(["git", "show", REVIEWED_HEAD + ":" + EVOLUTION_TEST], cwd=ROOT)
+        self.assertEqual(original_test, subprocess.check_output(
+            ["git", "show", REPAIR_BASE + ":" + EVOLUTION_TEST], cwd=ROOT))
+        evolution_test = (ROOT / EVOLUTION_TEST).read_bytes()
+        require_approved_evolution_test(evolution_test)
+        # Reject additional edits both inside and outside the approved method;
+        # the untouched old test must also fail the new exact maintenance policy.
+        mutations = [original_test, evolution_test + b"\n"]
+        for before, after in (
+                (b'reference = reviewed_oak if path == "src/scripting.c" else BASE', b'reference = BASE'),
+                (b'assert_exact((ROOT / path).read_bytes())', b'pass'),
+                (DPE_SHA.encode(), b"0" * 40),
+                (b'friendship=220, coins=2999', b'friendship=160, coins=2999')):
+            self.assertIn(before, evolution_test)
+            mutations.append(evolution_test.replace(before, after, 1))
+        for mutation in mutations:
+            with self.assertRaises(ValueError):
+                require_approved_evolution_test(mutation)
         current, old = read("src/scripting.c"), pinned(ROOT, REPAIR_BASE, "src/scripting.c")
         restored = current.replace(body(current, "OakIntroSelectedSpecies"), body(old, "OakIntroSelectedSpecies"), 1)
         self.assertEqual(restored, old)  # no repair changes outside the helper
         for name in ("OakIntroSpriteConsumer", "OakIntroCryConsumer"):
             self.assertEqual(body(current, name), body(old, name))
         self.assertEqual(git(ROOT, "merge-base", REPAIR_BASE, "HEAD").strip(), REPAIR_BASE)
-        self.assertLessEqual(set(git(ROOT, "diff", REPAIR_BASE, "--name-only").splitlines()),
-                             {"src/scripting.c", "scripts/tests/test_oak_intro_abi.py", "docs/testing/oak-intro-abi-v1.md"})
+        self.assertEqual(set(git(ROOT, "diff", REPAIR_BASE, "--name-only").splitlines()),
+                         {"src/scripting.c", "scripts/tests/test_oak_intro_abi.py",
+                          "docs/testing/oak-intro-abi-v1.md", EVOLUTION_TEST})
 
     def test_15_exact_allowlist_ancestry_modes_and_no_gitlinks(self):
         self.assertEqual(git(ROOT, "merge-base", BASE, "HEAD").strip(), BASE)
         changes = set(git(ROOT, "diff", BASE, "--name-only").splitlines())
         changes.update(git(ROOT, "ls-files", "--others", "--exclude-standard").splitlines())
         self.assertEqual(changes, ALLOWLIST)
+        self.assertEqual(git(ROOT, "merge-base", REVIEWED_HEAD, "HEAD").strip(), REVIEWED_HEAD)
+        self.assertEqual(set(git(ROOT, "diff", REVIEWED_HEAD, "--name-only").splitlines()),
+                         {EVOLUTION_TEST, "scripts/tests/test_oak_intro_abi.py"})
+        # Zero tracked changes outside those two tests also protects every
+        # production blob, existing ABI owner and Stage-A documentation file.
+        for row in git(ROOT, "diff", REVIEWED_HEAD, "--raw").splitlines():
+            self.assertEqual(row.split()[:2], [":100644", "100644"])
         modes = git(ROOT, "diff", BASE, "--raw")
         self.assertNotIn("160000", modes)
         self.assertNotIn("100755", modes)
